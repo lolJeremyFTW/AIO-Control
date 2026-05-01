@@ -11,6 +11,10 @@ const PUBLIC_PATHS = new Set<string>([
   "/auth/callback",
   "/api/health",
   "/api/version",
+  // The login form probes these to figure out whether to render OAuth and
+  // push UI. Must be reachable without a session.
+  "/api/auth/oauth-config",
+  "/api/push/key",
 ]);
 
 export async function updateSession(request: NextRequest) {
