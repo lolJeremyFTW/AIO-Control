@@ -1,0 +1,42 @@
+# SSHes into the VPS and runs the deploy script committed at deploy/vps-deploy.sh.
+# Repository secrets needed (configure under Settings → Secrets and variables → Actions):
+#   - VPS_TAILSCALE_HOST  : Tailscale machine name or IP, e.g. "100.67.47.121"
+#                            or "vps" if you've added the GH Actions runner to your
+#                            Tailscale network. For a public host, use the public DNS.
+#   - VPS_SSH_USER        : "jeremy"
+#   - VPS_SSH_PRIVATE_KEY : an SSH private key authorized in /home/jeremy/.ssh/authorized_keys
+#                           on the VPS. Generate with `ssh-keygen -t ed25519 -f gh-deploy`,
+#                           paste the private key here, append the public to authorized_keys.
+#
+# Why a script and not a long inline `script:` block? So you can iterate on the
+# deploy procedure locally (run `bash deploy/vps-deploy.sh` over SSH) without
+# re-pushing the workflow each time.
+
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run deploy script over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_TAILSCALE_HOST }}
+          username: ${{ secrets.VPS_SSH_USER }}
+          key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+          envs: GITHUB_SHA
+          script: |
+            export GIT_COMMIT_SHA="${GITHUB_SHA}"
+            cd /home/jeremy/aio-control
+            bash deploy/vps-deploy.sh

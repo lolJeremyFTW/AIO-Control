@@ -10,15 +10,32 @@ import { createSupabaseServerClient } from "../../lib/supabase/server";
 export type AuthResult = { ok: true } | { ok: false; error: string };
 
 export async function signInAction(formData: FormData): Promise<AuthResult> {
-  const email = String(formData.get("email") ?? "").trim();
+  const identifier = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   const next = String(formData.get("next") ?? "/");
 
-  if (!email || !password) {
-    return { ok: false, error: "Vul je e-mail en wachtwoord in." };
+  if (!identifier || !password) {
+    return { ok: false, error: "Vul je gebruikersnaam of e-mail en wachtwoord in." };
   }
 
   const supabase = await createSupabaseServerClient();
+
+  // If the user typed something without an "@", treat it as a username and
+  // resolve it to the matching email via the SECURITY DEFINER RPC. The RPC
+  // returns null if there's no match — we surface a friendly error rather
+  // than the raw "Invalid login credentials" string from gotrue, since the
+  // auth call below would be skipped in that branch.
+  let email = identifier;
+  if (!identifier.includes("@")) {
+    const { data, error } = await supabase
+      .rpc("lookup_email_by_username", { uname: identifier });
+    if (error) return { ok: false, error: error.message };
+    if (!data || typeof data !== "string") {
+      return { ok: false, error: "Gebruiker niet gevonden." };
+    }
+    email = data;
+  }
+
   const { error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) return { ok: false, error: error.message };
 

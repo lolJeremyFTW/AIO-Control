@@ -73,11 +73,11 @@ export function AuthForm({ mode, action, next }: Props) {
         </Field>
       )}
 
-      <Field label="E-mail">
+      <Field label={isLogin ? "Gebruikersnaam of e-mail" : "E-mail"}>
         <input
           name="email"
-          type="email"
-          autoComplete="email"
+          type={isLogin ? "text" : "email"}
+          autoComplete={isLogin ? "username" : "email"}
           required
           style={inputStyle}
         />

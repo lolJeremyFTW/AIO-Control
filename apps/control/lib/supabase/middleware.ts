@@ -10,6 +10,7 @@ const PUBLIC_PATHS = new Set<string>([
   "/signup",
   "/auth/callback",
   "/api/health",
+  "/api/version",
 ]);
 
 export async function updateSession(request: NextRequest) {
