@@ -134,6 +134,63 @@ export async function rotateWebhookSecret(input: {
   return { ok: true, data: { secret } };
 }
 
+export async function createManualSchedule(input: {
+  workspace_slug: string;
+  workspace_id: string;
+  agent_id: string;
+  business_id?: string | null;
+}): Promise<ActionResult<{ id: string }>> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("schedules")
+    .insert({
+      workspace_id: input.workspace_id,
+      agent_id: input.agent_id,
+      business_id: input.business_id ?? null,
+      kind: "manual" satisfies ScheduleKind,
+    })
+    .select("id")
+    .single();
+  if (error || !data) {
+    return { ok: false, error: error?.message ?? "Insert failed." };
+  }
+  revalidatePath(`/${input.workspace_slug}`);
+  return { ok: true, data: { id: data.id } };
+}
+
+export async function runAgentNow(input: {
+  workspace_slug: string;
+  workspace_id: string;
+  agent_id: string;
+  business_id?: string | null;
+  prompt?: string;
+}): Promise<ActionResult<{ run_id: string }>> {
+  const supabase = await createSupabaseServerClient();
+  // Phase 5: a manual run just queues a row and returns immediately. The
+  // ChatPanel and (later) a worker dispatcher pick up queued rows and
+  // execute. This keeps the action fast + auditable; long-running calls
+  // belong on the chat SSE route, not a server action.
+  const { data, error } = await supabase
+    .from("runs")
+    .insert({
+      workspace_id: input.workspace_id,
+      agent_id: input.agent_id,
+      business_id: input.business_id ?? null,
+      triggered_by: "manual",
+      status: "queued",
+      input: input.prompt ? { prompt: input.prompt } : null,
+    })
+    .select("id")
+    .single();
+  if (error || !data) {
+    return { ok: false, error: error?.message ?? "Insert failed." };
+  }
+  revalidatePath(
+    `/${input.workspace_slug}/business/${input.business_id ?? ""}/schedules`,
+  );
+  return { ok: true, data: { run_id: data.id } };
+}
+
 export async function deleteSchedule(input: {
   workspace_slug: string;
   schedule_id: string;

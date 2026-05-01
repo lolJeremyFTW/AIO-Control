@@ -16,6 +16,7 @@ export function BusinessTabs({ workspaceSlug, businessId }: Props) {
   const tabs: { href: string; label: string; match: (p: string) => boolean }[] = [
     { href: base, label: "Wachtrij", match: (p) => p === base },
     { href: `${base}/agents`, label: "Agents", match: (p) => p.startsWith(`${base}/agents`) },
+    { href: `${base}/schedules`, label: "Schedules", match: (p) => p.startsWith(`${base}/schedules`) },
   ];
   return (
     <div
