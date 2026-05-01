@@ -25,6 +25,7 @@ export async function updateSession(request: NextRequest) {
   if (!url || !anon) return response;
 
   const supabase = createServerClient(url, anon, {
+    db: { schema: "aio_control" },
     cookies: {
       getAll: () => request.cookies.getAll(),
       setAll: (cookiesToSet) => {

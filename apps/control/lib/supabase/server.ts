@@ -13,6 +13,10 @@ export async function createSupabaseServerClient() {
     requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
     requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
     {
+      // We isolate our tables in the aio_control schema so this Supabase
+      // instance can host other apps too. PostgREST exposes the schema via
+      // PGRST_DB_SCHEMAS.
+      db: { schema: "aio_control" },
       cookies: {
         getAll: () => cookieStore.getAll(),
         setAll: (cookiesToSet) => {

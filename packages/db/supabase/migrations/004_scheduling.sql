@@ -1,12 +1,12 @@
--- 004_scheduling.sql — Phase 4: schedules, webhook secrets, Claude Routine
+﻿-- 004_scheduling.sql — Phase 4: schedules, webhook secrets, Claude Routine
 -- bookkeeping. Builds on 002 (agents) + 003 (runs).
 
 -- ─── schedules ───────────────────────────────────────────────────────────────
-create table if not exists public.schedules (
+create table if not exists aio_control.schedules (
   id uuid primary key default gen_random_uuid(),
-  workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  agent_id uuid not null references public.agents(id) on delete cascade,
-  business_id uuid references public.businesses(id) on delete set null,
+  workspace_id uuid not null references aio_control.workspaces(id) on delete cascade,
+  agent_id uuid not null references aio_control.agents(id) on delete cascade,
+  business_id uuid references aio_control.businesses(id) on delete set null,
   kind text not null check (kind in ('cron', 'webhook', 'manual')),
   cron_expr text,
   webhook_secret_hash text,
@@ -22,61 +22,61 @@ create table if not exists public.schedules (
 );
 
 create index if not exists idx_schedules_workspace
-  on public.schedules(workspace_id);
+  on aio_control.schedules(workspace_id);
 create index if not exists idx_schedules_secret
-  on public.schedules(webhook_secret_hash) where webhook_secret_hash is not null;
+  on aio_control.schedules(webhook_secret_hash) where webhook_secret_hash is not null;
 
 -- runs.schedule_id was provisioned in 003 without an FK so 004 stays
 -- additive without requiring runs to be empty. Add the FK now that
 -- schedules exists.
-alter table public.runs
+alter table aio_control.runs
   drop constraint if exists runs_schedule_id_fkey;
-alter table public.runs
+alter table aio_control.runs
   add constraint runs_schedule_id_fkey
-    foreign key (schedule_id) references public.schedules(id) on delete set null;
+    foreign key (schedule_id) references aio_control.schedules(id) on delete set null;
 
 -- ─── triggers ────────────────────────────────────────────────────────────────
-drop trigger if exists trg_touch_schedules on public.schedules;
+drop trigger if exists trg_touch_schedules on aio_control.schedules;
 create trigger trg_touch_schedules
-  before update on public.schedules
-  for each row execute function public._touch_updated_at();
+  before update on aio_control.schedules
+  for each row execute function aio_control._touch_updated_at();
 
-drop trigger if exists trg_audit_schedules on public.schedules;
+drop trigger if exists trg_audit_schedules on aio_control.schedules;
 create trigger trg_audit_schedules
-  after insert or update or delete on public.schedules
-  for each row execute function public._audit_row();
+  after insert or update or delete on aio_control.schedules
+  for each row execute function aio_control._audit_row();
 
 -- ─── RLS ─────────────────────────────────────────────────────────────────────
-alter table public.schedules enable row level security;
+alter table aio_control.schedules enable row level security;
 
 -- Members can read schedule metadata but NOT the bearer token (column-level
 -- security — see view below) or the secret hash. We expose a view that
 -- omits the sensitive columns and grant read on the view to authenticated.
 
-drop policy if exists "schedules_read_member" on public.schedules;
+drop policy if exists "schedules_read_member" on aio_control.schedules;
 create policy "schedules_read_member"
-  on public.schedules for select
-  using (public.is_workspace_member(workspace_id));
+  on aio_control.schedules for select
+  using (aio_control.is_workspace_member(workspace_id));
 
-drop policy if exists "schedules_insert_editor" on public.schedules;
+drop policy if exists "schedules_insert_editor" on aio_control.schedules;
 create policy "schedules_insert_editor"
-  on public.schedules for insert
-  with check (public.workspace_role(workspace_id) in ('owner', 'admin', 'editor'));
+  on aio_control.schedules for insert
+  with check (aio_control.workspace_role(workspace_id) in ('owner', 'admin', 'editor'));
 
-drop policy if exists "schedules_update_editor" on public.schedules;
+drop policy if exists "schedules_update_editor" on aio_control.schedules;
 create policy "schedules_update_editor"
-  on public.schedules for update
-  using (public.workspace_role(workspace_id) in ('owner', 'admin', 'editor'))
-  with check (public.workspace_role(workspace_id) in ('owner', 'admin', 'editor'));
+  on aio_control.schedules for update
+  using (aio_control.workspace_role(workspace_id) in ('owner', 'admin', 'editor'))
+  with check (aio_control.workspace_role(workspace_id) in ('owner', 'admin', 'editor'));
 
-drop policy if exists "schedules_delete_admin" on public.schedules;
+drop policy if exists "schedules_delete_admin" on aio_control.schedules;
 create policy "schedules_delete_admin"
-  on public.schedules for delete
-  using (public.workspace_role(workspace_id) in ('owner', 'admin'));
+  on aio_control.schedules for delete
+  using (aio_control.workspace_role(workspace_id) in ('owner', 'admin'));
 
 -- Public-safe view: same data minus encrypted/secret columns. Use this from
 -- the UI; it inherits RLS via SECURITY INVOKER.
-create or replace view public.schedules_safe as
+create or replace view aio_control.schedules_safe as
 select
   id,
   workspace_id,
@@ -89,4 +89,4 @@ select
   last_fired_at,
   created_at,
   updated_at
-from public.schedules;
+from aio_control.schedules;

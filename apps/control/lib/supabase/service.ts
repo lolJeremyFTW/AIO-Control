@@ -26,6 +26,7 @@ export function getServiceRoleSupabase(): AnySupabase {
   }
   cached = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
+    db: { schema: "aio_control" },
   }) as AnySupabase;
   return cached;
 }

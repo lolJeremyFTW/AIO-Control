@@ -18,6 +18,8 @@ export function getSupabaseBrowserClient() {
         "Set them in .env.local.",
     );
   }
-  cached = createBrowserClient(url, anon);
+  cached = createBrowserClient(url, anon, {
+    db: { schema: "aio_control" },
+  });
   return cached;
 }

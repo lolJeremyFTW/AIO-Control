@@ -6,6 +6,7 @@ import type { AGUIEvent, ChatMessage } from "./ag-ui";
 import { streamClaude } from "./providers/claude";
 import { streamOpenRouter } from "./providers/openrouter";
 import { streamOllama } from "./providers/ollama";
+import { streamMinimax } from "./providers/minimax";
 import { streamGenericHttp } from "./providers/generic-http";
 import { streamNotConfigured } from "./providers/stub";
 
@@ -55,9 +56,10 @@ export async function* streamChat(
       yield* streamGenericHttp(opts);
       return;
     case "minimax":
-      // MiniMax Coding Plan is MCP-only. We fall back to a stub here; phase 4
-      // wires it up via Claude Code subprocess + MCP relay.
-      yield* streamNotConfigured(opts, "MiniMax MCP relay komt in fase 4.");
+      // Direct HTTP path (MiniMax Coder Plan API key). The MCP-via-Claude
+      // pathway is wired separately when we run inside a Claude Code
+      // subprocess for scheduled MCP-tool runs.
+      yield* streamMinimax(opts);
       return;
     case "codex":
       // Codex models are reachable through OpenRouter with an alias prefix;
