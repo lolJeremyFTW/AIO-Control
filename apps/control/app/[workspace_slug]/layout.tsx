@@ -1,6 +1,6 @@
 // Protected workspace shell — rail + header + chat-panel placeholder.
-// Phase 1: the rail uses real workspace + profile data, businesses array is
-// still empty (phase 2 fills it).
+// Pulls real businesses + workspaces + profile and hands them to the
+// client-side WorkspaceShell, which manages the rail + header callbacks.
 
 import { notFound, redirect } from "next/navigation";
 
@@ -12,6 +12,7 @@ import {
   getUserWorkspaces,
   getWorkspaceBySlug,
 } from "../../lib/auth/workspace";
+import { listBusinesses } from "../../lib/queries/businesses";
 import { WorkspaceShell } from "../../components/WorkspaceShell";
 
 type Props = {
@@ -28,9 +29,10 @@ export default async function WorkspaceLayout({ children, params }: Props) {
   const workspace = await getWorkspaceBySlug(workspace_slug);
   if (!workspace) notFound();
 
-  const [profile, workspaces] = await Promise.all([
+  const [profile, workspaces, businesses] = await Promise.all([
     getProfile(user.id),
     getUserWorkspaces(),
+    listBusinesses(workspace.id),
   ]);
 
   if (!profile) redirect("/login");
@@ -48,6 +50,7 @@ export default async function WorkspaceLayout({ children, params }: Props) {
         name: workspace.name,
       }}
       workspaces={workspaces}
+      businesses={businesses}
     >
       {children}
       <div className="chatbox" title="Chat met AI">

@@ -5,12 +5,14 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { Header } from "@aio/ui/header";
 import { Rail, type RailItem } from "@aio/ui/rail";
 
 import type { WorkspaceListItem } from "../lib/auth/workspace";
+import type { BusinessRow } from "../lib/queries/businesses";
+import { NewBusinessDialog } from "./NewBusinessDialog";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 
 type Profile = {
@@ -29,6 +31,11 @@ type Props = {
   profile: Profile;
   workspace: Workspace;
   workspaces: WorkspaceListItem[];
+  businesses: BusinessRow[];
+  selectedBusinessId?: string | null;
+  page?: "dashboard" | "settings" | "profile";
+  pageTitle?: string;
+  pageSub?: string;
   children: ReactNode;
 };
 
@@ -36,38 +43,51 @@ export function WorkspaceShell({
   profile,
   workspace,
   workspaces,
+  businesses,
+  selectedBusinessId,
+  page = "dashboard",
+  pageTitle,
+  pageSub,
   children,
 }: Props) {
   const router = useRouter();
+  const [newBusinessOpen, setNewBusinessOpen] = useState(false);
 
   const profileItem: RailItem = {
     id: "me",
     name: profile.displayName,
     sub: "Owner",
     letter: profile.letter,
-    // narrow runtime variant -> RailItem variant. We trust the DB column.
     variant: (profile.variant ?? "orange") as RailItem["variant"],
   };
 
-  // Phase 2 will replace this empty array with `select * from businesses
-  // where workspace_id = workspace.id`. For now the rail is intentionally
-  // empty so the empty-state CTA does the talking.
-  const businesses: RailItem[] = [];
+  const railBusinesses: RailItem[] = businesses.map((b) => ({
+    id: b.id,
+    name: b.name,
+    sub: b.sub ?? undefined,
+    letter: b.letter,
+    variant: b.variant as RailItem["variant"],
+  }));
+
+  const headerTitle = pageTitle ??
+    (page === "settings"
+      ? "Settings"
+      : page === "profile"
+        ? "Profile"
+        : "Dashboard");
 
   return (
     <div className="app-shell">
       <Rail
         profile={profileItem}
-        businesses={businesses}
-        page="dashboard"
-        onSelectProfile={() =>
-          router.push(`/${workspace.slug}/profile`)
-        }
-        onOpenSettings={() =>
-          router.push(`/${workspace.slug}/settings`)
-        }
-        onCreateBusiness={() =>
-          router.push(`/${workspace.slug}/dashboard?new=1`)
+        businesses={railBusinesses}
+        selectedBusinessId={selectedBusinessId ?? null}
+        page={page}
+        onSelectProfile={() => router.push(`/${workspace.slug}/profile`)}
+        onOpenSettings={() => router.push(`/${workspace.slug}/settings`)}
+        onCreateBusiness={() => setNewBusinessOpen(true)}
+        onSelectBusiness={(id) =>
+          router.push(`/${workspace.slug}/business/${id}`)
         }
       />
 
@@ -76,21 +96,32 @@ export function WorkspaceShell({
           crumb={{
             workspaceName: workspace.name,
             workspaceLetter: workspace.name.slice(0, 1).toUpperCase(),
-            pageTitle: "Dashboard",
+            pageTitle: headerTitle,
+            pageSub,
           }}
           notifications={0}
           avatarLetter={profile.letter}
         />
 
-        <div style={{ padding: "16px 22px 0" }}>
-          <WorkspaceSwitcher
-            current={{ slug: workspace.slug, name: workspace.name }}
-            workspaces={workspaces}
-          />
-        </div>
+        {workspaces.length > 1 && (
+          <div style={{ padding: "16px 22px 0" }}>
+            <WorkspaceSwitcher
+              current={{ slug: workspace.slug, name: workspace.name }}
+              workspaces={workspaces}
+            />
+          </div>
+        )}
 
         {children}
       </main>
+
+      {newBusinessOpen && (
+        <NewBusinessDialog
+          workspaceSlug={workspace.slug}
+          workspaceId={workspace.id}
+          onClose={() => setNewBusinessOpen(false)}
+        />
+      )}
     </div>
   );
 }
