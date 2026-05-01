@@ -12,6 +12,7 @@ import {
   listBusinesses,
   listOpenQueueItems,
 } from "../../../../lib/queries/businesses";
+import { BusinessTabs } from "../../../../components/BusinessTabs";
 import { QueueGrid } from "../../../../components/QueueGrid";
 
 type Props = {
@@ -39,6 +40,7 @@ export default async function BusinessPage({ params }: Props) {
         <h1>{biz.name} — wachtrij</h1>
         <span className="sub">{biz.sub ?? "Auto + Review (HITL)"}</span>
       </div>
+      <BusinessTabs workspaceSlug={workspace_slug} businessId={biz.id} />
       {queue.length === 0 ? (
         <div className="empty-state">
           <h2>Nog geen items</h2>
