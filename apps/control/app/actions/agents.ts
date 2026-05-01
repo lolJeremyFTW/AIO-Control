@@ -27,6 +27,8 @@ export type AgentInput = {
   endpoint?: string;
   temperature?: number;
   maxTokens?: number;
+  /** JSON-encoded RoutingRule[] from @aio/ai/router. Validated upstream. */
+  routingRulesJson?: string;
 };
 
 export type ActionResult<T> =
@@ -39,6 +41,33 @@ export async function createAgent(
   if (!input.name.trim()) {
     return { ok: false, error: "Naam mag niet leeg zijn." };
   }
+
+  // Validate routing-rules JSON before we even talk to the DB so a
+  // mistyped textarea doesn't end up persisted as garbage. We only check
+  // shape (must be an array of objects with match + use); the router
+  // tolerates unknown match keys at runtime.
+  let routingRules: unknown[] | undefined;
+  if (input.routingRulesJson?.trim()) {
+    try {
+      const parsed = JSON.parse(input.routingRulesJson);
+      if (!Array.isArray(parsed)) throw new Error("must be an array");
+      for (const rule of parsed) {
+        if (!rule || typeof rule !== "object")
+          throw new Error("each rule must be an object");
+        if (!("match" in rule) || !("use" in rule))
+          throw new Error("each rule needs `match` and `use`");
+      }
+      routingRules = parsed;
+    } catch (err) {
+      return {
+        ok: false,
+        error:
+          "Routing rules JSON is ongeldig: " +
+          (err instanceof Error ? err.message : "parse error"),
+      };
+    }
+  }
+
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("agents")
@@ -54,6 +83,7 @@ export async function createAgent(
         endpoint: input.endpoint?.trim() || null,
         temperature: input.temperature,
         maxTokens: input.maxTokens,
+        routingRules,
       },
     })
     .select("id")

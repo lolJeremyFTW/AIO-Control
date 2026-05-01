@@ -9,10 +9,13 @@ import {
   getWorkspaceBySlug,
 } from "../../../lib/auth/workspace";
 import { CreateFirstBusinessHint } from "../../../components/CreateFirstBusinessHint";
+import { BusinessKpiGrid } from "../../../components/BusinessKpiGrid";
 import { QueueGrid } from "../../../components/QueueGrid";
 import {
   listBusinesses,
+  listKpisForWorkspace,
   listOpenQueueItems,
+  summarizeKpis,
 } from "../../../lib/queries/businesses";
 import { redirect } from "next/navigation";
 
@@ -28,17 +31,31 @@ export default async function WorkspaceDashboardPage({ params }: Props) {
   const workspace = await getWorkspaceBySlug(workspace_slug);
   if (!workspace) redirect("/login");
 
-  const [businesses, queue] = await Promise.all([
+  const [businesses, queue, kpis] = await Promise.all([
     listBusinesses(workspace.id),
     listOpenQueueItems(workspace.id, undefined, 12),
+    listKpisForWorkspace(workspace.id),
   ]);
+
+  const summaries = summarizeKpis(
+    kpis,
+    businesses.map((b) => b.id),
+  );
 
   return (
     <div className="content">
       <div className="page-title-row">
-        <h1>{workspace.name} — wachtrij</h1>
-        <span className="sub">Auto + Review (HITL)</span>
+        <h1>{workspace.name} — overzicht</h1>
+        <span className="sub">Marge per business · auto + HITL</span>
       </div>
+
+      {businesses.length > 0 && (
+        <BusinessKpiGrid
+          workspaceSlug={workspace.slug}
+          businesses={businesses}
+          summaries={summaries}
+        />
+      )}
 
       {businesses.length === 0 ? (
         <CreateFirstBusinessHint

@@ -71,10 +71,11 @@ export async function listOpenQueueItems(
 
 export type KpiRow = {
   business_id: string;
-  label: string;
-  value: number;
-  unit: string | null;
-  delta_pct: number | null;
+  workspace_id: string;
+  period: "24H" | "7D" | "30D";
+  usage_eur: number;
+  revenue_eur: number;
+  runs_count: number;
 };
 
 export async function listKpisForWorkspace(
@@ -83,11 +84,43 @@ export async function listKpisForWorkspace(
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("business_kpis_view")
-    .select("business_id, label, value, unit, delta_pct")
+    .select("business_id, workspace_id, period, usage_eur, revenue_eur, runs_count")
     .eq("workspace_id", workspaceId);
   if (error) {
     console.error("listKpisForWorkspace failed", error);
     return [];
   }
   return (data ?? []) as KpiRow[];
+}
+
+/**
+ * Reduces the KPI rows into a single "30D revenue minus 30D usage" P&L per
+ * business. Useful for the per-business overview cards on the workspace
+ * dashboard. Returns 0 entries for businesses with no KPI rows yet so the
+ * caller doesn't have to merge defaults.
+ */
+export function summarizeKpis(rows: KpiRow[], businessIds: string[]) {
+  const map = new Map<
+    string,
+    {
+      revenue_30d: number;
+      usage_30d: number;
+      revenue_7d: number;
+      runs_24h: number;
+    }
+  >();
+  for (const id of businessIds) {
+    map.set(id, { revenue_30d: 0, usage_30d: 0, revenue_7d: 0, runs_24h: 0 });
+  }
+  for (const r of rows) {
+    const bucket = map.get(r.business_id);
+    if (!bucket) continue;
+    if (r.period === "30D") {
+      bucket.revenue_30d = r.revenue_eur;
+      bucket.usage_30d = r.usage_eur;
+    }
+    if (r.period === "7D") bucket.revenue_7d = r.revenue_eur;
+    if (r.period === "24H") bucket.runs_24h = r.runs_count;
+  }
+  return map;
 }

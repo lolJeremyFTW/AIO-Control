@@ -9,6 +9,7 @@ import {
   getWorkspaceBySlug,
 } from "../../../lib/auth/workspace";
 import { signOutAction } from "../../(auth)/actions";
+import { NotificationsButton } from "../../../components/NotificationsButton";
 
 type Props = { params: Promise<{ workspace_slug: string }> };
 
@@ -85,6 +86,20 @@ export default async function SettingsPage({ params }: Props) {
           <SettingsRow label="Workspace name" value={workspace.name} />
           <SettingsRow label="Email" value={user.email ?? "—"} />
           <SettingsRow label="Tijdzone" value="Europe/Amsterdam" />
+
+          <div
+            style={{
+              marginTop: 22,
+              padding: 14,
+              border: "1.5px dashed var(--app-border)",
+              borderRadius: 12,
+            }}
+          >
+            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>
+              Web Push notificaties (HITL queue)
+            </div>
+            <NotificationsButton />
+          </div>
 
           <form action={signOutAction} style={{ marginTop: 22 }}>
             <button

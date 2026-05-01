@@ -50,6 +50,7 @@ export function NewAgentDialog({
   const [model, setModel] = useState("");
   const [systemPrompt, setSystemPrompt] = useState("");
   const [endpoint, setEndpoint] = useState("");
+  const [routingRulesJson, setRoutingRulesJson] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -74,6 +75,7 @@ export function NewAgentDialog({
       model: model || providerSpec.defaultModel,
       systemPrompt,
       endpoint: needsEndpoint ? endpoint : undefined,
+      routingRulesJson: routingRulesJson || undefined,
     });
     setPending(false);
     if (!res.ok) {
@@ -203,6 +205,46 @@ export function NewAgentDialog({
             style={{ ...inputStyle, resize: "vertical", minHeight: 80 }}
           />
         </Field>
+
+        <details style={{ marginBottom: 12 }}>
+          <summary
+            style={{
+              cursor: "pointer",
+              fontSize: 12,
+              fontWeight: 600,
+              color: "var(--app-fg-2)",
+              padding: "4px 0",
+            }}
+          >
+            Smart routing rules (advanced)
+          </summary>
+          <p
+            style={{
+              fontSize: 11.5,
+              color: "var(--app-fg-3)",
+              margin: "6px 0",
+              lineHeight: 1.45,
+            }}
+          >
+            JSON-array van regels die op runtime de provider+model kiezen op
+            basis van de input. Eerste matching regel wint. Voorbeeld: korte
+            inputs naar Haiku, lange naar Sonnet.
+          </p>
+          <textarea
+            value={routingRulesJson}
+            onChange={(e) => setRoutingRulesJson(e.target.value)}
+            placeholder={`[\n  { "name": "short", "match": { "inputLengthMax": 200 }, "use": { "provider": "claude", "model": "claude-haiku-4-5" } },\n  { "name": "long",  "match": { "inputLengthMin": 800 }, "use": { "provider": "claude", "model": "claude-opus-4-7" } }\n]`}
+            rows={6}
+            spellCheck={false}
+            style={{
+              ...inputStyle,
+              resize: "vertical",
+              minHeight: 100,
+              fontFamily: "ui-monospace, Menlo, monospace",
+              fontSize: 12,
+            }}
+          />
+        </details>
 
         {error && (
           <p

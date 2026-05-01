@@ -7,6 +7,8 @@
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 
+import { OAuthButtons } from "../../components/OAuthButtons";
+
 import type { AuthResult } from "./actions";
 
 type Mode = "login" | "signup";
@@ -114,6 +116,8 @@ export function AuthForm({ mode, action, next }: Props) {
       )}
 
       <SubmitButton label={isLogin ? "Log in" : "Account aanmaken"} />
+
+      <OAuthButtons next={next} />
 
       <p style={{ fontSize: 12, color: "var(--app-fg-3)", marginTop: 16 }}>
         {isLogin ? (

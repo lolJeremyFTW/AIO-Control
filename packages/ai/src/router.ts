@@ -27,6 +27,62 @@ export interface AgentConfig {
   mcpServers?: string[];
   endpoint?: string; // for openclaw / hermes / custom HTTP
   headers?: Record<string, string>;
+  /**
+   * Per-agent smart routing. The first matching rule wins; if no rule
+   * matches, the agent's base provider+model are used. Cheap-first ordering
+   * (e.g. classify with Haiku, escalate to Opus on long reasoning) is the
+   * point — cuts cost dramatically with no UX hit.
+   */
+  routingRules?: RoutingRule[];
+}
+
+export type RoutingRule = {
+  /** Display label, free-form. */
+  name?: string;
+  match: RoutingMatch;
+  use: { provider: ProviderId; model?: string };
+};
+
+export type RoutingMatch = {
+  /** Match if the LATEST user message length (chars) is ≥ min and ≤ max. */
+  inputLengthMin?: number;
+  inputLengthMax?: number;
+  /** Match if the latest user message contains ALL of these substrings (case-insensitive). */
+  containsAll?: string[];
+  /** Match if it contains ANY of these substrings. */
+  containsAny?: string[];
+  /** Match if the conversation is at least this many turns deep. */
+  minTurns?: number;
+};
+
+export function pickRouted(
+  base: { provider: ProviderId; config: AgentConfig },
+  messages: { role: string; content: string }[],
+): { provider: ProviderId; model?: string; matchedRule?: string } {
+  const rules = base.config.routingRules;
+  if (!rules || rules.length === 0) {
+    return { provider: base.provider, model: base.config.model };
+  }
+  const lastUser = [...messages].reverse().find((m) => m.role === "user");
+  const text = lastUser?.content ?? "";
+  const lower = text.toLowerCase();
+  for (const rule of rules) {
+    const m = rule.match;
+    if (m.inputLengthMin != null && text.length < m.inputLengthMin) continue;
+    if (m.inputLengthMax != null && text.length > m.inputLengthMax) continue;
+    if (m.containsAll && !m.containsAll.every((s) => lower.includes(s.toLowerCase())))
+      continue;
+    if (m.containsAny && !m.containsAny.some((s) => lower.includes(s.toLowerCase())))
+      continue;
+    if (m.minTurns != null && messages.filter((mm) => mm.role !== "system").length < m.minTurns)
+      continue;
+    return {
+      provider: rule.use.provider,
+      model: rule.use.model ?? base.config.model,
+      matchedRule: rule.name,
+    };
+  }
+  return { provider: base.provider, model: base.config.model };
 }
 
 export interface StreamChatOptions {
@@ -40,6 +96,23 @@ export interface StreamChatOptions {
 export async function* streamChat(
   opts: StreamChatOptions,
 ): AsyncIterable<AGUIEvent> {
+  // Run smart-routing rules before dispatching. If a rule promotes us to a
+  // different provider+model we replay this function once with the picked
+  // values; we wrap with a simple guard so a misconfigured rule that points
+  // back to itself can't loop.
+  const picked = pickRouted(
+    { provider: opts.provider, config: opts.config },
+    opts.messages,
+  );
+  if (picked.provider !== opts.provider || picked.model !== opts.config.model) {
+    yield* streamChat({
+      ...opts,
+      provider: picked.provider,
+      config: { ...opts.config, model: picked.model, routingRules: undefined },
+    });
+    return;
+  }
+
   switch (opts.provider) {
     case "claude":
       yield* streamClaude(opts);
