@@ -1,28 +1,24 @@
 {
-  "name": "@aio/ui",
+  "name": "@aio/ai",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
   "exports": {
-    "./rail": "./src/rail/index.tsx",
-    "./rail/Node": "./src/rail/Node.tsx",
-    "./header": "./src/header/index.tsx",
-    "./icon": "./src/icon/index.tsx"
+    ".": "./src/index.ts",
+    "./router": "./src/router.ts",
+    "./ag-ui": "./src/ag-ui.ts",
+    "./pricing": "./src/pricing.ts"
   },
   "scripts": {
     "lint": "eslint . --max-warnings 0",
     "check-types": "tsc --noEmit"
   },
+  "dependencies": {},
   "devDependencies": {
     "@repo/eslint-config": "workspace:*",
     "@repo/typescript-config": "workspace:*",
     "@types/node": "^22.15.3",
-    "@types/react": "19.2.2",
-    "@types/react-dom": "19.2.2",
     "eslint": "^9.39.1",
     "typescript": "5.9.2"
-  },
-  "dependencies": {
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0"
   }
 }
