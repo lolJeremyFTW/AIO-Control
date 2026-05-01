@@ -23,6 +23,9 @@ type Props = {
   businesses: RailItem[];
   selectedBusinessId?: string | null;
   expandOnHover?: boolean;
+  /** Mobile drawer state — when true, the rail slides on-screen below 900px. */
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
   onSelectProfile?: () => void;
   onSelectBusiness?: (id: string) => void;
   onCreateBusiness?: () => void;
@@ -35,6 +38,8 @@ export function Rail({
   businesses,
   selectedBusinessId,
   expandOnHover = true,
+  mobileOpen = false,
+  onMobileClose,
   onSelectProfile,
   onSelectBusiness,
   onCreateBusiness,
@@ -42,12 +47,23 @@ export function Rail({
   page = "dashboard",
 }: Props) {
   const [hover, setHover] = useState(false);
-  const expanded = expandOnHover && hover;
+  // The desktop hover-expand and the mobile-open drawer both reveal labels;
+  // we OR them together so the same DOM serves both.
+  const expanded = (expandOnHover && hover) || mobileOpen;
   return (
     <div
-      className={"rail " + (expanded ? "is-expanded" : "")}
+      className={
+        "rail " +
+        (expanded ? "is-expanded " : "") +
+        (mobileOpen ? "is-open" : "")
+      }
       onMouseEnter={() => expandOnHover && setHover(true)}
       onMouseLeave={() => setHover(false)}
+      onClick={() => {
+        // Tap outside an interactive child closes the drawer on mobile.
+        // The NavRow/ActionRow callbacks handle their own closing.
+        if (mobileOpen && onMobileClose) onMobileClose();
+      }}
     >
       <div className="rail-top">
         <NavRow

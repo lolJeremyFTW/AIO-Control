@@ -10,6 +10,7 @@ import { revalidatePath } from "next/cache";
 
 import { createRoutine, deleteRoutine } from "@aio/ai/routines";
 
+import { dispatchRun } from "../../lib/dispatch/runs";
 import { createSupabaseServerClient } from "../../lib/supabase/server";
 
 export type ScheduleKind = "cron" | "webhook" | "manual";
@@ -185,6 +186,14 @@ export async function runAgentNow(input: {
   if (error || !data) {
     return { ok: false, error: error?.message ?? "Insert failed." };
   }
+
+  // Fire the dispatcher in the background — same pattern as webhook
+  // triggers. Don't await: the action returns immediately and the run
+  // row tracks status.
+  void dispatchRun(data.id).catch((err: unknown) => {
+    console.error("dispatchRun failed", err);
+  });
+
   revalidatePath(
     `/${input.workspace_slug}/business/${input.business_id ?? ""}/schedules`,
   );

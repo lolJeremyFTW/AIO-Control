@@ -7,6 +7,7 @@ import { streamClaude } from "./providers/claude";
 import { streamOpenRouter } from "./providers/openrouter";
 import { streamOllama } from "./providers/ollama";
 import { streamMinimax } from "./providers/minimax";
+import { streamMinimaxViaClaude } from "./providers/minimax-mcp";
 import { streamGenericHttp } from "./providers/generic-http";
 import { streamNotConfigured } from "./providers/stub";
 
@@ -129,10 +130,15 @@ export async function* streamChat(
       yield* streamGenericHttp(opts);
       return;
     case "minimax":
-      // Direct HTTP path (MiniMax Coder Plan API key). The MCP-via-Claude
-      // pathway is wired separately when we run inside a Claude Code
-      // subprocess for scheduled MCP-tool runs.
-      yield* streamMinimax(opts);
+      // Two-track: when the agent declares MCP servers (config.mcpServers
+      // includes "minimax" or anything else we know how to spawn) we
+      // route through Claude Code as an MCP host. Otherwise we hit the
+      // normal MiniMax HTTP API directly with the user's Coder Plan key.
+      if ((opts.config.mcpServers ?? []).length > 0) {
+        yield* streamMinimaxViaClaude(opts);
+      } else {
+        yield* streamMinimax(opts);
+      }
       return;
     case "codex":
       // Codex models are reachable through OpenRouter with an alias prefix;

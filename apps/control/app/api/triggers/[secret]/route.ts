@@ -8,6 +8,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 
+import { dispatchRun } from "../../../../lib/dispatch/runs";
 import { getServiceRoleSupabase } from "../../../../lib/supabase/service";
 
 export const dynamic = "force-dynamic";
@@ -77,6 +78,13 @@ export async function POST(
     .from("schedules")
     .update({ last_fired_at: new Date().toISOString() })
     .eq("id", schedule.id);
+
+  // Fire-and-forget: kick off the worker dispatcher. We don't await so the
+  // webhook responds immediately; the run row tracks status. Errors land
+  // in run.error_text.
+  void dispatchRun(run.id).catch((err: unknown) => {
+    console.error("dispatchRun failed", err);
+  });
 
   return NextResponse.json({ ok: true, run_id: run.id });
 }

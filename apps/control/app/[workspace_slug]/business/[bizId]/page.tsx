@@ -1,6 +1,4 @@
-// Business detail dashboard — same layout as the workspace dashboard but
-// scoped to one business. Phase 2 ships the read view; agents+queue mutation
-// drawers land in fase 2.5.
+// Business detail dashboard — queue items + per-business pause toggle.
 
 import { notFound, redirect } from "next/navigation";
 
@@ -13,6 +11,7 @@ import {
   listOpenQueueItems,
 } from "../../../../lib/queries/businesses";
 import { BusinessTabs } from "../../../../components/BusinessTabs";
+import { PauseToggle } from "../../../../components/PauseToggle";
 import { QueueGrid } from "../../../../components/QueueGrid";
 
 type Props = {
@@ -41,6 +40,15 @@ export default async function BusinessPage({ params }: Props) {
         <span className="sub">{biz.sub ?? "Auto + Review (HITL)"}</span>
       </div>
       <BusinessTabs workspaceSlug={workspace_slug} businessId={biz.id} />
+
+      <div style={{ marginBottom: 18 }}>
+        <PauseToggle
+          workspaceSlug={workspace_slug}
+          businessId={biz.id}
+          status={biz.status as "running" | "paused"}
+        />
+      </div>
+
       {queue.length === 0 ? (
         <div className="empty-state">
           <h2>Nog geen items</h2>
@@ -50,7 +58,7 @@ export default async function BusinessPage({ params }: Props) {
           </p>
         </div>
       ) : (
-        <QueueGrid items={queue} />
+        <QueueGrid items={queue} workspaceSlug={workspace_slug} />
       )}
     </div>
   );

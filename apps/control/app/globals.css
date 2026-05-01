@@ -989,3 +989,196 @@ a {
     grid-template-columns: 1fr 1fr;
   }
 }
+
+/* ─── Mobile (≤900px) ────────────────────────────────────────────────────────
+   Below 900px the rail collapses entirely (becomes a slide-in drawer toggled
+   by a hamburger button), the header tucks into a single thin row with the
+   chrome chips wrapping below, and KPI grids + queue both fall to 1 column.
+   720px-and-below is the phone tier — chat panel becomes a bottom sheet,
+   page paddings shrink, dialogs go full-bleed. */
+
+.rail-toggle {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .app-shell,
+  .app-shell.is-expanded {
+    grid-template-columns: 1fr;
+  }
+
+  /* Rail becomes a slide-in drawer pinned to the left edge. */
+  .rail {
+    position: fixed;
+    z-index: 30;
+    width: 240px;
+    transform: translateX(-100%);
+    transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+    box-shadow: 12px 0 32px rgba(0, 0, 0, 0.45);
+  }
+  .rail.is-open {
+    transform: translateX(0);
+  }
+  /* The hover-expand state forces the labels visible so the drawer is
+     usable without hovering on touch devices. */
+  .rail.is-open .nav-row-text,
+  .rail.is-open .nav-row-meta {
+    opacity: 1;
+    transform: translateX(0);
+    pointer-events: auto;
+  }
+  .rail.is-open .tip {
+    display: none;
+  }
+
+  /* Hamburger sits in the header on small screens. */
+  .rail-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 999px;
+    border: 1.5px solid var(--app-border);
+    background: var(--app-card-2);
+    color: var(--app-fg);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .rail-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 29;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.18s ease;
+  }
+  .rail-backdrop.is-open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* Header: drop the second flex spacer + let the chrome wrap. */
+  .row1 {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 8px 14px;
+    gap: 8px;
+  }
+  .row2 {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 6px 14px 8px;
+  }
+  .search {
+    order: 99;
+    flex: 1 1 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .crumb {
+    flex-shrink: 1;
+  }
+  .crumb .crumb-sub {
+    display: none;
+  }
+  .grow {
+    display: none;
+  }
+  .voice {
+    padding: 6px 10px 6px 6px;
+  }
+  .chip {
+    padding: 6px 10px;
+  }
+
+  /* KPI grid + queue collapse to single column. */
+  .queue {
+    grid-template-columns: 1fr;
+  }
+
+  /* Pull padding in. */
+  .content {
+    padding: 16px 14px 80px;
+  }
+  .page-title-row h1 {
+    font-size: 28px;
+  }
+
+  /* Workspace switcher detail menu is fine, but anchor full-width. */
+  details > div {
+    max-width: calc(100vw - 28px);
+  }
+}
+
+@media (max-width: 720px) {
+  /* Header: hide the weather chip + voice button to keep row 1 compact;
+     they're available again from menus once the user opens the rail. */
+  .voice,
+  .chip,
+  .vrule {
+    display: none;
+  }
+  .lang button {
+    padding: 4px 8px;
+  }
+  /* Hide the search placeholder on tiny screens — keep just the magnifier. */
+  .search .placeholder,
+  .search .kbd {
+    display: none;
+  }
+  .search {
+    flex: 0 0 auto;
+    width: 36px;
+    padding: 7px 9px;
+  }
+
+  .empty-state {
+    padding: 28px 18px;
+  }
+  .empty-state h2 {
+    font-size: 24px;
+  }
+
+  /* Floating chat bubble + panel become a bottom sheet that takes the
+     full width on phones. */
+  .chatbox {
+    bottom: 14px;
+    right: 14px;
+  }
+}
+
+/* Chat panel sheet sizing — used by ChatPanel inline styles via this class. */
+.chat-sheet {
+  position: fixed;
+  bottom: 84px;
+  right: 18px;
+  width: 420px;
+  height: 540px;
+  background: var(--app-card);
+  border: 1.5px solid var(--app-border);
+  border-radius: 16px;
+  box-shadow: 0 24px 60px -12px rgba(0, 0, 0, 0.55);
+  display: flex;
+  flex-direction: column;
+  z-index: 10;
+  overflow: hidden;
+}
+@media (max-width: 720px) {
+  .chat-sheet {
+    inset: auto 0 0 0;
+    width: 100vw;
+    height: 75vh;
+    border-radius: 16px 16px 0 0;
+  }
+}
+
+/* Dialogs: use the full width on phones, give them headroom. */
+@media (max-width: 720px) {
+  dialog {
+    width: calc(100vw - 16px) !important;
+    max-width: none !important;
+    margin: auto 8px !important;
+  }
+}

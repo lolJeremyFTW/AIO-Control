@@ -12,6 +12,7 @@ import {
 } from "../../lib/auth/workspace";
 import { listAgentsForWorkspace } from "../../lib/queries/agents";
 import { listBusinesses } from "../../lib/queries/businesses";
+import { getWeather } from "../../lib/weather/open-meteo";
 import { ChatPanel } from "../../components/ChatPanel";
 import { RunsToaster } from "../../components/RunsToaster";
 import { WorkspaceShell } from "../../components/WorkspaceShell";
@@ -30,11 +31,12 @@ export default async function WorkspaceLayout({ children, params }: Props) {
   const workspace = await getWorkspaceBySlug(workspace_slug);
   if (!workspace) notFound();
 
-  const [profile, workspaces, businesses, agents] = await Promise.all([
+  const [profile, workspaces, businesses, agents, weather] = await Promise.all([
     getProfile(user.id),
     getUserWorkspaces(),
     listBusinesses(workspace.id),
     listAgentsForWorkspace(workspace.id),
+    getWeather(),
   ]);
 
   if (!profile) redirect("/login");
@@ -53,6 +55,7 @@ export default async function WorkspaceLayout({ children, params }: Props) {
       }}
       workspaces={workspaces}
       businesses={businesses}
+      weather={weather}
     >
       {children}
       <ChatPanel agents={agents} />

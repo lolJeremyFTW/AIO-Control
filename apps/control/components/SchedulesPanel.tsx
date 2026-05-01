@@ -11,6 +11,7 @@ import { useState, useTransition } from "react";
 import type { AgentRow } from "../lib/queries/agents";
 import type { ScheduleRow } from "../lib/queries/schedules";
 import {
+  createCronSchedule,
   createWebhookSchedule,
   deleteSchedule,
   rotateWebhookSecret,
@@ -42,6 +43,9 @@ export function SchedulesPanel({
     scheduleId: string;
     url: string;
   } | null>(null);
+  const [cronOpen, setCronOpen] = useState(false);
+  const [cronExpr, setCronExpr] = useState("0 9 * * *");
+  const [cronPrompt, setCronPrompt] = useState("");
 
   const createWebhook = () => {
     if (!agentId) return setError("Kies eerst een agent.");
@@ -92,6 +96,32 @@ export function SchedulesPanel({
         scheduleId: id,
         url: `${triggerOrigin}/api/triggers/${res.data.secret}`,
       });
+      router.refresh();
+    });
+  };
+
+  const createCron = () => {
+    if (!agentId) return setError("Kies eerst een agent.");
+    if (!cronExpr.trim()) return setError("Vul een cron-expressie in.");
+    if (!cronPrompt.trim()) return setError("Vul een prompt in.");
+    setError(null);
+    startTransition(async () => {
+      const callback = `${triggerOrigin}/api/runs/CRON_RUN_ID/result`;
+      const res = await createCronSchedule({
+        workspace_slug: workspaceSlug,
+        workspace_id: workspaceId,
+        agent_id: agentId,
+        business_id: businessId,
+        cron_expr: cronExpr,
+        prompt: cronPrompt,
+        callback_url: callback,
+      });
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      setCronOpen(false);
+      setCronPrompt("");
       router.refresh();
     });
   };
@@ -161,7 +191,7 @@ export function SchedulesPanel({
               ))}
             </select>
           </label>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button
               type="button"
               disabled={pending}
@@ -178,8 +208,68 @@ export function SchedulesPanel({
             >
               + Webhook URL
             </button>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => setCronOpen((v) => !v)}
+              style={btnSecondary(pending)}
+            >
+              + Cron
+            </button>
           </div>
         </div>
+
+        {cronOpen && (
+          <div
+            style={{
+              marginTop: 14,
+              padding: 12,
+              background: "var(--app-card-2)",
+              borderRadius: 10,
+              border: "1.5px dashed var(--app-border)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+            }}
+          >
+            <label style={{ fontSize: 12, fontWeight: 600 }}>
+              <span style={{ display: "block", marginBottom: 4 }}>
+                Cron-expressie ({CRON_EXAMPLES.join(" / ")})
+              </span>
+              <input
+                value={cronExpr}
+                onChange={(e) => setCronExpr(e.target.value)}
+                style={inputStyle}
+                placeholder="0 9 * * *"
+              />
+            </label>
+            <label style={{ fontSize: 12, fontWeight: 600 }}>
+              <span style={{ display: "block", marginBottom: 4 }}>
+                Prompt — wat moet de agent doen?
+              </span>
+              <textarea
+                value={cronPrompt}
+                onChange={(e) => setCronPrompt(e.target.value)}
+                rows={3}
+                style={{ ...inputStyle, resize: "vertical", minHeight: 70 }}
+                placeholder="Genereer een script voor vandaag's video over …"
+              />
+            </label>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button type="button" onClick={() => setCronOpen(false)} style={btnSecondary(pending)}>
+                Annuleer
+              </button>
+              <button type="button" disabled={pending} onClick={createCron} style={btnPrimary(pending)}>
+                Aanmaken
+              </button>
+            </div>
+            <p style={{ fontSize: 11, color: "var(--app-fg-3)", margin: 0 }}>
+              Cron schedules vereisen een geconfigureerde ANTHROPIC_API_KEY
+              op de server (Claude Routines). Zonder key faalt de aanmaak
+              direct met een duidelijke error.
+            </p>
+          </div>
+        )}
         <p
           style={{
             color: "var(--app-fg-3)",
@@ -187,9 +277,9 @@ export function SchedulesPanel({
             marginTop: 10,
           }}
         >
-          Cron-schedules via Claude Routines komen zodra je een Anthropic
-          API key configureert. Voor nu: webhook (extern triggeren) + Run
-          now (queue een handmatige run).
+          Webhook = externe trigger via een geheime URL. Run now =
+          queue een handmatige run die de dispatcher meteen oppakt.
+          Cron = Claude Routines met cron-expressie (vereist Anthropic key).
         </p>
         {error && (
           <p role="alert" style={errStyle}>
@@ -352,6 +442,8 @@ export function SchedulesPanel({
     </div>
   );
 }
+
+const CRON_EXAMPLES = ["0 9 * * *", "*/30 * * * *", "0 9 * * MON"];
 
 const inputStyle: React.CSSProperties = {
   width: "100%",

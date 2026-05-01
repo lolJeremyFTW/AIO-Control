@@ -32,6 +32,7 @@ type Props = {
   workspace: Workspace;
   workspaces: WorkspaceListItem[];
   businesses: BusinessRow[];
+  weather?: { city: string; date: string; temp: string };
   selectedBusinessId?: string | null;
   page?: "dashboard" | "settings" | "profile";
   pageTitle?: string;
@@ -44,6 +45,7 @@ export function WorkspaceShell({
   workspace,
   workspaces,
   businesses,
+  weather,
   selectedBusinessId,
   page = "dashboard",
   pageTitle,
@@ -52,6 +54,8 @@ export function WorkspaceShell({
 }: Props) {
   const router = useRouter();
   const [newBusinessOpen, setNewBusinessOpen] = useState(false);
+  const [railOpen, setRailOpen] = useState(false);
+  const closeRail = () => setRailOpen(false);
 
   const profileItem: RailItem = {
     id: "me",
@@ -83,12 +87,32 @@ export function WorkspaceShell({
         businesses={railBusinesses}
         selectedBusinessId={selectedBusinessId ?? null}
         page={page}
-        onSelectProfile={() => router.push(`/${workspace.slug}/profile`)}
-        onOpenSettings={() => router.push(`/${workspace.slug}/settings`)}
-        onCreateBusiness={() => setNewBusinessOpen(true)}
-        onSelectBusiness={(id) =>
-          router.push(`/${workspace.slug}/business/${id}`)
-        }
+        mobileOpen={railOpen}
+        onMobileClose={closeRail}
+        onSelectProfile={() => {
+          closeRail();
+          router.push(`/${workspace.slug}/profile`);
+        }}
+        onOpenSettings={() => {
+          closeRail();
+          router.push(`/${workspace.slug}/settings`);
+        }}
+        onCreateBusiness={() => {
+          closeRail();
+          setNewBusinessOpen(true);
+        }}
+        onSelectBusiness={(id) => {
+          closeRail();
+          router.push(`/${workspace.slug}/business/${id}`);
+        }}
+      />
+
+      {/* Backdrop only renders below 900px (CSS gates it via display) but we
+          render the node unconditionally so the show/hide animation can run. */}
+      <div
+        className={"rail-backdrop " + (railOpen ? "is-open" : "")}
+        onClick={closeRail}
+        aria-hidden={!railOpen}
       />
 
       <main className="app-main">
@@ -101,6 +125,8 @@ export function WorkspaceShell({
           }}
           notifications={0}
           avatarLetter={profile.letter}
+          weather={weather}
+          onToggleRail={() => setRailOpen((v) => !v)}
         />
 
         {workspaces.length > 1 && (

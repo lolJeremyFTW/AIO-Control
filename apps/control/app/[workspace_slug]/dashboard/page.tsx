@@ -74,7 +74,7 @@ export default async function WorkspaceDashboardPage({ params }: Props) {
           </button>
         </div>
       ) : (
-        <QueueGrid items={queue} />
+        <QueueGrid items={queue} workspaceSlug={workspace.slug} />
       )}
     </div>
   );

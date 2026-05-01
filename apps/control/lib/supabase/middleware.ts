@@ -54,7 +54,12 @@ export async function updateSession(request: NextRequest) {
   const isPublic =
     PUBLIC_PATHS.has(path) ||
     path.startsWith("/_next") ||
-    path.startsWith("/api/triggers/");
+    path.startsWith("/api/triggers/") ||
+    // Webhooks and DB-trigger callbacks authenticate via a header secret
+    // they prove they're authorized — we don't need a Supabase session.
+    path === "/api/integrations/stripe" ||
+    path === "/api/push/queue-event" ||
+    path.startsWith("/api/runs/") /* /result + /dispatch use header/session checks */;
 
   if (!user && !isPublic) {
     const loginUrl = request.nextUrl.clone();

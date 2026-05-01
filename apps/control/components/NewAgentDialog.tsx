@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { createAgent, type AgentInput } from "../app/actions/agents";
+import { RoutingRulesEditor } from "./RoutingRulesEditor";
 
 type Provider = AgentInput["provider"];
 type Kind = NonNullable<AgentInput["kind"]>;
@@ -226,23 +227,13 @@ export function NewAgentDialog({
               lineHeight: 1.45,
             }}
           >
-            JSON-array van regels die op runtime de provider+model kiezen op
-            basis van de input. Eerste matching regel wint. Voorbeeld: korte
-            inputs naar Haiku, lange naar Sonnet.
+            Voeg regels toe die op runtime de provider+model kiezen op basis
+            van de input. Eerste matching regel wint. Voorbeeld: korte inputs
+            naar Haiku, lange naar Opus.
           </p>
-          <textarea
+          <RoutingRulesEditor
             value={routingRulesJson}
-            onChange={(e) => setRoutingRulesJson(e.target.value)}
-            placeholder={`[\n  { "name": "short", "match": { "inputLengthMax": 200 }, "use": { "provider": "claude", "model": "claude-haiku-4-5" } },\n  { "name": "long",  "match": { "inputLengthMin": 800 }, "use": { "provider": "claude", "model": "claude-opus-4-7" } }\n]`}
-            rows={6}
-            spellCheck={false}
-            style={{
-              ...inputStyle,
-              resize: "vertical",
-              minHeight: 100,
-              fontFamily: "ui-monospace, Menlo, monospace",
-              fontSize: 12,
-            }}
+            onChange={setRoutingRulesJson}
           />
         </details>
 
