@@ -36,3 +36,8 @@ yarn-error.log*
 # Misc
 .DS_Store
 *.pem
+
+# Claude Code / AI tooling artifacts — only launch.json is meant to be
+# shared (preview server config); everything else stays local.
+.claude/*
+!.claude/launch.json
