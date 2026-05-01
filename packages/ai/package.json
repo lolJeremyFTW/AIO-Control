@@ -13,7 +13,9 @@
     "lint": "eslint . --max-warnings 0",
     "check-types": "tsc --noEmit"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.30.0"
+  },
   "devDependencies": {
     "@repo/eslint-config": "workspace:*",
     "@repo/typescript-config": "workspace:*",
