@@ -1,9 +1,12 @@
-// Public catalog of preset agents. RLS allows reads from anyone signed
-// in (and anon, but the page is auth-gated so that doesn't matter).
+// Public catalog. RLS allows reads from anyone signed in. The catalog is
+// hand-seeded by service_role inserts (see migrations 010 + 013) — no
+// external feed for now.
 
 import "server-only";
 
 import { createSupabaseServerClient } from "../supabase/server";
+
+export type MarketplaceKind = "agent" | "skill" | "plugin" | "mcp_server";
 
 export type MarketplaceAgent = {
   id: string;
@@ -18,6 +21,7 @@ export type MarketplaceAgent = {
   category: string | null;
   official: boolean;
   install_count: number;
+  marketplace_kind: MarketplaceKind;
 };
 
 export async function listMarketplace(): Promise<MarketplaceAgent[]> {
@@ -25,7 +29,7 @@ export async function listMarketplace(): Promise<MarketplaceAgent[]> {
   const { data, error } = await supabase
     .from("marketplace_agents")
     .select(
-      "id, slug, name, tagline, description, provider, model, kind, config, category, official, install_count",
+      "id, slug, name, tagline, description, provider, model, kind, config, category, official, install_count, marketplace_kind",
     )
     .order("official", { ascending: false })
     .order("install_count", { ascending: false });

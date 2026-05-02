@@ -1,4 +1,6 @@
-// Business detail dashboard — queue items + per-business pause toggle.
+// Business detail dashboard — KPIs + open queue + agents + recent runs
+// in one page. The dedicated /agents, /schedules, /integrations tabs
+// remain for deeper interaction.
 
 import { notFound, redirect } from "next/navigation";
 
@@ -6,13 +8,15 @@ import {
   getCurrentUser,
   getWorkspaceBySlug,
 } from "../../../../lib/auth/workspace";
+import { listAgentsForWorkspace } from "../../../../lib/queries/agents";
 import {
   listBusinesses,
+  listKpisForWorkspace,
   listOpenQueueItems,
 } from "../../../../lib/queries/businesses";
-import { BusinessTabs } from "../../../../components/BusinessTabs";
+import { listRecentRunsForBusiness } from "../../../../lib/queries/schedules";
+import { BusinessDashboard } from "../../../../components/BusinessDashboard";
 import { PauseToggle } from "../../../../components/PauseToggle";
-import { QueueGrid } from "../../../../components/QueueGrid";
 
 type Props = {
   params: Promise<{ workspace_slug: string; bizId: string }>;
@@ -26,20 +30,24 @@ export default async function BusinessPage({ params }: Props) {
   const workspace = await getWorkspaceBySlug(workspace_slug);
   if (!workspace) notFound();
 
-  const [businesses, queue] = await Promise.all([
+  const [businesses, queue, kpis, agents, runs] = await Promise.all([
     listBusinesses(workspace.id),
-    listOpenQueueItems(workspace.id, bizId, 20),
+    listOpenQueueItems(workspace.id, bizId, 6),
+    listKpisForWorkspace(workspace.id),
+    listAgentsForWorkspace(workspace.id),
+    listRecentRunsForBusiness(bizId, 5),
   ]);
   const biz = businesses.find((b) => b.id === bizId);
   if (!biz) notFound();
+  const bizKpis = kpis.filter((k) => k.business_id === bizId);
+  const bizAgents = agents.filter((a) => a.business_id === bizId);
 
   return (
     <div className="content">
       <div className="page-title-row">
-        <h1>{biz.name} — wachtrij</h1>
-        <span className="sub">{biz.sub ?? "Auto + Review (HITL)"}</span>
+        <h1>{biz.icon ? `${biz.icon} ` : ""}{biz.name}</h1>
+        <span className="sub">{biz.sub ?? "Per-business overzicht"}</span>
       </div>
-      <BusinessTabs workspaceSlug={workspace_slug} businessId={biz.id} />
 
       <div style={{ marginBottom: 18 }}>
         <PauseToggle
@@ -49,17 +57,14 @@ export default async function BusinessPage({ params }: Props) {
         />
       </div>
 
-      {queue.length === 0 ? (
-        <div className="empty-state">
-          <h2>Nog geen items</h2>
-          <p>
-            Voeg agents toe aan {biz.name} of trigger een run om hier items
-            te zien verschijnen.
-          </p>
-        </div>
-      ) : (
-        <QueueGrid items={queue} workspaceSlug={workspace_slug} />
-      )}
+      <BusinessDashboard
+        workspaceSlug={workspace.slug}
+        business={biz}
+        kpis={bizKpis}
+        queue={queue}
+        agents={bizAgents}
+        runs={runs}
+      />
     </div>
   );
 }

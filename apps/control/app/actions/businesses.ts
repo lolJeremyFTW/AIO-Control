@@ -15,6 +15,8 @@ export type BusinessInput = {
   sub?: string;
   letter?: string;
   variant?: string;
+  /** Optional emoji (or any 1-3 chars) to render inside the rail node. */
+  icon?: string;
 };
 
 export type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -37,6 +39,7 @@ export async function createBusiness(
       sub: input.sub?.trim() || null,
       letter,
       variant,
+      icon: input.icon?.trim() || null,
       status: "paused",
     })
     .select("id")

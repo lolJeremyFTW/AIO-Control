@@ -3,6 +3,17 @@
    ("All-In-One Control App.html" lines 17-293) so the prototype's pixel
    choices stay authoritative. Do not refactor without checking the design. */
 
+/* Tell the UA we render against a dark surface — Chrome + Firefox use
+   this to render dark scrollbars, dark <select> popups, dark form
+   controls, dark autofill highlights, etc. Single line that fixes the
+   "white-text-on-white" dropdown issue people kept hitting. */
+:root {
+  color-scheme: dark;
+}
+body[data-theme="light"] {
+  color-scheme: light;
+}
+
 :root {
   --paper: #f6f4ee;
   --paper-2: #ebe7da;
@@ -269,6 +280,43 @@ body[data-theme="light"] .node {
   background: var(--amber);
   border-color: #c8901f;
   color: #1a1c1a;
+}
+/* Extended palette — added in phase 7+. Rim is one notch darker than the
+   fill so chips pop against the dark rail background. */
+.node.teal {
+  background: #14b8a6;
+  border-color: #0e8a7d;
+  color: #fff;
+}
+.node.lime {
+  background: #84cc16;
+  border-color: #5f9510;
+  color: #1a1c1a;
+}
+.node.magenta {
+  background: #d946ef;
+  border-color: #a020c2;
+  color: #fff;
+}
+.node.sky {
+  background: #38bdf8;
+  border-color: #0c8bcf;
+  color: #1a1c1a;
+}
+.node.coral {
+  background: #fb7185;
+  border-color: #c14655;
+  color: #fff;
+}
+.node.slate {
+  background: #475569;
+  border-color: #2c3a4d;
+  color: #fff;
+}
+.node.gold {
+  background: #ca8a04;
+  border-color: #8a5e02;
+  color: #fff;
 }
 .node.dashed {
   background: transparent;
@@ -1192,25 +1240,41 @@ a {
 }
 
 @media (max-width: 640px) {
-  /* Header: hide the weather chip + voice button to keep row 1 compact;
-     they're available again from menus once the user opens the rail. */
+  /* On phones we show ONLY: hamburger + crumb + bell + avatar in row 1.
+     Search becomes full-width on its own row. Weather, voice, lang, and
+     vertical rules are all hidden — they're reachable from the avatar
+     dropdown so the header stays calm. */
   .voice,
   .chip,
-  .vrule {
+  .vrule,
+  .lang {
     display: none;
   }
-  .lang button {
-    padding: 4px 8px;
+  .row1 {
+    padding: 6px 10px;
+    gap: 6px;
   }
-  /* Hide the search placeholder on tiny screens — keep just the magnifier. */
-  .search .placeholder,
-  .search .kbd {
-    display: none;
+  /* Squash the avatar + bell ever so slightly. */
+  .avatar-btn {
+    width: 30px;
+    height: 30px;
+    font-size: 12px;
   }
-  .search {
-    flex: 0 0 auto;
-    width: 36px;
-    padding: 7px 9px;
+  .ibtn {
+    width: 32px;
+    height: 32px;
+  }
+  .crumb {
+    font-size: 12px;
+    overflow: hidden;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .crumb .biz {
+    flex-shrink: 0;
+  }
+  .crumb .topic {
+    font-size: 13px;
   }
 
   .empty-state {

@@ -12,6 +12,8 @@ import {
 } from "../../lib/auth/workspace";
 import { listAgentsForWorkspace } from "../../lib/queries/agents";
 import { listBusinesses } from "../../lib/queries/businesses";
+import { createSupabaseServerClient } from "../../lib/supabase/server";
+import type { NavNode } from "../../lib/queries/nav-nodes";
 import { getDict } from "../../lib/i18n/server";
 import { translate, type Locale } from "../../lib/i18n/dict";
 import { getWeather } from "../../lib/weather/open-meteo";
@@ -39,9 +41,22 @@ export default async function WorkspaceLayout({ children, params }: Props) {
       getUserWorkspaces(),
       listBusinesses(workspace.id),
       listAgentsForWorkspace(workspace.id),
-      getWeather(),
+      getWeather(workspace.id),
       getDict(),
     ]);
+  // Fetch every nav_node in the workspace in one go so the rail can
+  // build the multi-layer tree client-side without N+1 round-trips.
+  // (Cheap: <100 rows for any sane workspace.)
+  const supabase = await createSupabaseServerClient();
+  const { data: navRows } = await supabase
+    .from("nav_nodes")
+    .select(
+      "id, workspace_id, business_id, parent_id, name, sub, letter, variant, icon, href, sort_order",
+    )
+    .eq("workspace_id", workspace.id)
+    .is("archived_at", null)
+    .order("sort_order", { ascending: true });
+  const navNodes = (navRows ?? []) as NavNode[];
   // We pass the locale string (serializable) to the client. The client
   // imports the same dict module and calls translate() locally. Functions
   // can't cross the RSC boundary unless they're Server Actions.
@@ -67,11 +82,16 @@ export default async function WorkspaceLayout({ children, params }: Props) {
       }}
       workspaces={workspaces}
       businesses={businesses}
+      navNodes={navNodes}
       weather={weather}
       locale={locale}
     >
       {children}
-      <ChatPanel agents={agents} />
+      <ChatPanel
+        agents={agents}
+        workspaceSlug={workspace.slug}
+        firstBusinessId={businesses[0]?.id}
+      />
       <RunsToaster workspaceId={workspace.id} />
     </WorkspaceShell>
   );

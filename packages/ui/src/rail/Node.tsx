@@ -3,6 +3,8 @@
 
 import type { CSSProperties, ReactNode } from "react";
 
+// 14 colour swatches + the structural "outline" / "dashed" variants.
+// All swatches are also defined as CSS classes in globals.css.
 export type NodeVariant =
   | "outline"
   | "brand"
@@ -12,7 +14,31 @@ export type NodeVariant =
   | "violet"
   | "rose"
   | "amber"
+  | "teal"
+  | "lime"
+  | "magenta"
+  | "sky"
+  | "coral"
+  | "slate"
+  | "gold"
   | "dashed";
+
+export const ALL_VARIANTS: Exclude<NodeVariant, "outline" | "dashed">[] = [
+  "brand",
+  "orange",
+  "indigo",
+  "blue",
+  "violet",
+  "rose",
+  "amber",
+  "teal",
+  "lime",
+  "magenta",
+  "sky",
+  "coral",
+  "slate",
+  "gold",
+];
 
 type Props = {
   variant?: NodeVariant;

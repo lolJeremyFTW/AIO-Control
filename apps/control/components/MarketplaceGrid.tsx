@@ -1,7 +1,7 @@
-// Marketplace browser. Each card has an "Install" button that opens a
-// per-card business picker — clicking through copies the preset into the
-// chosen business. The page that mounts this passes the workspace +
-// business list.
+// Marketplace browser with 4 tabs (Agents / Skills / Plugins / MCP
+// Servers). Each card has an Install button that copies the preset into
+// the chosen business or workspace. The catalog is hand-seeded by
+// service_role — see migrations 010 + 013.
 
 "use client";
 
@@ -9,7 +9,10 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import type { BusinessRow } from "../lib/queries/businesses";
-import type { MarketplaceAgent } from "../lib/queries/marketplace";
+import type {
+  MarketplaceAgent,
+  MarketplaceKind,
+} from "../lib/queries/marketplace";
 import { installMarketplaceAgent } from "../app/actions/marketplace";
 
 type Props = {
@@ -19,26 +22,130 @@ type Props = {
   agents: MarketplaceAgent[];
 };
 
+const TABS: { kind: MarketplaceKind; label: string; sub: string }[] = [
+  { kind: "agent", label: "Agents", sub: "Volledige agent presets — provider + model + system prompt" },
+  { kind: "skill", label: "Skills", sub: "Herbruikbare system-prompt modules die op elke agent passen" },
+  { kind: "plugin", label: "Plugins", sub: "Worker-integraties die agent output ergens publiceren" },
+  { kind: "mcp_server", label: "MCP Servers", sub: "Model Context Protocol servers die je agents tools geven" },
+];
+
 export function MarketplaceGrid({
   workspaceSlug,
   workspaceId,
   businesses,
   agents,
 }: Props) {
+  const [activeKind, setActiveKind] = useState<MarketplaceKind>("agent");
   const [activeSlug, setActiveSlug] = useState<string | null>(null);
 
-  // Group by category so the catalog is browsable. Uncategorized lands
-  // in "Overig" at the bottom.
+  const filtered = agents.filter((a) => a.marketplace_kind === activeKind);
+
+  // Group by category within the tab.
   const byCategory = new Map<string, MarketplaceAgent[]>();
-  for (const a of agents) {
+  for (const a of filtered) {
     const k = a.category ?? "overig";
     if (!byCategory.has(k)) byCategory.set(k, []);
     byCategory.get(k)!.push(a);
   }
 
   const categories = [...byCategory.keys()].sort();
+  const subForActive = TABS.find((t) => t.kind === activeKind)?.sub ?? "";
 
-  if (agents.length === 0) {
+  return (
+    <>
+      <div
+        style={{
+          display: "flex",
+          gap: 4,
+          marginBottom: 6,
+          borderBottom: "1px solid var(--app-border-2)",
+          flexWrap: "wrap",
+        }}
+      >
+        {TABS.map((t) => {
+          const active = t.kind === activeKind;
+          const count = agents.filter(
+            (a) => a.marketplace_kind === t.kind,
+          ).length;
+          return (
+            <button
+              key={t.kind}
+              onClick={() => {
+                setActiveKind(t.kind);
+                setActiveSlug(null);
+              }}
+              style={{
+                padding: "8px 14px",
+                background: "transparent",
+                border: "none",
+                borderBottom: active
+                  ? "2px solid var(--tt-green)"
+                  : "2px solid transparent",
+                color: active ? "var(--app-fg)" : "var(--app-fg-3)",
+                fontWeight: 700,
+                fontSize: 12.5,
+                cursor: "pointer",
+                transform: "translateY(1px)",
+              }}
+            >
+              {t.label}
+              <span
+                style={{
+                  marginLeft: 6,
+                  fontSize: 10.5,
+                  color: "var(--app-fg-3)",
+                  fontWeight: 600,
+                }}
+              >
+                {count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <p
+        style={{
+          fontSize: 12,
+          color: "var(--app-fg-3)",
+          margin: "0 0 14px",
+        }}
+      >
+        {subForActive}
+      </p>
+      <KindBody
+        items={filtered}
+        byCategory={byCategory}
+        categories={categories}
+        activeSlug={activeSlug}
+        setActiveSlug={setActiveSlug}
+        workspaceSlug={workspaceSlug}
+        workspaceId={workspaceId}
+        businesses={businesses}
+      />
+    </>
+  );
+}
+
+function KindBody({
+  items,
+  byCategory,
+  categories,
+  activeSlug,
+  setActiveSlug,
+  workspaceSlug,
+  workspaceId,
+  businesses,
+}: {
+  items: MarketplaceAgent[];
+  byCategory: Map<string, MarketplaceAgent[]>;
+  categories: string[];
+  activeSlug: string | null;
+  setActiveSlug: (s: string | null) => void;
+  workspaceSlug: string;
+  workspaceId: string;
+  businesses: BusinessRow[];
+}) {
+  if (items.length === 0) {
     return (
       <p
         style={{
@@ -85,7 +192,7 @@ export function MarketplaceGrid({
                 businesses={businesses}
                 isActive={activeSlug === a.slug}
                 onSetActive={() =>
-                  setActiveSlug((cur) => (cur === a.slug ? null : a.slug))
+                  setActiveSlug(activeSlug === a.slug ? null : a.slug)
                 }
               />
             ))}
@@ -219,7 +326,9 @@ function Card({
             cursor: "pointer",
           }}
         >
-          + Installeren
+          {agent.marketplace_kind === "agent"
+            ? "+ Installeren"
+            : "Bekijk config"}
         </button>
       ) : (
         <div
@@ -231,42 +340,97 @@ function Card({
             border: "1.5px dashed var(--app-border)",
           }}
         >
-          {businesses.length === 0 ? (
-            <p style={{ fontSize: 12, color: "var(--app-fg-3)", margin: 0 }}>
-              Maak eerst een business aan om hier te kunnen installeren.
-            </p>
+          {agent.marketplace_kind === "agent" ? (
+            businesses.length === 0 ? (
+              <p style={{ fontSize: 12, color: "var(--app-fg-3)", margin: 0 }}>
+                Maak eerst een business aan om hier te kunnen installeren.
+              </p>
+            ) : (
+              <>
+                <p
+                  style={{
+                    fontSize: 11.5,
+                    color: "var(--app-fg-2)",
+                    margin: "0 0 8px",
+                  }}
+                >
+                  Kies de business waar deze agent in moet komen:
+                </p>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {businesses.map((b) => (
+                    <button
+                      key={b.id}
+                      onClick={() => install(b.id)}
+                      disabled={pending}
+                      style={{
+                        padding: "5px 10px",
+                        border: "1.5px solid var(--app-border)",
+                        background: "var(--app-card)",
+                        color: "var(--app-fg)",
+                        borderRadius: 8,
+                        fontWeight: 600,
+                        fontSize: 11.5,
+                        cursor: pending ? "wait" : "pointer",
+                      }}
+                    >
+                      → {b.name}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )
           ) : (
             <>
               <p
                 style={{
                   fontSize: 11.5,
                   color: "var(--app-fg-2)",
-                  margin: "0 0 8px",
+                  margin: "0 0 6px",
                 }}
               >
-                Kies de business waar deze agent in moet komen:
+                {agent.marketplace_kind === "skill"
+                  ? "Kopieer dit JSON-blok in de agent's `config.systemPrompt` of als `config.skills` array entry. Skills stapelen op elkaar."
+                  : agent.marketplace_kind === "plugin"
+                    ? "Plugin config — voeg toe aan de agent's `config.plugins` array. De plugin runt na elke agent run."
+                    : "MCP server — voeg de `mcp` block toe aan agent.config.mcpServers (lijst van servers die de agent als host kan starten)."}
               </p>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {businesses.map((b) => (
-                  <button
-                    key={b.id}
-                    onClick={() => install(b.id)}
-                    disabled={pending}
-                    style={{
-                      padding: "5px 10px",
-                      border: "1.5px solid var(--app-border)",
-                      background: "var(--app-card)",
-                      color: "var(--app-fg)",
-                      borderRadius: 8,
-                      fontWeight: 600,
-                      fontSize: 11.5,
-                      cursor: pending ? "wait" : "pointer",
-                    }}
-                  >
-                    → {b.name}
-                  </button>
-                ))}
-              </div>
+              <pre
+                style={{
+                  background: "var(--app-card)",
+                  border: "1px solid var(--app-border)",
+                  borderRadius: 8,
+                  padding: 10,
+                  fontSize: 11,
+                  fontFamily: "ui-monospace, Menlo, monospace",
+                  overflow: "auto",
+                  maxHeight: 200,
+                  margin: 0,
+                  whiteSpace: "pre-wrap",
+                }}
+              >
+                {JSON.stringify(agent.config, null, 2)}
+              </pre>
+              <button
+                type="button"
+                onClick={() =>
+                  navigator.clipboard.writeText(
+                    JSON.stringify(agent.config, null, 2),
+                  )
+                }
+                style={{
+                  marginTop: 8,
+                  padding: "5px 10px",
+                  border: "1.5px solid var(--app-border)",
+                  background: "var(--app-card)",
+                  color: "var(--app-fg)",
+                  borderRadius: 8,
+                  fontWeight: 600,
+                  fontSize: 11,
+                  cursor: "pointer",
+                }}
+              >
+                Kopieer JSON
+              </button>
             </>
           )}
           {error && (

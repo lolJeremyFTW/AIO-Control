@@ -4,6 +4,7 @@
 
 "use client";
 
+import Link from "next/link";
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 
@@ -123,22 +124,22 @@ export function AuthForm({ mode, action, next }: Props) {
         {isLogin ? (
           <>
             Nog geen account?{" "}
-            <a
+            <Link
               href="/signup"
               style={{ color: "var(--tt-green)", fontWeight: 700 }}
             >
               Registreer
-            </a>
+            </Link>
           </>
         ) : (
           <>
             Heb je al een account?{" "}
-            <a
+            <Link
               href="/login"
               style={{ color: "var(--tt-green)", fontWeight: 700 }}
             >
               Log in
-            </a>
+            </Link>
           </>
         )}
       </p>

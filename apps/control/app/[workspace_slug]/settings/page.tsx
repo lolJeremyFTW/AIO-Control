@@ -12,6 +12,7 @@ import { signOutAction } from "../../(auth)/actions";
 import { DangerZone } from "../../../components/DangerZone";
 import { NotificationsButton } from "../../../components/NotificationsButton";
 import { TeamPanel } from "../../../components/TeamPanel";
+import { WeatherSettings } from "../../../components/WeatherSettings";
 import { listWorkspaceMembers } from "../../../lib/queries/members";
 import { createSupabaseServerClient } from "../../../lib/supabase/server";
 
@@ -34,14 +35,20 @@ export default async function SettingsPage({ params }: Props) {
 
   const members = await listWorkspaceMembers(workspace.id);
   // Determine if the signed-in user is the owner — Danger zone uses this
-  // to show or hide destructive actions.
+  // to show or hide destructive actions. We pull weather coords on the
+  // same trip so the settings form starts pre-filled.
   const supabase = await createSupabaseServerClient();
-  const { data: ownerCheck } = await supabase
+  const { data: wsExtra } = await supabase
     .from("workspaces")
-    .select("owner_id")
+    .select("owner_id, weather_city, weather_lat, weather_lon")
     .eq("id", workspace.id)
     .maybeSingle();
-  const isOwner = !!ownerCheck && ownerCheck.owner_id === user.id;
+  const isOwner = !!wsExtra && wsExtra.owner_id === user.id;
+  const weatherInitial = {
+    city: wsExtra?.weather_city ?? "Breda",
+    lat: Number(wsExtra?.weather_lat ?? 51.589),
+    lon: Number(wsExtra?.weather_lon ?? 4.776),
+  };
 
   return (
     <div className="content">

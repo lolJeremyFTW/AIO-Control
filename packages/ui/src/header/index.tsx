@@ -40,6 +40,11 @@ type Props = {
   /** Visible user identity in the avatar's dropdown header. */
   userDisplayName?: string;
   userEmail?: string;
+  /** Replaces the static .search div + .ibtn bell when set. The host
+   *  app injects functional widgets (SearchModal trigger,
+   *  NotificationsBell with realtime badge). */
+  searchSlot?: ReactNode;
+  bellSlot?: ReactNode;
   children?: ReactNode; // optional row 2 content
 };
 
@@ -54,6 +59,8 @@ export function Header({
   userMenu,
   userDisplayName,
   userEmail,
+  searchSlot,
+  bellSlot,
   children,
 }: Props) {
   const [activeAvatar, setActiveAvatar] = useState(false);
@@ -118,13 +125,15 @@ export function Header({
           )}
         </div>
         <div className="grow" />
-        <div className="search">
-          <SearchIcon />
-          <span className="placeholder">
-            Zoek of vraag aan AI: &quot;hoeveel verdiende YouTube vandaag?&quot;
-          </span>
-          <span className="kbd">⌘K</span>
-        </div>
+        {searchSlot ?? (
+          <div className="search">
+            <SearchIcon />
+            <span className="placeholder">
+              Zoek of vraag aan AI: &quot;hoeveel verdiende YouTube vandaag?&quot;
+            </span>
+            <span className="kbd">⌘K</span>
+          </div>
+        )}
         <div className="grow" />
         <div className="voice">
           <span className="pulse">
@@ -132,12 +141,14 @@ export function Header({
           </span>{" "}
           Praat met AI
         </div>
-        <button className="ibtn" aria-label="Notifications">
-          <BellIcon />
-          {notifications > 0 && (
-            <span className="dot-badge">{notifications}</span>
-          )}
-        </button>
+        {bellSlot ?? (
+          <button className="ibtn" aria-label="Notifications">
+            <BellIcon />
+            {notifications > 0 && (
+              <span className="dot-badge">{notifications}</span>
+            )}
+          </button>
+        )}
         <div className="chip">
           <CloudIcon />
           <span>

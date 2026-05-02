@@ -7,6 +7,7 @@
 
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ChatIcon } from "@aio/ui/icon";
@@ -16,6 +17,10 @@ import type { AgentRow } from "../lib/queries/agents";
 
 type Props = {
   agents: AgentRow[];
+  /** Used to deep-link to /[ws]/business/[id]/agents when zero agents
+   *  exist so the empty-state click goes somewhere useful. */
+  workspaceSlug?: string;
+  firstBusinessId?: string;
 };
 
 type UIMessage = {
@@ -25,7 +30,8 @@ type UIMessage = {
   pending?: boolean;
 };
 
-export function ChatPanel({ agents }: Props) {
+export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [agentId, setAgentId] = useState<string | null>(
     agents[0]?.id ?? null,
@@ -141,18 +147,22 @@ export function ChatPanel({ agents }: Props) {
   }, [agentId, input, messages, sending]);
 
   if (agents.length === 0) {
-    // No agents yet; we still show the bubble so the affordance is
-    // discoverable. Clicking it pops a hint that points at the agents tab
-    // of any business — that's where the user can create one.
+    // No agents yet — clicking the bubble routes the user straight to the
+    // marketplace so they can install (or sees the empty marketplace if
+    // somehow that's also empty). Better than a dead-end alert.
     return (
       <div
         className="chatbox"
-        title="Voeg eerst een agent toe in een business"
-        onClick={() =>
-          alert(
-            "Maak eerst een agent aan: open een business in de left side nav → tab \"Agents\" → \"+ Nieuwe agent\".",
-          )
-        }
+        title="Voeg eerst een agent toe — klik om naar de marketplace te gaan"
+        onClick={() => {
+          if (firstBusinessId && workspaceSlug) {
+            router.push(
+              `/${workspaceSlug}/business/${firstBusinessId}/agents`,
+            );
+          } else if (workspaceSlug) {
+            router.push(`/${workspaceSlug}/marketplace`);
+          }
+        }}
       >
         <ChatIcon />
       </div>

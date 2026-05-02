@@ -7,6 +7,8 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
+import { ALL_VARIANTS } from "@aio/ui/rail/Node";
+
 import { createBusiness } from "../app/actions/businesses";
 
 type Props = {
@@ -15,15 +17,8 @@ type Props = {
   onClose: () => void;
 };
 
-const VARIANTS = [
-  "brand",
-  "orange",
-  "indigo",
-  "blue",
-  "violet",
-  "rose",
-  "amber",
-] as const;
+const VARIANTS = ALL_VARIANTS;
+const QUICK_EMOJIS = ["🎬", "🎙️", "📺", "🛍️", "📈", "💬", "🤖", "🧠", "✏️", "🎨", "🛠️", "📱", "🌍", "📦", "💼", "🚀", "🪙", "📚"];
 
 export function NewBusinessDialog({
   workspaceSlug,
@@ -34,6 +29,7 @@ export function NewBusinessDialog({
   const [name, setName] = useState("");
   const [sub, setSub] = useState("");
   const [variant, setVariant] = useState<(typeof VARIANTS)[number]>("brand");
+  const [icon, setIcon] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const router = useRouter();
@@ -51,6 +47,7 @@ export function NewBusinessDialog({
       name,
       sub: sub || undefined,
       variant,
+      icon: icon || undefined,
     });
     setPending(false);
     if (!res.ok) {
@@ -151,9 +148,60 @@ export function NewBusinessDialog({
                   ["--size" as string]: "32px",
                 }}
               >
-                {letter}
+                {icon || letter}
               </button>
             ))}
+          </div>
+        </Field>
+
+        <Field label="Icon (emoji of letter, optioneel)">
+          <input
+            value={icon}
+            onChange={(e) => setIcon(e.target.value.slice(0, 4))}
+            placeholder="🎬"
+            style={inputStyle}
+          />
+          <div
+            style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}
+          >
+            {QUICK_EMOJIS.map((e) => (
+              <button
+                key={e}
+                type="button"
+                onClick={() => setIcon(e)}
+                style={{
+                  width: 30,
+                  height: 30,
+                  border: `1.5px solid ${
+                    icon === e ? "var(--tt-green)" : "var(--app-border)"
+                  }`,
+                  background: "var(--app-card-2)",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                  fontSize: 16,
+                  lineHeight: 1,
+                }}
+              >
+                {e}
+              </button>
+            ))}
+            {icon && (
+              <button
+                type="button"
+                onClick={() => setIcon("")}
+                style={{
+                  border: "1.5px solid var(--app-border)",
+                  background: "var(--app-card-2)",
+                  color: "var(--app-fg-3)",
+                  borderRadius: 8,
+                  padding: "0 10px",
+                  fontSize: 11,
+                  cursor: "pointer",
+                }}
+              >
+                ✕ wissen
+              </button>
+            )}
           </div>
         </Field>
 

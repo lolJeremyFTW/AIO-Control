@@ -2,6 +2,12 @@
 // 30D revenue, 30D AI cost, the resulting margin, and 24h run count.
 // Margin is the headline number — that's what the operator actually cares
 // about: "is this mini-business profitable after AI spend?"
+//
+// Uses next/link so basePath gets prepended on the path-version build
+// (BASE_PATH=/aio). Raw <a href="/foo"> would land at the domain root and
+// produce a 404 there.
+
+import Link from "next/link";
 
 import type { BusinessRow } from "../lib/queries/businesses";
 
@@ -49,7 +55,7 @@ export function BusinessKpiGrid({
         const margin = s.revenue_30d - s.usage_30d;
         const positive = margin > 0;
         return (
-          <a
+          <Link
             key={b.id}
             href={`/${workspaceSlug}/business/${b.id}`}
             style={{
@@ -103,7 +109,7 @@ export function BusinessKpiGrid({
             >
               {s.runs_24h} runs · 24u
             </div>
-          </a>
+          </Link>
         );
       })}
     </div>
