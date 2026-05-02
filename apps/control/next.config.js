@@ -18,6 +18,10 @@ const nextConfig = {
   // home directory looking for an unrelated lockfile.
   turbopack: { root: monorepoRoot },
   outputFileTracingRoot: monorepoRoot,
+  // Don't 308 from "/aio/" to "/aio" — that combined with our Caddy rules
+  // and the auth-aware root redirect created a redirect loop for logged-in
+  // users. We let Caddy normalise the trailing slash instead.
+  skipTrailingSlashRedirect: true,
 };
 
 export default nextConfig;
