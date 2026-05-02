@@ -1,22 +1,22 @@
 # SSHes into the VPS and runs the deploy script committed at deploy/vps-deploy.sh.
+#
+# IMPORTANT: this workflow is MANUAL-ONLY (workflow_dispatch). The
+# auto-trigger on push was burning GitHub Actions minutes — Jeremy
+# deploys directly on the VPS instead via:
+#
+#     ssh jeremy@vps
+#     cd /home/jeremy/aio-control && bash deploy/vps-deploy.sh
+#
+# To run this from GitHub anyway, go to Actions → deploy → Run workflow.
+#
 # Repository secrets needed (configure under Settings → Secrets and variables → Actions):
-#   - VPS_TAILSCALE_HOST  : Tailscale machine name or IP, e.g. "100.67.47.121"
-#                            or "vps" if you've added the GH Actions runner to your
-#                            Tailscale network. For a public host, use the public DNS.
+#   - VPS_TAILSCALE_HOST  : Tailscale machine name or IP
 #   - VPS_SSH_USER        : "jeremy"
 #   - VPS_SSH_PRIVATE_KEY : an SSH private key authorized in /home/jeremy/.ssh/authorized_keys
-#                           on the VPS. Generate with `ssh-keygen -t ed25519 -f gh-deploy`,
-#                           paste the private key here, append the public to authorized_keys.
-#
-# Why a script and not a long inline `script:` block? So you can iterate on the
-# deploy procedure locally (run `bash deploy/vps-deploy.sh` over SSH) without
-# re-pushing the workflow each time.
 
 name: deploy
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:
