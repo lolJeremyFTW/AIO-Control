@@ -1412,6 +1412,25 @@ details[open] > div {
   }
 }
 
+/* Chat panel — floating bubble on desktop, full-width drawer on
+   phones so the input + sidebar are usable on small screens. */
+.chat-panel {
+  bottom: 84px;
+  right: 18px;
+  width: 420px;
+  height: 540px;
+  border-radius: 16px;
+}
+@media (max-width: 800px) {
+  .chat-panel {
+    inset: auto 0 0 0 !important;
+    width: 100vw !important;
+    height: 80vh !important;
+    border-radius: 16px 16px 0 0 !important;
+    border-bottom-width: 0 !important;
+  }
+}
+
 /* Drop indicator while dragging a topic over another in the rail. */
 .nav-row.drop-active {
   outline: 2px dashed var(--tt-green);

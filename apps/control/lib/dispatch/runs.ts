@@ -16,6 +16,8 @@ import {
 } from "@aio/ai/router";
 import type { ChatMessage } from "@aio/ai/ag-ui";
 
+import { resolveApiKey } from "../api-keys/resolve";
+import { checkSpendLimit } from "./spend-limit";
 import { getServiceRoleSupabase } from "../supabase/service";
 
 type DispatchResult = {
@@ -74,6 +76,22 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
   if (business && business.status === "paused") {
     // We keep the row queued so a future run-now / unpause picks it up.
     return { ok: true, status: "deferred", error: DEFER_REASONS.business_paused };
+  }
+
+  // Check spend limits before we even start. If we're over the daily
+  // or monthly cap we mark failed with a clear error and (per the
+  // workspace flag) auto-pause the business so future triggers don't
+  // pile up.
+  if (business) {
+    const limit = await checkSpendLimit(business.id);
+    if (!limit.ok) {
+      const reason =
+        limit.reason === "daily_exceeded"
+          ? `Daily spend limit (€${(limit.limit_cents / 100).toFixed(2)}) reached — current €${(limit.current_cents / 100).toFixed(2)}.`
+          : `Monthly spend limit (€${(limit.limit_cents / 100).toFixed(2)}) reached — current €${(limit.current_cents / 100).toFixed(2)}.`;
+      const suffix = limit.auto_paused ? " Business auto-gepauzeerd." : "";
+      return await markFailed(runId, reason + suffix);
+    }
   }
 
   // Promote to running so concurrent dispatchers don't double-execute.

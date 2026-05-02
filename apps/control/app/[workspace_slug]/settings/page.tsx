@@ -11,6 +11,7 @@ import {
 import { signOutAction } from "../../(auth)/actions";
 import { listApiKeys } from "../../actions/api-keys";
 import { ApiKeysPanel } from "../../../components/ApiKeysPanel";
+import { SpendLimitsPanel } from "../../../components/SpendLimitsPanel";
 import {
   CustomIntegrationsPanel,
   type CustomIntegrationRow,
@@ -34,6 +35,7 @@ const SECTIONS = [
   { id: "general", label: "General" },
   { id: "weather", label: "Weather" },
   { id: "api-keys", label: "API Keys" },
+  { id: "spend-limits", label: "Spend limits" },
   { id: "telegram", label: "Telegram" },
   { id: "custom-integrations", label: "Custom integrations" },
   { id: "notifications", label: "Notifications" },
@@ -65,7 +67,9 @@ export default async function SettingsPage({ params }: Props) {
   ] = await Promise.all([
     supabase
       .from("workspaces")
-      .select("owner_id, weather_city, weather_lat, weather_lon")
+      .select(
+        "owner_id, weather_city, weather_lat, weather_lon, daily_spend_limit_cents, monthly_spend_limit_cents, auto_pause_on_limit",
+      )
       .eq("id", workspace.id)
       .maybeSingle(),
     listApiKeys(workspace.id),
@@ -176,6 +180,25 @@ export default async function SettingsPage({ params }: Props) {
               initialKeys={apiKeys}
               businesses={businesses}
               navNodes={navNodes}
+            />
+          </SectionCard>
+
+          <SectionCard
+            id="spend-limits"
+            title="Spend limits"
+            desc="Daag/maand caps per workspace; auto-pause als gewenst."
+          >
+            <SpendLimitsPanel
+              workspaceSlug={workspace.slug}
+              workspaceId={workspace.id}
+              initial={{
+                daily_cents:
+                  (wsExtra?.daily_spend_limit_cents as number | null) ?? null,
+                monthly_cents:
+                  (wsExtra?.monthly_spend_limit_cents as number | null) ?? null,
+                auto_pause:
+                  (wsExtra?.auto_pause_on_limit as boolean | null) ?? true,
+              }}
             />
           </SectionCard>
 

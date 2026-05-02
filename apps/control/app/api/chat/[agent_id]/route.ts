@@ -13,6 +13,7 @@ import {
 import type { AGUIEvent, ChatMessage } from "@aio/ai/ag-ui";
 
 import { resolveApiKey } from "../../../../lib/api-keys/resolve";
+import { checkSpendLimit } from "../../../../lib/dispatch/spend-limit";
 import { dispatchRunEvent } from "../../../../lib/notify/dispatch";
 import { getAgentById } from "../../../../lib/queries/agents";
 import { createSupabaseServerClient } from "../../../../lib/supabase/server";
@@ -47,6 +48,22 @@ export async function POST(
   const agent = await getAgentById(agent_id);
   if (!agent) {
     return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+  }
+
+  // Spend-limit pre-flight. If the user has set a daily/monthly cap
+  // and we're over it, refuse before even creating a run row.
+  if (agent.business_id) {
+    const limit = await checkSpendLimit(agent.business_id);
+    if (!limit.ok) {
+      const reason =
+        limit.reason === "daily_exceeded"
+          ? `Daily spend limit reached (€${(limit.limit_cents / 100).toFixed(2)}, gebruikt €${(limit.current_cents / 100).toFixed(2)}).`
+          : `Monthly spend limit reached (€${(limit.limit_cents / 100).toFixed(2)}, gebruikt €${(limit.current_cents / 100).toFixed(2)}).`;
+      return NextResponse.json(
+        { error: reason },
+        { status: 402 }, // Payment Required (semantic fit)
+      );
+    }
   }
 
   // Find the most recent user message — used to seed the thread title

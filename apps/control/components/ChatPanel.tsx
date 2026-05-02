@@ -235,15 +235,11 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
 
       {open && (
         <div
+          className="chat-panel"
           style={{
             position: "fixed",
-            bottom: 84,
-            right: 18,
-            width: 420,
-            height: 540,
             background: "var(--app-card)",
             border: "1.5px solid var(--app-border)",
-            borderRadius: 16,
             boxShadow: "0 24px 60px -12px rgba(0,0,0,0.55)",
             display: "flex",
             flexDirection: "column",

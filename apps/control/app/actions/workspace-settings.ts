@@ -36,6 +36,27 @@ export async function updateWorkspaceWeather(input: {
   return { ok: true, data: null };
 }
 
+export async function updateWorkspaceSpendLimits(input: {
+  workspace_slug: string;
+  workspace_id: string;
+  daily_cents: number | null;
+  monthly_cents: number | null;
+  auto_pause: boolean;
+}): Promise<ActionResult<null>> {
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase
+    .from("workspaces")
+    .update({
+      daily_spend_limit_cents: input.daily_cents,
+      monthly_spend_limit_cents: input.monthly_cents,
+      auto_pause_on_limit: input.auto_pause,
+    })
+    .eq("id", input.workspace_id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath(`/${input.workspace_slug}/settings`);
+  return { ok: true, data: null };
+}
+
 /**
  * Geocode a city name to coords via Open-Meteo's free geocoding API.
  * No key needed. Returns the first match — UI feeds the lat/lon into

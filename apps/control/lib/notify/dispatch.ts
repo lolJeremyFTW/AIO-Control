@@ -120,12 +120,40 @@ async function fireTelegram(
   if (event === "failed" && !target.send_run_fail) return false;
 
   const text = formatRunMessage(run, agent, event);
+  // Build deep-links into AIO Control for the report. Origin comes
+  // from NEXT_PUBLIC_TRIGGER_ORIGIN (set per deployment).
+  const origin = process.env.NEXT_PUBLIC_TRIGGER_ORIGIN ?? "";
+  const buttons: { text: string; url: string }[][] = [];
+  if (origin) {
+    const row1: { text: string; url: string }[] = [];
+    if (run.business_id) {
+      row1.push({
+        text: "📊 Open business",
+        url: `${origin}/${await workspaceSlug(supabase, run.workspace_id)}/business/${run.business_id}`,
+      });
+    }
+    if (agent?.id && run.business_id) {
+      row1.push({
+        text: "🤖 Agent",
+        url: `${origin}/${await workspaceSlug(supabase, run.workspace_id)}/business/${run.business_id}/agents`,
+      });
+    }
+    if (row1.length > 0) buttons.push(row1);
+    buttons.push([
+      {
+        text: "📜 Alle runs",
+        url: `${origin}/${await workspaceSlug(supabase, run.workspace_id)}/runs`,
+      },
+    ]);
+  }
+
   const res = await sendTelegram({
     workspace_id: run.workspace_id,
     business_id: run.business_id,
     target,
     text,
     parse_mode: "Markdown",
+    buttons: buttons.length > 0 ? buttons : undefined,
   });
   if (!res.ok) {
     console.error("Telegram send failed", res.error);
@@ -228,4 +256,24 @@ function extractText(output: unknown): string | null {
 function truncate(s: string, max: number) {
   if (s.length <= max) return s;
   return s.slice(0, max - 1) + "…";
+}
+
+// Tiny in-process cache so we don't hammer the workspaces table with
+// the same lookup for every run report. Most workspaces emit lots of
+// runs in quick succession; this trims the per-run cost.
+const slugCache = new Map<string, { slug: string; expires: number }>();
+async function workspaceSlug(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  workspaceId: string,
+): Promise<string> {
+  const cached = slugCache.get(workspaceId);
+  if (cached && cached.expires > Date.now()) return cached.slug;
+  const { data } = await supabase
+    .from("workspaces")
+    .select("slug")
+    .eq("id", workspaceId)
+    .maybeSingle();
+  const slug = (data?.slug as string | undefined) ?? "";
+  slugCache.set(workspaceId, { slug, expires: Date.now() + 5 * 60 * 1000 });
+  return slug;
 }

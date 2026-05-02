@@ -76,6 +76,9 @@ export async function updateBusiness(input: {
     icon?: string | null;
     color_hex?: string | null;
     logo_url?: string | null;
+    daily_spend_limit_cents?: number | null;
+    monthly_spend_limit_cents?: number | null;
+    status?: "running" | "paused";
   };
 }): Promise<ActionResult<null>> {
   const patch: Record<string, unknown> = {};
@@ -98,6 +101,11 @@ export async function updateBusiness(input: {
   }
   if (input.patch.logo_url !== undefined)
     patch.logo_url = input.patch.logo_url?.toString().trim() || null;
+  if (input.patch.daily_spend_limit_cents !== undefined)
+    patch.daily_spend_limit_cents = input.patch.daily_spend_limit_cents;
+  if (input.patch.monthly_spend_limit_cents !== undefined)
+    patch.monthly_spend_limit_cents = input.patch.monthly_spend_limit_cents;
+  if (input.patch.status !== undefined) patch.status = input.patch.status;
 
   if (Object.keys(patch).length === 0) return { ok: true, data: null };
 
