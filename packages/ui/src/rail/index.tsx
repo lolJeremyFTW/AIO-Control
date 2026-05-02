@@ -88,6 +88,8 @@ type Props = {
   /** Called when the user drops a topic onto another topic. The shell
    *  swaps their sort_orders. */
   onReorderTopic?: (sourceId: string, targetId: string) => void;
+  /** Same idea for businesses in the top-level rail. */
+  onReorderBusiness?: (sourceId: string, targetId: string) => void;
 };
 
 export function Rail({
@@ -109,6 +111,7 @@ export function Rail({
   page = "dashboard",
   onContextMenuRail,
   onReorderTopic,
+  onReorderBusiness,
 }: Props) {
   const [hover, setHover] = useState(false);
 
@@ -241,6 +244,12 @@ export function Rail({
                   e.stopPropagation();
                   onContextMenuRail?.(e, { kind: "business", id: b.id });
                 }}
+                onDropOn={
+                  onReorderBusiness
+                    ? (sourceId) => onReorderBusiness(sourceId, b.id)
+                    : undefined
+                }
+                dataType="business"
               />
             ))
           )
@@ -312,6 +321,11 @@ type NavRowProps = {
   expanded: boolean;
   onClick?: () => void;
   onContextMenu?: (e: ReactMouseEvent) => void;
+  /** Drag-and-drop reorder hook. */
+  onDropOn?: (sourceId: string) => void;
+  /** Drag MIME type — must match between source and target rows so a
+   *  business can't be dropped on a topic and vice versa. */
+  dataType?: "business" | "topic";
 };
 
 function NavRow({
@@ -320,14 +334,43 @@ function NavRow({
   expanded,
   onClick,
   onContextMenu,
+  onDropOn,
+  dataType,
 }: NavRowProps) {
+  const [dropActive, setDropActive] = useState(false);
+  const mimeType = dataType ? `text/aio-${dataType}` : null;
   return (
     <div
-      className={"nav-row " + (selected ? "selected" : "")}
+      className={
+        "nav-row " +
+        (selected ? "selected " : "") +
+        (dropActive ? "drop-active" : "")
+      }
       onClick={onClick}
       onContextMenu={onContextMenu}
       role="button"
       tabIndex={0}
+      draggable={!!onDropOn && !!mimeType}
+      onDragStart={(e) => {
+        if (!mimeType) return;
+        e.dataTransfer.setData(mimeType, item.id);
+        e.dataTransfer.effectAllowed = "move";
+      }}
+      onDragOver={(e) => {
+        if (!onDropOn || !mimeType) return;
+        if (!e.dataTransfer.types.includes(mimeType)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        setDropActive(true);
+      }}
+      onDragLeave={() => setDropActive(false)}
+      onDrop={(e) => {
+        if (!onDropOn || !mimeType) return;
+        e.preventDefault();
+        setDropActive(false);
+        const sourceId = e.dataTransfer.getData(mimeType);
+        if (sourceId && sourceId !== item.id) onDropOn(sourceId);
+      }}
     >
       <div className="nav-row-circle">
         <Node
@@ -412,6 +455,7 @@ function TopicRow({
         const sourceId = e.dataTransfer.getData("text/aio-topic");
         if (sourceId && sourceId !== topic.id) onDropOn(sourceId);
       }}
+      title="Sleep om volgorde te wijzigen"
     >
       <div className="nav-row-circle">
         <Node

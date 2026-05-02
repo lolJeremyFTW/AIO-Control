@@ -14,6 +14,12 @@ import { ChatIcon } from "@aio/ui/icon";
 import type { AGUIEvent, ChatMessage } from "@aio/ai/ag-ui";
 
 import type { AgentRow } from "../lib/queries/agents";
+import {
+  deleteThread,
+  listMessages,
+  listThreads,
+  type ThreadRow,
+} from "../app/actions/chat";
 
 type Props = {
   agents: AgentRow[];
@@ -39,7 +45,42 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
   const [messages, setMessages] = useState<UIMessage[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [threads, setThreads] = useState<ThreadRow[]>([]);
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  const [showSidebar, setShowSidebar] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
+
+  // Reload thread list whenever the open agent changes.
+  useEffect(() => {
+    if (!agentId) {
+      setThreads([]);
+      return;
+    }
+    let cancelled = false;
+    void listThreads(agentId).then((rows) => {
+      if (!cancelled) setThreads(rows);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [agentId, open]);
+
+  // Switch threads → load history.
+  const switchThread = useCallback(async (threadId: string | null) => {
+    setActiveThreadId(threadId);
+    if (!threadId) {
+      setMessages([]);
+      return;
+    }
+    const rows = await listMessages(threadId);
+    setMessages(
+      rows.map((r) => ({
+        id: r.id,
+        role: r.role === "system" ? "assistant" : (r.role as "user" | "assistant"),
+        text: r.content?.text ?? "",
+      })),
+    );
+  }, []);
 
   useEffect(() => {
     if (open) listRef.current?.scrollTo({ top: 99999 });
@@ -68,11 +109,20 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
     ]);
 
     try {
-      const res = await fetch(`/api/chat/${agentId}`, {
+      const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+      const res = await fetch(`${base}/api/chat/${agentId}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ messages: history }),
+        body: JSON.stringify({
+          messages: history,
+          thread_id: activeThreadId,
+        }),
       });
+      // Capture the server-issued thread id so subsequent turns reuse it.
+      const newThreadId = res.headers.get("x-aio-thread-id");
+      if (newThreadId && newThreadId !== activeThreadId) {
+        setActiveThreadId(newThreadId);
+      }
       if (!res.ok || !res.body) {
         const err = (await res.text().catch(() => "")) || res.statusText;
         setMessages((m) =>
@@ -143,8 +193,12 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
           mm.id === assistantId ? { ...mm, pending: false } : mm,
         ),
       );
+      // Refresh sidebar so the new/bumped thread floats to the top.
+      if (agentId) {
+        void listThreads(agentId).then(setThreads);
+      }
     }
-  }, [agentId, input, messages, sending]);
+  }, [agentId, input, messages, sending, activeThreadId]);
 
   if (agents.length === 0) {
     // No agents yet — clicking the bubble routes the user straight to the
@@ -206,6 +260,25 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
               borderBottom: "1px solid var(--app-border-2)",
             }}
           >
+            <button
+              type="button"
+              onClick={() => setShowSidebar((v) => !v)}
+              title={showSidebar ? "Verberg threads" : "Toon threads"}
+              style={{
+                background: "transparent",
+                border: "1.5px solid var(--app-border)",
+                color: "var(--app-fg-2)",
+                width: 28,
+                height: 28,
+                borderRadius: 6,
+                fontSize: 14,
+                cursor: "pointer",
+                padding: 0,
+                lineHeight: 1,
+              }}
+            >
+              ☰
+            </button>
             <span
               className="node brand"
               style={{ ["--size" as string]: "28px", fontSize: 12 }}
@@ -217,6 +290,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
               onChange={(e) => {
                 setAgentId(e.target.value);
                 setMessages([]);
+                setActiveThreadId(null);
               }}
               style={{
                 flex: 1,
@@ -249,6 +323,125 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
               ✕
             </button>
           </div>
+
+          {showSidebar && (
+            <div
+              style={{
+                borderBottom: "1px solid var(--app-border-2)",
+                background: "var(--app-card-2)",
+                maxHeight: 200,
+                overflowY: "auto",
+              }}
+            >
+              <div
+                style={{
+                  padding: "8px 12px",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  borderBottom: "1px solid var(--app-border-2)",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 10.5,
+                    fontWeight: 700,
+                    color: "var(--app-fg-3)",
+                    letterSpacing: "0.14em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Threads
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveThreadId(null);
+                    setMessages([]);
+                  }}
+                  style={{
+                    background: "transparent",
+                    border: "1px solid var(--app-border)",
+                    color: "var(--app-fg-2)",
+                    fontSize: 10.5,
+                    fontWeight: 700,
+                    padding: "3px 8px",
+                    borderRadius: 6,
+                    cursor: "pointer",
+                  }}
+                >
+                  + Nieuwe
+                </button>
+              </div>
+              {threads.length === 0 ? (
+                <p style={{ fontSize: 11, color: "var(--app-fg-3)", padding: 10 }}>
+                  Nog geen threads.
+                </p>
+              ) : (
+                threads.map((t) => (
+                  <div
+                    key={t.id}
+                    onClick={() => switchThread(t.id)}
+                    style={{
+                      padding: "7px 12px",
+                      cursor: "pointer",
+                      fontSize: 12,
+                      borderBottom: "1px solid var(--app-border-2)",
+                      background:
+                        activeThreadId === t.id
+                          ? "rgba(57,178,85,0.10)"
+                          : "transparent",
+                      color:
+                        activeThreadId === t.id
+                          ? "var(--tt-green)"
+                          : "var(--app-fg)",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <span
+                      style={{
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {t.title ?? "(geen titel)"}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!confirm("Thread verwijderen?")) return;
+                        void deleteThread({ thread_id: t.id }).then(() => {
+                          setThreads((prev) =>
+                            prev.filter((x) => x.id !== t.id),
+                          );
+                          if (activeThreadId === t.id) {
+                            setActiveThreadId(null);
+                            setMessages([]);
+                          }
+                        });
+                      }}
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        color: "var(--app-fg-3)",
+                        cursor: "pointer",
+                        fontSize: 11,
+                        padding: "2px 6px",
+                      }}
+                      title="Verwijder thread"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
 
           <div
             ref={listRef}

@@ -16,6 +16,10 @@ import { resolveApiKey } from "../../../../lib/api-keys/resolve";
 import { dispatchRunEvent } from "../../../../lib/notify/dispatch";
 import { getAgentById } from "../../../../lib/queries/agents";
 import { createSupabaseServerClient } from "../../../../lib/supabase/server";
+import {
+  ensureThreadForChat,
+  persistChatTurn,
+} from "../../../actions/chat";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +49,24 @@ export async function POST(
     return NextResponse.json({ error: "Agent not found" }, { status: 404 });
   }
 
+  // Find the most recent user message — used to seed the thread title
+  // when we have to mint one and as the persisted user-turn payload.
+  const lastUserMsg = [...body.messages]
+    .reverse()
+    .find((m) => m.role === "user");
+  const lastUserText =
+    typeof lastUserMsg?.content === "string" ? lastUserMsg.content : "";
+
+  // Ensure a chat_threads row exists. We mint one on the first message
+  // when the client didn't pass thread_id; subsequent calls reuse it.
+  const thread = await ensureThreadForChat({
+    workspace_id: agent.workspace_id,
+    agent_id: agent.id,
+    thread_id: body.thread_id ?? null,
+    first_user_message: lastUserText,
+  });
+  const threadId = thread?.id ?? null;
+
   // Insert the run row up front so the chat panel can correlate stream
   // events with a persisted record. RLS policies enforce workspace
   // membership + editor-or-higher role.
@@ -57,7 +79,7 @@ export async function POST(
       triggered_by: "chat",
       status: "running",
       started_at: new Date().toISOString(),
-      input: { messages: body.messages, thread_id: body.thread_id ?? null },
+      input: { messages: body.messages, thread_id: threadId },
     })
     .select("id")
     .single();
@@ -160,25 +182,18 @@ export async function POST(
           "done",
         );
 
-        if (body.thread_id) {
-          await supabase
-            .from("chat_messages")
-            .insert([
-              ...body.messages
-                .filter((m) => m.role === "user")
-                .slice(-1)
-                .map((m) => ({
-                  thread_id: body.thread_id!,
-                  role: m.role,
-                  content: { text: m.content },
-                })),
-              {
-                thread_id: body.thread_id,
-                role: "assistant",
-                content: { text: assistantText },
-                run_id: run.id,
-              },
-            ]);
+        // Persist the just-completed turn so the chat sidebar can
+        // load it back. Best-effort — we don't fail the response if
+        // the insert hiccups.
+        if (threadId && lastUserText) {
+          await persistChatTurn({
+            thread_id: threadId,
+            user_message: lastUserText,
+            assistant_message: assistantText,
+            run_id: run.id,
+          }).catch((err) => {
+            console.error("persistChatTurn failed", err);
+          });
         }
       }
     },
@@ -190,6 +205,10 @@ export async function POST(
       "cache-control": "no-cache, no-transform",
       "x-accel-buffering": "no",
       connection: "keep-alive",
+      // Surface the thread + run id so the ChatPanel can keep the
+      // sidebar in sync without parsing the stream body.
+      "x-aio-thread-id": threadId ?? "",
+      "x-aio-run-id": run.id,
     },
   });
 }

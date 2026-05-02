@@ -24,6 +24,7 @@ import { signOutAction } from "../app/(auth)/actions";
 import {
   archiveBusiness,
   duplicateBusiness,
+  swapBusinessOrder,
 } from "../app/actions/businesses";
 import {
   archiveNavNode,
@@ -567,6 +568,15 @@ export function WorkspaceShell({
           if (res.ok) router.refresh();
           else alert(res.error);
         }}
+        onReorderBusiness={async (sourceId, targetId) => {
+          const res = await swapBusinessOrder({
+            workspace_slug: workspace.slug,
+            source_id: sourceId,
+            target_id: targetId,
+          });
+          if (res.ok) router.refresh();
+          else alert(res.error);
+        }}
       />
 
       {/* Backdrop only renders below 800px (CSS gates it via display) but we
@@ -623,6 +633,18 @@ export function WorkspaceShell({
                 onClick={() => router.push(`/${workspace.slug}/settings`)}
               >
                 {t("nav.settings")}
+              </button>
+              <button
+                role="menuitem"
+                onClick={() => router.push(`/${workspace.slug}/runs`)}
+              >
+                Runs
+              </button>
+              <button
+                role="menuitem"
+                onClick={() => router.push(`/${workspace.slug}/cost`)}
+              >
+                Cost & spend
               </button>
               <button
                 role="menuitem"

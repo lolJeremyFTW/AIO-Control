@@ -14,6 +14,7 @@ import type { AgentRow } from "../lib/queries/agents";
 type Run = {
   id: string;
   agent_id: string | null;
+  business_id: string | null;
   status: string;
   triggered_by: string;
   duration_ms: number | null;
@@ -26,8 +27,13 @@ type Run = {
 type Props = {
   workspaceSlug: string;
   workspaceId: string;
-  businessId: string;
+  /** When set, filter to one business. When null we list across the
+   *  entire workspace and show a per-business label on each run. */
+  businessId: string | null;
   agents: AgentRow[];
+  /** Map business_id → name so workspace-wide rows can render which
+   *  business they belong to. */
+  businessName?: Record<string, string>;
   statusFilter: string | null;
   agentFilter: string | null;
   offset: number;
@@ -40,6 +46,7 @@ export function RunsPage({
   workspaceId,
   businessId,
   agents,
+  businessName,
   statusFilter,
   agentFilter,
 }: Props) {
@@ -63,10 +70,11 @@ export function RunsPage({
     setLoading(true);
     setError(null);
     const params = new URLSearchParams({
-      business: businessId,
       limit: String(PAGE_SIZE),
       offset: String(offset),
     });
+    if (businessId) params.set("business", businessId);
+    else params.set("workspace", workspaceId);
     if (statusFilter) params.set("status", statusFilter);
     if (agentFilter) params.set("agent", agentFilter);
     const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
@@ -88,16 +96,17 @@ export function RunsPage({
       })
       .finally(() => setLoading(false));
     return () => ctl.abort();
-  }, [businessId, statusFilter, agentFilter, offset]);
+  }, [businessId, workspaceId, statusFilter, agentFilter, offset]);
 
   const setFilter = (k: "status" | "agent", v: string | null) => {
     const sp = new URLSearchParams(search.toString());
     if (v) sp.set(k, v);
     else sp.delete(k);
     sp.delete("offset");
-    router.push(
-      `/${workspaceSlug}/business/${businessId}/runs?${sp.toString()}`,
-    );
+    const base = businessId
+      ? `/${workspaceSlug}/business/${businessId}/runs`
+      : `/${workspaceSlug}/runs`;
+    router.push(`${base}?${sp.toString()}`);
   };
 
   const agentName = (id: string | null) =>
@@ -166,7 +175,16 @@ export function RunsPage({
           }}
         >
           {runs.map((r) => (
-            <RunRow key={r.id} run={r} agentName={agentName(r.agent_id)} />
+            <RunRow
+              key={r.id}
+              run={r}
+              agentName={agentName(r.agent_id)}
+              businessLabel={
+                !businessId && r.business_id
+                  ? (businessName?.[r.business_id] ?? null)
+                  : null
+              }
+            />
           ))}
         </div>
       )}
@@ -197,7 +215,15 @@ export function RunsPage({
   );
 }
 
-function RunRow({ run, agentName }: { run: Run; agentName: string }) {
+function RunRow({
+  run,
+  agentName,
+  businessLabel,
+}: {
+  run: Run;
+  agentName: string;
+  businessLabel: string | null;
+}) {
   const [expanded, setExpanded] = useState(false);
   const failed = run.status === "failed" || run.status === "fail";
   const ok = run.status === "done";
@@ -235,6 +261,21 @@ function RunRow({ run, agentName }: { run: Run; agentName: string }) {
           }}
         />
         <span style={{ fontWeight: 700 }}>{agentName}</span>
+        {businessLabel && (
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              padding: "2px 7px",
+              borderRadius: 999,
+              background: "var(--app-card-2)",
+              color: "var(--app-fg-2)",
+              letterSpacing: "0.08em",
+            }}
+          >
+            {businessLabel}
+          </span>
+        )}
         <span style={{ color: "var(--app-fg-3)", fontSize: 11 }}>
           {run.status} · {run.triggered_by}
         </span>

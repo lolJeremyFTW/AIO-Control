@@ -151,6 +151,36 @@ export async function duplicateBusiness(input: {
   return { ok: true, data: { id: data.id } };
 }
 
+export async function swapBusinessOrder(input: {
+  workspace_slug: string;
+  source_id: string;
+  target_id: string;
+}): Promise<ActionResult<null>> {
+  if (input.source_id === input.target_id) return { ok: true, data: null };
+  const supabase = await createSupabaseServerClient();
+  const { data: rows } = await supabase
+    .from("businesses")
+    .select("id, sort_order")
+    .in("id", [input.source_id, input.target_id]);
+  if (!rows || rows.length !== 2) {
+    return { ok: false, error: "Businesses niet gevonden." };
+  }
+  const a = rows.find((r) => r.id === input.source_id);
+  const b = rows.find((r) => r.id === input.target_id);
+  if (!a || !b) return { ok: false, error: "Niet gevonden." };
+  await supabase
+    .from("businesses")
+    .update({ sort_order: b.sort_order })
+    .eq("id", a.id);
+  await supabase
+    .from("businesses")
+    .update({ sort_order: a.sort_order })
+    .eq("id", b.id);
+  revalidatePath(`/${input.workspace_slug}/dashboard`);
+  revalidatePath(`/${input.workspace_slug}`, "layout");
+  return { ok: true, data: null };
+}
+
 export async function archiveBusiness({
   workspace_slug,
   id,

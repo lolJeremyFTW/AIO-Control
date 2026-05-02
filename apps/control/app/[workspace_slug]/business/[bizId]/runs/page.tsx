@@ -48,6 +48,7 @@ export default async function BusinessRunsPage({ params, searchParams }: Props) 
         workspaceId={workspace.id}
         businessId={biz.id}
         agents={agents}
+        businessName={Object.fromEntries(businesses.map((b) => [b.id, b.name]))}
         statusFilter={sp.status ?? null}
         agentFilter={sp.agent ?? null}
         offset={Number(sp.offset ?? 0)}

@@ -18,6 +18,7 @@ export type BusinessRow = {
   status: "running" | "paused";
   primary_action: string | null;
   created_at: string;
+  sort_order: number;
 };
 
 export async function listBusinesses(
@@ -27,10 +28,11 @@ export async function listBusinesses(
   const { data, error } = await supabase
     .from("businesses")
     .select(
-      "id, workspace_id, name, sub, letter, variant, icon, color_hex, logo_url, status, primary_action, created_at",
+      "id, workspace_id, name, sub, letter, variant, icon, color_hex, logo_url, status, primary_action, created_at, sort_order",
     )
     .eq("workspace_id", workspaceId)
     .is("archived_at", null)
+    .order("sort_order", { ascending: true })
     .order("created_at", { ascending: true });
 
   if (error) {

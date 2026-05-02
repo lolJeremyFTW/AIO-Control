@@ -11,13 +11,17 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const businessId = url.searchParams.get("business");
+  const workspaceId = url.searchParams.get("workspace");
   const status = url.searchParams.get("status");
   const agent = url.searchParams.get("agent");
   const limit = Math.min(Number(url.searchParams.get("limit") ?? 25), 100);
   const offset = Math.max(Number(url.searchParams.get("offset") ?? 0), 0);
 
-  if (!businessId) {
-    return NextResponse.json({ error: "business required" }, { status: 400 });
+  if (!businessId && !workspaceId) {
+    return NextResponse.json(
+      { error: "business or workspace required" },
+      { status: 400 },
+    );
   }
 
   const supabase = await createSupabaseServerClient();
@@ -31,11 +35,12 @@ export async function GET(req: Request) {
   let q = supabase
     .from("runs")
     .select(
-      "id, agent_id, status, triggered_by, duration_ms, cost_cents, output, error_text, created_at",
+      "id, agent_id, business_id, status, triggered_by, duration_ms, cost_cents, output, error_text, created_at",
     )
-    .eq("business_id", businessId)
     .order("created_at", { ascending: false })
     .range(offset, offset + limit);
+  if (businessId) q = q.eq("business_id", businessId);
+  else if (workspaceId) q = q.eq("workspace_id", workspaceId);
   if (status) q = q.eq("status", status);
   if (agent) q = q.eq("agent_id", agent);
 
