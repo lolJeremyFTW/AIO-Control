@@ -15,6 +15,11 @@ const PUBLIC_PATHS = new Set<string>([
   // push UI. Must be reachable without a session.
   "/api/auth/oauth-config",
   "/api/push/key",
+  // Service worker + manifest must be reachable without auth — Chrome
+  // requires the worker URL to return 200 OK at install time.
+  "/sw.js",
+  "/manifest.json",
+  "/favicon.ico",
 ]);
 
 export async function updateSession(request: NextRequest) {
