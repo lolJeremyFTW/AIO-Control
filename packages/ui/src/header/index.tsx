@@ -5,7 +5,7 @@
 
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import {
   BellIcon,
@@ -23,15 +23,23 @@ export type Crumb = {
   showRunningDot?: boolean;
 };
 
+export type Lang = "NL" | "EN" | "DE";
+
 type Props = {
   crumb: Crumb;
-  lang?: "NL" | "EN";
-  onLangChange?: (lang: "NL" | "EN") => void;
+  lang?: Lang;
+  onLangChange?: (lang: Lang) => void;
   notifications?: number;
   weather?: { city: string; date: string; temp: string };
   avatarLetter?: string;
   /** Hamburger callback — only shown below 900px via CSS. */
   onToggleRail?: () => void;
+  /** When provided, the avatar becomes a popover trigger that renders
+   *  this node beneath itself. Click-outside dismisses. */
+  userMenu?: ReactNode;
+  /** Visible user identity in the avatar's dropdown header. */
+  userDisplayName?: string;
+  userEmail?: string;
   children?: ReactNode; // optional row 2 content
 };
 
@@ -43,9 +51,29 @@ export function Header({
   weather = { city: "Breda", date: "1 mei", temp: "14°" },
   avatarLetter = "J",
   onToggleRail,
+  userMenu,
+  userDisplayName,
+  userEmail,
   children,
 }: Props) {
   const [activeAvatar, setActiveAvatar] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Click-outside dismisses. We attach on the next tick so the click that
+  // OPENS the menu doesn't immediately count as an outside click.
+  useEffect(() => {
+    if (!activeAvatar) return;
+    const t = setTimeout(() => {
+      const onDoc = (e: MouseEvent) => {
+        if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+          setActiveAvatar(false);
+        }
+      };
+      document.addEventListener("mousedown", onDoc);
+      return () => document.removeEventListener("mousedown", onDoc);
+    }, 0);
+    return () => clearTimeout(t);
+  }, [activeAvatar]);
   return (
     <header className="hdr">
       <div className="row1">
@@ -118,27 +146,38 @@ export function Header({
           <span className="temp">{weather.temp}</span>
         </div>
         <div className="lang">
-          <button
-            className={lang === "NL" ? "active" : ""}
-            onClick={() => onLangChange?.("NL")}
-          >
-            NL
-          </button>
-          <button
-            className={lang === "EN" ? "active" : ""}
-            onClick={() => onLangChange?.("EN")}
-          >
-            EN
-          </button>
+          {(["NL", "EN", "DE"] as const).map((l) => (
+            <button
+              key={l}
+              className={lang === l ? "active" : ""}
+              onClick={() => onLangChange?.(l)}
+            >
+              {l}
+            </button>
+          ))}
         </div>
         <div className="vrule" />
-        <button
-          className={"avatar-btn " + (activeAvatar ? "is-active" : "")}
-          onClick={() => setActiveAvatar((v) => !v)}
-          aria-label="User menu"
-        >
-          {avatarLetter}
-        </button>
+        <div ref={menuRef} style={{ position: "relative" }}>
+          <button
+            className={"avatar-btn " + (activeAvatar ? "is-active" : "")}
+            onClick={() => setActiveAvatar((v) => !v)}
+            aria-label="User menu"
+            aria-expanded={activeAvatar}
+          >
+            {avatarLetter}
+          </button>
+          {activeAvatar && userMenu && (
+            <div className="user-menu" role="menu">
+              {(userDisplayName || userEmail) && (
+                <div className="who">
+                  {userDisplayName && <div className="n">{userDisplayName}</div>}
+                  {userEmail && <div className="e">{userEmail}</div>}
+                </div>
+              )}
+              {userMenu}
+            </div>
+          )}
+        </div>
       </div>
       {children && <div className="row2">{children}</div>}
     </header>

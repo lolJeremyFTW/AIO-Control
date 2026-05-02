@@ -12,6 +12,9 @@ import { Rail, type RailItem, type Topic } from "@aio/ui/rail";
 
 import type { WorkspaceListItem } from "../lib/auth/workspace";
 import type { BusinessRow } from "../lib/queries/businesses";
+import { translate, type Locale, type T } from "../lib/i18n/dict";
+import { signOutAction } from "../app/(auth)/actions";
+import { setLocale } from "../app/actions/locale";
 import { NewBusinessDialog } from "./NewBusinessDialog";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 
@@ -19,6 +22,7 @@ type Profile = {
   letter: string;
   variant: string;
   displayName: string;
+  email?: string;
 };
 
 type Workspace = {
@@ -34,15 +38,23 @@ type Props = {
   businesses: BusinessRow[];
   weather?: { city: string; date: string; temp: string };
   page?: "dashboard" | "settings" | "profile";
+  /** Active UI locale — translates client-side via the dict module. */
+  locale: Locale;
   children: ReactNode;
 };
 
-const TOPICS: Topic[] = [
-  { id: "queue", label: "Wachtrij", path: "" },
-  { id: "agents", label: "Agents", path: "/agents" },
-  { id: "schedules", label: "Schedules", path: "/schedules" },
-  { id: "integrations", label: "Integrations", path: "/integrations" },
-];
+function makeTopics(t: T): Topic[] {
+  return [
+    { id: "queue", label: t("topic.queue"), path: "" },
+    { id: "agents", label: t("topic.agents"), path: "/agents" },
+    { id: "schedules", label: t("topic.schedules"), path: "/schedules" },
+    {
+      id: "integrations",
+      label: t("topic.integrations"),
+      path: "/integrations",
+    },
+  ];
+}
 
 export function WorkspaceShell({
   profile,
@@ -51,6 +63,7 @@ export function WorkspaceShell({
   businesses,
   weather,
   page: pageProp = "dashboard",
+  locale,
   children,
 }: Props) {
   const router = useRouter();
@@ -58,6 +71,14 @@ export function WorkspaceShell({
   const [newBusinessOpen, setNewBusinessOpen] = useState(false);
   const [railOpen, setRailOpen] = useState(false);
   const closeRail = () => setRailOpen(false);
+
+  // Build a translator from the locale + the shared dict module. Memo so
+  // the function reference is stable for child components that take T.
+  const t: T = useMemo(
+    () => (key, vars) => translate(locale, key, vars),
+    [locale],
+  );
+  const TOPICS = useMemo(() => makeTopics(t), [t]);
 
   // Derive whether we're drilled into a specific business from the URL —
   // /[ws]/business/<id>/<topic?>. This is more reliable than threading
@@ -173,6 +194,43 @@ export function WorkspaceShell({
           avatarLetter={profile.letter}
           weather={weather}
           onToggleRail={() => setRailOpen(!railOpen)}
+          userDisplayName={profile.displayName}
+          userEmail={profile.email}
+          lang={locale.toUpperCase() as "NL" | "EN" | "DE"}
+          onLangChange={(next) => {
+            // Server action persists in cookie + revalidates; the page
+            // re-renders with the new dict. router.refresh forces a soft
+            // re-render on top of the action's revalidatePath.
+            void setLocale(next.toLowerCase()).then(() => router.refresh());
+          }}
+          userMenu={
+            <>
+              <button
+                role="menuitem"
+                onClick={() => router.push(`/${workspace.slug}/profile`)}
+              >
+                {t("nav.profile")}
+              </button>
+              <button
+                role="menuitem"
+                onClick={() => router.push(`/${workspace.slug}/settings`)}
+              >
+                {t("nav.settings")}
+              </button>
+              <button
+                role="menuitem"
+                onClick={() => router.push(`/${workspace.slug}/marketplace`)}
+              >
+                Marketplace
+              </button>
+              <div className="sep" />
+              <form action={signOutAction}>
+                <button type="submit" role="menuitem">
+                  {t("nav.signOut")}
+                </button>
+              </form>
+            </>
+          }
         />
 
         {workspaces.length > 1 && (
