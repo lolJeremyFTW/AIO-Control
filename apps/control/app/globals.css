@@ -990,18 +990,30 @@ a {
   }
 }
 
-/* ─── Mobile (≤900px) ────────────────────────────────────────────────────────
-   Below 900px the rail collapses entirely (becomes a slide-in drawer toggled
+/* ─── Mobile (≤800px) ────────────────────────────────────────────────────────
+   Below 800px the rail collapses entirely (becomes a slide-in drawer toggled
    by a hamburger button), the header tucks into a single thin row with the
    chrome chips wrapping below, and KPI grids + queue both fall to 1 column.
    720px-and-below is the phone tier — chat panel becomes a bottom sheet,
-   page paddings shrink, dialogs go full-bleed. */
+   page paddings shrink, dialogs go full-bleed.
+   We hide the rail with `left: -<width>` instead of `transform: translateX`
+   because Chromium reports translateX percentages on the rail as the identity
+   matrix (likely a grid-item / containing-block quirk) — the rail then ends
+   up visible on top of the main content. left-based positioning is reliable. */
 
 .rail-toggle {
   display: none;
 }
 
-@media (max-width: 900px) {
+/* The mobile drawer backdrop is hidden + out of flow on desktop. The
+   @media block below promotes it to position:fixed for use as a tap-to-
+   close scrim. Without `display: none` here it would take a grid cell on
+   desktop and push the main column out of the layout. */
+.rail-backdrop {
+  display: none;
+}
+
+@media (max-width: 800px) {
   .app-shell,
   .app-shell.is-expanded {
     grid-template-columns: 1fr;
@@ -1012,12 +1024,12 @@ a {
     position: fixed;
     z-index: 30;
     width: 240px;
-    transform: translateX(-100%);
-    transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+    left: -240px;
+    transition: left 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
     box-shadow: 12px 0 32px rgba(0, 0, 0, 0.45);
   }
   .rail.is-open {
-    transform: translateX(0);
+    left: 0;
   }
   /* The hover-expand state forces the labels visible so the drawer is
      usable without hovering on touch devices. */
@@ -1046,6 +1058,7 @@ a {
     flex-shrink: 0;
   }
   .rail-backdrop {
+    display: block;
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.45);
@@ -1112,7 +1125,7 @@ a {
   }
 }
 
-@media (max-width: 720px) {
+@media (max-width: 640px) {
   /* Header: hide the weather chip + voice button to keep row 1 compact;
      they're available again from menus once the user opens the rail. */
   .voice,
@@ -1165,7 +1178,7 @@ a {
   z-index: 10;
   overflow: hidden;
 }
-@media (max-width: 720px) {
+@media (max-width: 640px) {
   .chat-sheet {
     inset: auto 0 0 0;
     width: 100vw;
@@ -1175,7 +1188,7 @@ a {
 }
 
 /* Dialogs: use the full width on phones, give them headroom. */
-@media (max-width: 720px) {
+@media (max-width: 640px) {
   dialog {
     width: calc(100vw - 16px) !important;
     max-width: none !important;

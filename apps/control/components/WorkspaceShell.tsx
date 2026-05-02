@@ -126,7 +126,7 @@ export function WorkspaceShell({
           notifications={0}
           avatarLetter={profile.letter}
           weather={weather}
-          onToggleRail={() => setRailOpen((v) => !v)}
+          onToggleRail={() => setRailOpen(!railOpen)}
         />
 
         {workspaces.length > 1 && (
