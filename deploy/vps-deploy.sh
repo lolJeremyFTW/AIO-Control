@@ -38,8 +38,12 @@ build_and_stage() {
   echo "▸ Building ($label, BASE_PATH='${base_path}', commit ${GIT_COMMIT_SHA:0:8})"
 
   # Wipe the prior build so basePath flips don't leak between builds.
+  # Turborepo also caches by file-hash AND a strict env-var allowlist —
+  # since BASE_PATH isn't tracked in turbo.json, the second build was
+  # replaying the first build's cached output (with the wrong basePath
+  # baked in). --force skips the cache and reruns Next every time.
   rm -rf "$APP/.next"
-  BASE_PATH="$base_path" pnpm build
+  BASE_PATH="$base_path" pnpm exec turbo run build --force --filter=@aio/control
 
   # Stage the standalone bundle. Standalone produces apps/control under
   # the .next/standalone tree because we're in a monorepo — preserve that.
