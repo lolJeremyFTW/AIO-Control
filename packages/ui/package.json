@@ -6,7 +6,8 @@
     "./rail": "./src/rail/index.tsx",
     "./rail/Node": "./src/rail/Node.tsx",
     "./header": "./src/header/index.tsx",
-    "./icon": "./src/icon/index.tsx"
+    "./icon": "./src/icon/index.tsx",
+    "./context-menu": "./src/context-menu/index.tsx"
   },
   "scripts": {
     "lint": "eslint . --max-warnings 0",

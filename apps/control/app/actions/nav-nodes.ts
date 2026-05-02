@@ -55,6 +55,49 @@ export async function createNavNode(input: {
   return { ok: true, data: { id: data.id } };
 }
 
+export async function updateNavNode(input: {
+  workspace_slug: string;
+  business_id: string;
+  id: string;
+  patch: {
+    name?: string;
+    variant?: string;
+    icon?: string | null;
+    href?: string | null;
+  };
+}): Promise<ActionResult<null>> {
+  const patch: Record<string, unknown> = {};
+  if (input.patch.name !== undefined) {
+    const trimmed = input.patch.name.trim();
+    if (!trimmed) return { ok: false, error: "Naam mag niet leeg zijn." };
+    patch.name = trimmed;
+    patch.letter = (input.patch.icon ?? trimmed).slice(0, 1).toUpperCase();
+  }
+  if (input.patch.variant !== undefined) {
+    if ((ALL_VARIANTS as readonly string[]).includes(input.patch.variant)) {
+      patch.variant = input.patch.variant;
+    }
+  }
+  if (input.patch.icon !== undefined)
+    patch.icon = input.patch.icon?.toString().trim() || null;
+  if (input.patch.href !== undefined)
+    patch.href = input.patch.href?.toString().trim() || null;
+
+  if (Object.keys(patch).length === 0) return { ok: true, data: null };
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase
+    .from("nav_nodes")
+    .update(patch)
+    .eq("id", input.id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath(
+    `/${input.workspace_slug}/business/${input.business_id}`,
+    "layout",
+  );
+  return { ok: true, data: null };
+}
+
 export async function archiveNavNode(input: {
   workspace_slug: string;
   business_id: string;

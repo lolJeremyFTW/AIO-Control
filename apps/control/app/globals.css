@@ -1325,3 +1325,137 @@ a {
     margin: auto 8px !important;
   }
 }
+
+/* ─── Rail pin/unpin chevron ────────────────────────────────────────
+   Small button on the right edge of the rail that toggles the
+   hover-expand behaviour. When `is-locked` is set on .rail, the rail
+   stops responding to hover (stays narrow). Hidden on mobile — the
+   rail there is a slide-out drawer, not a hover-expand. */
+.rail {
+  position: relative;
+}
+.rail-pin {
+  position: absolute;
+  right: -10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 36px;
+  border: 1.5px solid var(--app-border);
+  background: var(--app-card);
+  color: var(--app-fg-2);
+  border-radius: 6px;
+  cursor: pointer;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  opacity: 0.55;
+  transition:
+    opacity 0.18s ease,
+    color 0.18s ease,
+    border-color 0.18s ease,
+    background 0.18s ease;
+}
+.rail:hover .rail-pin,
+.rail.is-locked .rail-pin {
+  opacity: 1;
+}
+.rail-pin:hover {
+  color: var(--tt-green);
+  border-color: var(--tt-green);
+  background: rgba(57, 178, 85, 0.1);
+}
+.rail.is-locked .rail-pin {
+  color: var(--tt-green);
+  border-color: var(--tt-green);
+}
+@media (max-width: 800px) {
+  /* On mobile the rail is a slide-out drawer; the pin doesn't make
+     sense and would clip outside the drawer edge. */
+  .rail-pin {
+    display: none;
+  }
+}
+
+/* ─── Custom right-click context menu ──────────────────────────────
+   Floating panel positioned at the cursor by JS; CSS just styles the
+   chrome. Items are buttons so keyboard navigation Just Works. */
+.ctx-menu {
+  min-width: 200px;
+  max-width: 280px;
+  background: var(--app-card);
+  border: 1.5px solid var(--app-border);
+  border-radius: 10px;
+  box-shadow: 0 18px 50px -12px rgba(0, 0, 0, 0.55);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  font-family: var(--type);
+  color: var(--app-fg);
+  /* Brief scale-in so it doesn't pop. */
+  animation: ctx-in 0.12s ease-out;
+}
+@keyframes ctx-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.ctx-item {
+  all: unset;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--app-fg);
+  user-select: none;
+  line-height: 1.2;
+}
+.ctx-item:hover:not(.is-disabled) {
+  background: var(--app-card-2);
+}
+.ctx-item:focus-visible {
+  outline: 2px solid var(--tt-green);
+  outline-offset: -2px;
+}
+.ctx-item.is-danger {
+  color: var(--rose);
+}
+.ctx-item.is-danger:hover:not(.is-disabled) {
+  background: rgba(230, 82, 107, 0.1);
+}
+.ctx-item.is-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.ctx-item .ctx-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--app-fg-3);
+}
+.ctx-item .ctx-label {
+  flex: 1;
+}
+.ctx-item .ctx-shortcut {
+  font-size: 11px;
+  color: var(--app-fg-3);
+  margin-left: 12px;
+}
+.ctx-sep {
+  height: 1px;
+  background: var(--app-border-2);
+  margin: 4px 6px;
+}

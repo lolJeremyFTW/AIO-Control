@@ -7,16 +7,26 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState, type ReactNode } from "react";
 
+import { ContextMenu, type ContextMenuItem } from "@aio/ui/context-menu";
 import { Header } from "@aio/ui/header";
-import { Rail, type RailItem, type Topic } from "@aio/ui/rail";
+import {
+  Rail,
+  type ContextMenuOrigin,
+  type RailItem,
+  type Topic,
+} from "@aio/ui/rail";
 
 import type { WorkspaceListItem } from "../lib/auth/workspace";
 import type { BusinessRow } from "../lib/queries/businesses";
 import type { NavNode } from "../lib/queries/nav-nodes";
 import { translate, type Locale, type T } from "../lib/i18n/dict";
 import { signOutAction } from "../app/(auth)/actions";
+import { archiveBusiness } from "../app/actions/businesses";
+import { archiveNavNode } from "../app/actions/nav-nodes";
 import { setLocale } from "../app/actions/locale";
+import { EditNodeDialog, type EditTarget } from "./EditNodeDialog";
 import { NewBusinessDialog } from "./NewBusinessDialog";
+import { NewNavNodeDialog } from "./NewNavNodeDialog";
 import { NotificationsBell } from "./NotificationsBell";
 import { SearchModal } from "./SearchModal";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
@@ -78,6 +88,20 @@ export function WorkspaceShell({
   const [newBusinessOpen, setNewBusinessOpen] = useState(false);
   const [railOpen, setRailOpen] = useState(false);
   const closeRail = () => setRailOpen(false);
+
+  // Right-click context menu state. `menu` carries the cursor coords +
+  // which kind of row was clicked. `editing` opens the EditNodeDialog
+  // and `creatingChildOf` opens NewNavNodeDialog with a parent_id.
+  const [menu, setMenu] = useState<
+    | { x: number; y: number; origin: ContextMenuOrigin }
+    | null
+  >(null);
+  const [editing, setEditing] = useState<EditTarget | null>(null);
+  const [creatingChildOf, setCreatingChildOf] = useState<{
+    businessId: string;
+    parentId: string | null;
+    title: string;
+  } | null>(null);
 
   // Build a translator from the locale + the shared dict module. Memo so
   // the function reference is stable for child components that take T.
@@ -188,6 +212,156 @@ export function WorkspaceShell({
       }
     : null;
 
+  // Build the right-click menu items based on which row the user
+  // clicked. The Rail surfaces (x, y) + a typed origin descriptor; we
+  // turn that into a list of actions specific to that row.
+  const buildMenuItems = (origin: ContextMenuOrigin): ContextMenuItem[] => {
+    if (origin.kind === "rail-bg") {
+      return [
+        {
+          label: "Nieuwe business",
+          icon: <span style={{ fontWeight: 700 }}>+</span>,
+          onClick: () => setNewBusinessOpen(true),
+        },
+      ];
+    }
+    if (origin.kind === "business" || origin.kind === "drilled-business") {
+      const biz = businesses.find((b) => b.id === origin.id);
+      if (!biz) return [];
+      return [
+        {
+          label: "Open",
+          onClick: () =>
+            router.push(`/${workspace.slug}/business/${biz.id}`),
+        },
+        {
+          label: "Nieuw topic",
+          onClick: () =>
+            setCreatingChildOf({
+              businessId: biz.id,
+              parentId: null,
+              title: `Nieuw topic in ${biz.name}`,
+            }),
+        },
+        { kind: "separator" },
+        {
+          label: "Instellingen…",
+          onClick: () =>
+            setEditing({
+              kind: "business",
+              id: biz.id,
+              name: biz.name,
+              sub: biz.sub,
+              variant: biz.variant,
+              icon: biz.icon,
+            }),
+        },
+        { kind: "separator" },
+        {
+          label: "Archiveer",
+          danger: true,
+          onClick: async () => {
+            if (
+              !confirm(
+                `Weet je zeker dat je "${biz.name}" wilt archiveren?`,
+              )
+            )
+              return;
+            const res = await archiveBusiness({
+              workspace_slug: workspace.slug,
+              id: biz.id,
+            });
+            if (res.ok) {
+              router.refresh();
+              if (drilledBiz?.biz.id === biz.id) {
+                router.push(`/${workspace.slug}/dashboard`);
+              }
+            } else {
+              alert(res.error);
+            }
+          },
+        },
+      ];
+    }
+    if (origin.kind === "topic") {
+      // Topics that are nav_nodes are editable; the built-in fallback
+      // tabs (queue/agents/...) are not — we filter those out.
+      const node = navNodes.find((n) => n.id === origin.id);
+      if (!node || !drilledBiz) {
+        return [
+          {
+            label: "Open",
+            onClick: () => {
+              const t = railTopics.find((x) => x.id === origin.id);
+              if (t && drilledBiz) {
+                router.push(
+                  `/${workspace.slug}/business/${drilledBiz.biz.id}${t.path}`,
+                );
+              }
+            },
+          },
+        ];
+      }
+      // Build the path to this node so "Open" navigates correctly.
+      const idx = drilledBiz.navPath.indexOf(node.id);
+      const pathSegments =
+        idx >= 0
+          ? drilledBiz.navPath.slice(0, idx + 1)
+          : [...drilledBiz.navPath, node.id];
+      return [
+        {
+          label: "Open",
+          onClick: () =>
+            router.push(
+              `/${workspace.slug}/business/${drilledBiz.biz.id}/n/${pathSegments.join("/")}`,
+            ),
+        },
+        {
+          label: "Nieuw subtopic",
+          onClick: () =>
+            setCreatingChildOf({
+              businessId: drilledBiz.biz.id,
+              parentId: node.id,
+              title: `Nieuw subtopic in ${node.name}`,
+            }),
+        },
+        { kind: "separator" },
+        {
+          label: "Instellingen…",
+          onClick: () =>
+            setEditing({
+              kind: "navnode",
+              id: node.id,
+              business_id: drilledBiz.biz.id,
+              name: node.name,
+              variant: node.variant ?? "slate",
+              icon: node.icon,
+              href: node.href,
+            }),
+        },
+        { kind: "separator" },
+        {
+          label: "Archiveer",
+          danger: true,
+          onClick: async () => {
+            if (!confirm(`Topic "${node.name}" archiveren?`)) return;
+            const res = await archiveNavNode({
+              workspace_slug: workspace.slug,
+              business_id: drilledBiz.biz.id,
+              id: node.id,
+            });
+            if (res.ok) {
+              router.refresh();
+            } else {
+              alert(res.error);
+            }
+          },
+        },
+      ];
+    }
+    return [];
+  };
+
   return (
     <div className="app-shell">
       <Rail
@@ -238,6 +412,9 @@ export function WorkspaceShell({
         onSelectBusiness={(id) => {
           closeRail();
           router.push(`/${workspace.slug}/business/${id}`);
+        }}
+        onContextMenuRail={(e, origin) => {
+          setMenu({ x: e.clientX, y: e.clientY, origin });
         }}
       />
 
@@ -331,6 +508,31 @@ export function WorkspaceShell({
           onClose={() => setNewBusinessOpen(false)}
         />
       )}
+
+      {editing && (
+        <EditNodeDialog
+          workspaceSlug={workspace.slug}
+          target={editing}
+          onClose={() => setEditing(null)}
+        />
+      )}
+
+      {creatingChildOf && (
+        <NewNavNodeDialog
+          workspaceSlug={workspace.slug}
+          workspaceId={workspace.id}
+          businessId={creatingChildOf.businessId}
+          parentId={creatingChildOf.parentId}
+          title={creatingChildOf.title}
+          onClose={() => setCreatingChildOf(null)}
+        />
+      )}
+
+      <ContextMenu
+        position={menu ? { x: menu.x, y: menu.y } : null}
+        items={menu ? buildMenuItems(menu.origin) : []}
+        onClose={() => setMenu(null)}
+      />
 
       {/* Mounted once at the shell level — listens for ⌘/Ctrl+K and clicks
           on the header's .search element to open the cross-table search. */}

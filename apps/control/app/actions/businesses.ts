@@ -53,6 +53,42 @@ export async function createBusiness(
   return { ok: true, data: { id: data.id } };
 }
 
+export async function updateBusiness(input: {
+  workspace_slug: string;
+  id: string;
+  patch: {
+    name?: string;
+    sub?: string | null;
+    variant?: string;
+    icon?: string | null;
+  };
+}): Promise<ActionResult<null>> {
+  const patch: Record<string, unknown> = {};
+  if (input.patch.name !== undefined) {
+    const trimmed = input.patch.name.trim();
+    if (!trimmed) return { ok: false, error: "Naam mag niet leeg zijn." };
+    patch.name = trimmed;
+    patch.letter = trimmed.slice(0, 1).toUpperCase();
+  }
+  if (input.patch.sub !== undefined)
+    patch.sub = input.patch.sub?.toString().trim() || null;
+  if (input.patch.variant !== undefined) patch.variant = input.patch.variant;
+  if (input.patch.icon !== undefined)
+    patch.icon = input.patch.icon?.toString().trim() || null;
+
+  if (Object.keys(patch).length === 0) return { ok: true, data: null };
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase
+    .from("businesses")
+    .update(patch)
+    .eq("id", input.id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath(`/${input.workspace_slug}/dashboard`);
+  revalidatePath(`/${input.workspace_slug}/business/${input.id}`, "layout");
+  return { ok: true, data: null };
+}
+
 export async function archiveBusiness({
   workspace_slug,
   id,

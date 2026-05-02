@@ -12,10 +12,21 @@
 
 "use client";
 
-import { useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+} from "react";
 
 import { PlusIcon, SettingsIcon } from "../icon";
 import { Node, type NodeVariant } from "./Node";
+
+export type ContextMenuOrigin =
+  | { kind: "rail-bg" }
+  | { kind: "business"; id: string }
+  | { kind: "drilled-business"; id: string }
+  | { kind: "topic"; id: string };
 
 export type RailItem = {
   id: string;
@@ -57,6 +68,11 @@ type Props = {
   onCreateBusiness?: () => void;
   onOpenSettings?: () => void;
   page?: "dashboard" | "settings" | "profile";
+  /** Right-click handlers — surface a custom context menu in the shell. */
+  onContextMenuRail?: (
+    e: ReactMouseEvent,
+    origin: ContextMenuOrigin,
+  ) => void;
 };
 
 export function Rail({
@@ -76,9 +92,38 @@ export function Rail({
   onCreateBusiness,
   onOpenSettings,
   page = "dashboard",
+  onContextMenuRail,
 }: Props) {
   const [hover, setHover] = useState(false);
-  const expanded = (expandOnHover && hover) || mobileOpen;
+
+  // "Pin" toggle — when locked, the rail ignores hover so it stays
+  // narrow. State persists in localStorage so each user keeps their
+  // preference across reloads.
+  const [hoverLocked, setHoverLocked] = useState(false);
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem("aio:rail-hover-locked");
+      if (v === "1") setHoverLocked(true);
+    } catch {
+      /* SSR or no storage */
+    }
+  }, []);
+  const toggleHoverLock = () => {
+    setHoverLocked((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("aio:rail-hover-locked", next ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      // Drop hover state immediately so the rail snaps shut on lock.
+      if (next) setHover(false);
+      return next;
+    });
+  };
+
+  const expanded =
+    (expandOnHover && !hoverLocked && hover) || mobileOpen;
 
   const topMode = !drilledInto;
 
@@ -87,14 +132,63 @@ export function Rail({
       className={
         "rail " +
         (expanded ? "is-expanded " : "") +
+        (hoverLocked ? "is-locked " : "") +
         (mobileOpen ? "is-open" : "")
       }
-      onMouseEnter={() => expandOnHover && setHover(true)}
+      onMouseEnter={() => expandOnHover && !hoverLocked && setHover(true)}
       onMouseLeave={() => setHover(false)}
       onClick={() => {
         if (mobileOpen && onMobileClose) onMobileClose();
       }}
+      onContextMenu={(e) => {
+        // Background right-click — only fire if it bubbled up untouched
+        // (rows stop propagation themselves).
+        if (e.currentTarget === e.target && onContextMenuRail) {
+          e.preventDefault();
+          onContextMenuRail(e, { kind: "rail-bg" });
+        }
+      }}
     >
+      {/* Pin / unpin chevron on the right edge. Click to lock the rail
+          collapsed (no hover-expand), click again to release. */}
+      <button
+        type="button"
+        className="rail-pin"
+        aria-label={
+          hoverLocked
+            ? "Hover-expand inschakelen"
+            : "Hover-expand uitschakelen"
+        }
+        aria-pressed={hoverLocked}
+        title={
+          hoverLocked
+            ? "Hover-expand staat uit — klik om aan te zetten"
+            : "Klik om de rail vast te zetten (hover-expand uit)"
+        }
+        onClick={(e) => {
+          e.stopPropagation();
+          toggleHoverLock();
+        }}
+      >
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          // Chevron points right when locked (click to expand-on-hover
+          // again), left when unlocked (click to lock collapsed).
+          style={{
+            transform: hoverLocked ? "rotate(0)" : "rotate(180deg)",
+            transition: "transform 0.2s ease",
+          }}
+        >
+          <polyline points="9 18 15 12 9 6" />
+        </svg>
+      </button>
       <div className="rail-top">
         {topMode ? (
           <NavRow
@@ -126,6 +220,11 @@ export function Rail({
                 expanded={expanded}
                 selected={selectedBusinessId === b.id}
                 onClick={() => onSelectBusiness?.(b.id)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onContextMenuRail?.(e, { kind: "business", id: b.id });
+                }}
               />
             ))
           )
@@ -135,7 +234,19 @@ export function Rail({
                 the topics list. The header chip uses the business's
                 colour so the user always sees which context they're in. */}
             <div style={{ marginBottom: 8 }}>
-              <NavRow item={drilledInto!} expanded={expanded} selected />
+              <NavRow
+                item={drilledInto!}
+                expanded={expanded}
+                selected
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onContextMenuRail?.(e, {
+                    kind: "drilled-business",
+                    id: drilledInto!.id,
+                  });
+                }}
+              />
             </div>
             {topics.map((t) => (
               <TopicRow
@@ -144,6 +255,11 @@ export function Rail({
                 expanded={expanded}
                 selected={selectedTopicId === t.id}
                 onClick={() => onSelectTopic?.(t)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onContextMenuRail?.(e, { kind: "topic", id: t.id });
+                }}
               />
             ))}
           </>
@@ -174,13 +290,21 @@ type NavRowProps = {
   selected?: boolean;
   expanded: boolean;
   onClick?: () => void;
+  onContextMenu?: (e: ReactMouseEvent) => void;
 };
 
-function NavRow({ item, selected, expanded, onClick }: NavRowProps) {
+function NavRow({
+  item,
+  selected,
+  expanded,
+  onClick,
+  onContextMenu,
+}: NavRowProps) {
   return (
     <div
       className={"nav-row " + (selected ? "selected" : "")}
       onClick={onClick}
+      onContextMenu={onContextMenu}
       role="button"
       tabIndex={0}
     >
@@ -212,9 +336,16 @@ type TopicRowProps = {
   selected: boolean;
   expanded: boolean;
   onClick?: () => void;
+  onContextMenu?: (e: ReactMouseEvent) => void;
 };
 
-function TopicRow({ topic, selected, expanded, onClick }: TopicRowProps) {
+function TopicRow({
+  topic,
+  selected,
+  expanded,
+  onClick,
+  onContextMenu,
+}: TopicRowProps) {
   // Topics use a simpler glyph — a small dashed circle with the first
   // letter — and the same selected ring as businesses, so the brand-green
   // glow consistently signals "currently active".
@@ -223,6 +354,7 @@ function TopicRow({ topic, selected, expanded, onClick }: TopicRowProps) {
     <div
       className={"nav-row " + (selected ? "selected" : "")}
       onClick={onClick}
+      onContextMenu={onContextMenu}
       role="button"
       tabIndex={0}
     >
