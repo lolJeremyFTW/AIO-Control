@@ -287,6 +287,9 @@ export function WorkspaceShell({
               icon: biz.icon,
               color_hex: biz.color_hex,
               logo_url: biz.logo_url,
+              status: biz.status,
+              daily_spend_limit_cents: biz.daily_spend_limit_cents,
+              monthly_spend_limit_cents: biz.monthly_spend_limit_cents,
             }),
         },
         {
@@ -639,6 +642,12 @@ export function WorkspaceShell({
                 onClick={() => router.push(`/${workspace.slug}/runs`)}
               >
                 Runs
+              </button>
+              <button
+                role="menuitem"
+                onClick={() => router.push(`/${workspace.slug}/activity`)}
+              >
+                Activity
               </button>
               <button
                 role="menuitem"

@@ -20,6 +20,7 @@
 
 import { NextResponse } from "next/server";
 
+import { dispatchTelegramCallback } from "../../../../../lib/notify/telegram-callbacks";
 import { dispatchTelegramCommand } from "../../../../../lib/notify/telegram-commands";
 import { getServiceRoleSupabase } from "../../../../../lib/supabase/service";
 
@@ -43,11 +44,19 @@ type TelegramMessage = {
   message_thread_id?: number;
   date: number;
 };
+type TelegramCallback = {
+  id: string;
+  from: TelegramUser;
+  message?: TelegramMessage;
+  data?: string;
+  chat_instance?: string;
+};
 type TelegramUpdate = {
   update_id: number;
   message?: TelegramMessage;
   edited_message?: TelegramMessage;
   channel_post?: TelegramMessage;
+  callback_query?: TelegramCallback;
 };
 
 export async function POST(req: Request) {
@@ -62,6 +71,17 @@ export async function POST(req: Request) {
 
   const update = (await req.json().catch(() => null)) as TelegramUpdate | null;
   if (!update) return NextResponse.json({ ok: true });
+
+  // Inline-keyboard button click. Same allow/deny rules as messages,
+  // but the action is a structured callback_data string we routed
+  // ourselves (e.g. "run_again:<agent_id>"). Don't await — Telegram
+  // expects a quick 200 + answerCallbackQuery to acknowledge.
+  if (update.callback_query) {
+    void dispatchTelegramCallback(update.callback_query).catch((err) => {
+      console.error("dispatchTelegramCallback failed", err);
+    });
+    return NextResponse.json({ ok: true });
+  }
 
   const msg = update.message ?? update.edited_message ?? update.channel_post;
   if (!msg) return NextResponse.json({ ok: true });

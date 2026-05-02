@@ -33,8 +33,14 @@ export async function sendTelegram(opts: {
    *  and *bold* render — but the caller MUST escape any reserved
    *  characters or pre-format the text. */
   parse_mode?: "MarkdownV2" | "HTML" | "Markdown";
-  /** Optional inline buttons. Each row is an array of buttons. */
-  buttons?: { text: string; url: string }[][];
+  /** Optional inline buttons. Each row is an array of buttons. A
+   *  button is either a URL deep-link or a callback (server-side
+   *  action via the inbound webhook). */
+  buttons?: {
+    text: string;
+    url?: string;
+    callback_data?: string;
+  }[][];
 }): Promise<{ ok: boolean; error?: string }> {
   if (!opts.target.enabled) return { ok: false, error: "target_disabled" };
 

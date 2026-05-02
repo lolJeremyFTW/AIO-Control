@@ -25,6 +25,9 @@ export type EditTarget =
       icon: string | null;
       color_hex: string | null;
       logo_url: string | null;
+      daily_spend_limit_cents?: number | null;
+      monthly_spend_limit_cents?: number | null;
+      status?: "running" | "paused";
     }
   | {
       kind: "navnode";
@@ -60,6 +63,19 @@ export function EditNodeDialog({ workspaceSlug, target, onClose }: Props) {
     colorHex: target.color_hex,
     logoUrl: target.logo_url,
   });
+  const [dailyEur, setDailyEur] = useState(
+    target.kind === "business" && target.daily_spend_limit_cents != null
+      ? (target.daily_spend_limit_cents / 100).toFixed(2)
+      : "",
+  );
+  const [monthlyEur, setMonthlyEur] = useState(
+    target.kind === "business" && target.monthly_spend_limit_cents != null
+      ? (target.monthly_spend_limit_cents / 100).toFixed(2)
+      : "",
+  );
+  const [bizStatus, setBizStatus] = useState<"running" | "paused">(
+    target.kind === "business" ? (target.status ?? "running") : "running",
+  );
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const router = useRouter();
@@ -83,6 +99,9 @@ export function EditNodeDialog({ workspaceSlug, target, onClose }: Props) {
           icon: appearance.icon || null,
           color_hex: appearance.colorHex,
           logo_url: appearance.logoUrl,
+          daily_spend_limit_cents: parseEur(dailyEur),
+          monthly_spend_limit_cents: parseEur(monthlyEur),
+          status: bizStatus,
         },
       });
     } else {
@@ -195,6 +214,71 @@ export function EditNodeDialog({ workspaceSlug, target, onClose }: Props) {
           workspaceId={target.workspace_id}
         />
 
+        {target.kind === "business" && (
+          <div
+            style={{
+              border: "1.5px solid var(--app-border-2)",
+              borderRadius: 12,
+              padding: 12,
+              background: "var(--app-card-2)",
+              marginBottom: 12,
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+            }}
+          >
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--app-fg-2)" }}>
+              Spend overrides (deze business)
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <Field label="Dag-cap (€, leeg = workspace default)">
+                <input
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  value={dailyEur}
+                  onChange={(e) => setDailyEur(e.target.value)}
+                  placeholder="bijv. 2.00"
+                  style={inputStyle}
+                />
+              </Field>
+              <Field label="Maand-cap (€)">
+                <input
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  value={monthlyEur}
+                  onChange={(e) => setMonthlyEur(e.target.value)}
+                  placeholder="bijv. 50.00"
+                  style={inputStyle}
+                />
+              </Field>
+            </div>
+            <label
+              style={{
+                display: "flex",
+                gap: 8,
+                alignItems: "center",
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={bizStatus === "running"}
+                onChange={(e) =>
+                  setBizStatus(e.target.checked ? "running" : "paused")
+                }
+                style={{ accentColor: "var(--tt-green)" }}
+              />
+              {bizStatus === "running"
+                ? "Business is actief — agents mogen runnen"
+                : "Business is gepauzeerd — geen runs"}
+            </label>
+          </div>
+        )}
+
         {error && (
           <p
             role="alert"
@@ -269,6 +353,13 @@ const inputStyle: React.CSSProperties = {
   fontFamily: "var(--type)",
   fontSize: 13.5,
 };
+
+function parseEur(text: string): number | null {
+  if (!text.trim()) return null;
+  const n = Number(text);
+  if (Number.isNaN(n) || n < 0) return null;
+  return Math.round(n * 100);
+}
 
 function Field({
   label,

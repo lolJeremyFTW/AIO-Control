@@ -120,31 +120,32 @@ async function fireTelegram(
   if (event === "failed" && !target.send_run_fail) return false;
 
   const text = formatRunMessage(run, agent, event);
-  // Build deep-links into AIO Control for the report. Origin comes
-  // from NEXT_PUBLIC_TRIGGER_ORIGIN (set per deployment).
+  // Build deep-links + actionable buttons. URL buttons just open AIO
+  // Control; callback_data buttons trigger a server-side action via
+  // /api/integrations/telegram/webhook. We mix both kinds.
   const origin = process.env.NEXT_PUBLIC_TRIGGER_ORIGIN ?? "";
-  const buttons: { text: string; url: string }[][] = [];
-  if (origin) {
-    const row1: { text: string; url: string }[] = [];
-    if (run.business_id) {
-      row1.push({
-        text: "📊 Open business",
-        url: `${origin}/${await workspaceSlug(supabase, run.workspace_id)}/business/${run.business_id}`,
-      });
-    }
-    if (agent?.id && run.business_id) {
-      row1.push({
-        text: "🤖 Agent",
-        url: `${origin}/${await workspaceSlug(supabase, run.workspace_id)}/business/${run.business_id}/agents`,
-      });
-    }
-    if (row1.length > 0) buttons.push(row1);
+  const buttons: { text: string; url?: string; callback_data?: string }[][] = [];
+  const slug = origin ? await workspaceSlug(supabase, run.workspace_id) : "";
+
+  // Row 1: action buttons (callback) — only when we have an agent so
+  // "Run again" actually does something.
+  if (agent?.id) {
     buttons.push([
-      {
-        text: "📜 Alle runs",
-        url: `${origin}/${await workspaceSlug(supabase, run.workspace_id)}/runs`,
-      },
+      { text: "🔁 Run again", callback_data: `run_again:${agent.id}` },
     ]);
+  }
+
+  // Row 2 / 3: deep-link buttons (URL)
+  if (origin && slug) {
+    const links: { text: string; url: string }[] = [];
+    if (run.business_id) {
+      links.push({
+        text: "📊 Business",
+        url: `${origin}/${slug}/business/${run.business_id}`,
+      });
+    }
+    links.push({ text: "📜 Runs", url: `${origin}/${slug}/runs` });
+    buttons.push(links);
   }
 
   const res = await sendTelegram({

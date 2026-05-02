@@ -10,13 +10,16 @@ import {
 } from "../../../lib/auth/workspace";
 import { CreateFirstBusinessHint } from "../../../components/CreateFirstBusinessHint";
 import { BusinessKpiGrid } from "../../../components/BusinessKpiGrid";
+import { OnboardingWizard } from "../../../components/OnboardingWizard";
 import { QueueGrid } from "../../../components/QueueGrid";
+import { listAgentsForWorkspace } from "../../../lib/queries/agents";
 import {
   listBusinesses,
   listKpisForWorkspace,
   listOpenQueueItems,
   summarizeKpis,
 } from "../../../lib/queries/businesses";
+import { createSupabaseServerClient } from "../../../lib/supabase/server";
 import { redirect } from "next/navigation";
 
 type Props = {
@@ -31,11 +34,18 @@ export default async function WorkspaceDashboardPage({ params }: Props) {
   const workspace = await getWorkspaceBySlug(workspace_slug);
   if (!workspace) redirect("/login");
 
-  const [businesses, queue, kpis] = await Promise.all([
-    listBusinesses(workspace.id),
-    listOpenQueueItems(workspace.id, undefined, 12),
-    listKpisForWorkspace(workspace.id),
-  ]);
+  const supabase = await createSupabaseServerClient();
+  const [businesses, queue, kpis, agents, { count: keyCount }] =
+    await Promise.all([
+      listBusinesses(workspace.id),
+      listOpenQueueItems(workspace.id, undefined, 12),
+      listKpisForWorkspace(workspace.id),
+      listAgentsForWorkspace(workspace.id),
+      supabase
+        .from("api_keys_metadata")
+        .select("id", { count: "exact", head: true })
+        .eq("workspace_id", workspace.id),
+    ]);
 
   const summaries = summarizeKpis(
     kpis,
@@ -48,6 +58,14 @@ export default async function WorkspaceDashboardPage({ params }: Props) {
         <h1>{workspace.name} — overzicht</h1>
         <span className="sub">Marge per business · auto + HITL</span>
       </div>
+
+      <OnboardingWizard
+        workspaceSlug={workspace.slug}
+        workspaceId={workspace.id}
+        businesses={businesses}
+        hasAnyApiKey={(keyCount ?? 0) > 0}
+        agentCount={agents.length}
+      />
 
       {businesses.length > 0 && (
         <BusinessKpiGrid

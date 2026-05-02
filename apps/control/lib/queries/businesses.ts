@@ -19,6 +19,8 @@ export type BusinessRow = {
   primary_action: string | null;
   created_at: string;
   sort_order: number;
+  daily_spend_limit_cents: number | null;
+  monthly_spend_limit_cents: number | null;
 };
 
 export async function listBusinesses(
@@ -28,7 +30,7 @@ export async function listBusinesses(
   const { data, error } = await supabase
     .from("businesses")
     .select(
-      "id, workspace_id, name, sub, letter, variant, icon, color_hex, logo_url, status, primary_action, created_at, sort_order",
+      "id, workspace_id, name, sub, letter, variant, icon, color_hex, logo_url, status, primary_action, created_at, sort_order, daily_spend_limit_cents, monthly_spend_limit_cents",
     )
     .eq("workspace_id", workspaceId)
     .is("archived_at", null)
