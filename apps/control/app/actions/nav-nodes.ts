@@ -12,6 +12,8 @@ import { createSupabaseServerClient } from "../../lib/supabase/server";
 
 export type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
+const HEX_RE = /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
+
 export async function createNavNode(input: {
   workspace_slug: string;
   workspace_id: string;
@@ -21,6 +23,8 @@ export async function createNavNode(input: {
   variant?: string;
   icon?: string;
   href?: string;
+  color_hex?: string | null;
+  logo_url?: string | null;
 }): Promise<ActionResult<{ id: string }>> {
   if (!input.name.trim())
     return { ok: false, error: "Naam mag niet leeg zijn." };
@@ -29,6 +33,10 @@ export async function createNavNode(input: {
       ? input.variant
       : "slate";
   const letter = (input.icon ?? input.name).trim().slice(0, 1).toUpperCase();
+  const colorHex =
+    input.color_hex && HEX_RE.test(input.color_hex)
+      ? input.color_hex.toLowerCase()
+      : null;
 
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
@@ -41,6 +49,8 @@ export async function createNavNode(input: {
       letter,
       variant,
       icon: input.icon?.trim() || null,
+      color_hex: colorHex,
+      logo_url: input.logo_url?.trim() || null,
       href: input.href?.trim() || null,
     })
     .select("id")
@@ -64,6 +74,8 @@ export async function updateNavNode(input: {
     variant?: string;
     icon?: string | null;
     href?: string | null;
+    color_hex?: string | null;
+    logo_url?: string | null;
   };
 }): Promise<ActionResult<null>> {
   const patch: Record<string, unknown> = {};
@@ -82,6 +94,14 @@ export async function updateNavNode(input: {
     patch.icon = input.patch.icon?.toString().trim() || null;
   if (input.patch.href !== undefined)
     patch.href = input.patch.href?.toString().trim() || null;
+  if (input.patch.color_hex !== undefined) {
+    const v = input.patch.color_hex;
+    if (v === null || v === "") patch.color_hex = null;
+    else if (HEX_RE.test(v)) patch.color_hex = v.toLowerCase();
+    else return { ok: false, error: "Ongeldige hex (gebruik #rgb of #rrggbb)." };
+  }
+  if (input.patch.logo_url !== undefined)
+    patch.logo_url = input.patch.logo_url?.toString().trim() || null;
 
   if (Object.keys(patch).length === 0) return { ok: true, data: null };
 

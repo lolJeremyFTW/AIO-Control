@@ -7,18 +7,14 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
-import { ALL_VARIANTS } from "@aio/ui/rail/Node";
-
 import { createBusiness } from "../app/actions/businesses";
+import { AppearancePicker, type AppearanceValue } from "./AppearancePicker";
 
 type Props = {
   workspaceSlug: string;
   workspaceId: string;
   onClose: () => void;
 };
-
-const VARIANTS = ALL_VARIANTS;
-const QUICK_EMOJIS = ["🎬", "🎙️", "📺", "🛍️", "📈", "💬", "🤖", "🧠", "✏️", "🎨", "🛠️", "📱", "🌍", "📦", "💼", "🚀", "🪙", "📚"];
 
 export function NewBusinessDialog({
   workspaceSlug,
@@ -28,8 +24,12 @@ export function NewBusinessDialog({
   const ref = useRef<HTMLDialogElement>(null);
   const [name, setName] = useState("");
   const [sub, setSub] = useState("");
-  const [variant, setVariant] = useState<(typeof VARIANTS)[number]>("brand");
-  const [icon, setIcon] = useState("");
+  const [appearance, setAppearance] = useState<AppearanceValue>({
+    variant: "brand",
+    icon: "",
+    colorHex: null,
+    logoUrl: null,
+  });
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const router = useRouter();
@@ -46,8 +46,10 @@ export function NewBusinessDialog({
       workspace_id: workspaceId,
       name,
       sub: sub || undefined,
-      variant,
-      icon: icon || undefined,
+      variant: appearance.variant,
+      icon: appearance.icon || undefined,
+      color_hex: appearance.colorHex,
+      logo_url: appearance.logoUrl,
     });
     setPending(false);
     if (!res.ok) {
@@ -57,8 +59,6 @@ export function NewBusinessDialog({
     onClose();
     router.refresh();
   };
-
-  const letter = (name || "B").slice(0, 1).toUpperCase();
 
   return (
     <dialog
@@ -70,7 +70,7 @@ export function NewBusinessDialog({
         borderRadius: 16,
         color: "var(--app-fg)",
         padding: 0,
-        maxWidth: 440,
+        maxWidth: 480,
         width: "calc(100% - 32px)",
         boxShadow: "0 24px 60px -12px rgba(0,0,0,0.55)",
       }}
@@ -81,7 +81,7 @@ export function NewBusinessDialog({
           e.preventDefault();
           void submit();
         }}
-        style={{ padding: "22px 24px" }}
+        style={{ padding: "22px 24px", maxHeight: "85vh", overflow: "auto" }}
       >
         <h2
           style={{
@@ -101,7 +101,7 @@ export function NewBusinessDialog({
             margin: "0 0 16px",
           }}
         >
-          Geef je nieuwe automated business een naam en kleur. Agents en
+          Geef je nieuwe automated business een naam en uiterlijk. Agents en
           schedules voeg je daarna toe.
         </p>
 
@@ -125,85 +125,12 @@ export function NewBusinessDialog({
           />
         </Field>
 
-        <Field label="Kleur">
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {VARIANTS.map((v) => (
-              <button
-                type="button"
-                key={v}
-                aria-label={v}
-                aria-pressed={variant === v}
-                onClick={() => setVariant(v)}
-                className={`node ${v}`}
-                style={{
-                  width: 32,
-                  height: 32,
-                  fontSize: 12,
-                  outline:
-                    variant === v
-                      ? "2.5px solid var(--tt-green)"
-                      : "0",
-                  outlineOffset: 2,
-                  cursor: "pointer",
-                  ["--size" as string]: "32px",
-                }}
-              >
-                {icon || letter}
-              </button>
-            ))}
-          </div>
-        </Field>
-
-        <Field label="Icon (emoji of letter, optioneel)">
-          <input
-            value={icon}
-            onChange={(e) => setIcon(e.target.value.slice(0, 4))}
-            placeholder="🎬"
-            style={inputStyle}
-          />
-          <div
-            style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}
-          >
-            {QUICK_EMOJIS.map((e) => (
-              <button
-                key={e}
-                type="button"
-                onClick={() => setIcon(e)}
-                style={{
-                  width: 30,
-                  height: 30,
-                  border: `1.5px solid ${
-                    icon === e ? "var(--tt-green)" : "var(--app-border)"
-                  }`,
-                  background: "var(--app-card-2)",
-                  borderRadius: 8,
-                  cursor: "pointer",
-                  fontSize: 16,
-                  lineHeight: 1,
-                }}
-              >
-                {e}
-              </button>
-            ))}
-            {icon && (
-              <button
-                type="button"
-                onClick={() => setIcon("")}
-                style={{
-                  border: "1.5px solid var(--app-border)",
-                  background: "var(--app-card-2)",
-                  color: "var(--app-fg-3)",
-                  borderRadius: 8,
-                  padding: "0 10px",
-                  fontSize: 11,
-                  cursor: "pointer",
-                }}
-              >
-                ✕ wissen
-              </button>
-            )}
-          </div>
-        </Field>
+        <AppearancePicker
+          value={appearance}
+          onChange={setAppearance}
+          displayName={name || "B"}
+          workspaceId={workspaceId}
+        />
 
         {error && (
           <p
@@ -223,7 +150,12 @@ export function NewBusinessDialog({
         )}
 
         <div
-          style={{ display: "flex", gap: 8, marginTop: 18, justifyContent: "flex-end" }}
+          style={{
+            display: "flex",
+            gap: 8,
+            marginTop: 18,
+            justifyContent: "flex-end",
+          }}
         >
           <button
             type="button"

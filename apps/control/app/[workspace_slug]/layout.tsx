@@ -51,7 +51,7 @@ export default async function WorkspaceLayout({ children, params }: Props) {
   const { data: navRows } = await supabase
     .from("nav_nodes")
     .select(
-      "id, workspace_id, business_id, parent_id, name, sub, letter, variant, icon, href, sort_order",
+      "id, workspace_id, business_id, parent_id, name, sub, letter, variant, icon, color_hex, logo_url, href, sort_order",
     )
     .eq("workspace_id", workspace.id)
     .is("archived_at", null)

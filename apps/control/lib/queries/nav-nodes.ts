@@ -15,6 +15,8 @@ export type NavNode = {
   letter: string;
   variant: string;
   icon: string | null;
+  color_hex: string | null;
+  logo_url: string | null;
   href: string | null;
   sort_order: number;
 };
@@ -29,7 +31,7 @@ export async function listNavNodes(
   let q = supabase
     .from("nav_nodes")
     .select(
-      "id, workspace_id, business_id, parent_id, name, sub, letter, variant, icon, href, sort_order",
+      "id, workspace_id, business_id, parent_id, name, sub, letter, variant, icon, color_hex, logo_url, href, sort_order",
     )
     .eq("business_id", businessId)
     .is("archived_at", null)
@@ -56,7 +58,7 @@ export async function resolveNavPath(
   const { data, error } = await supabase
     .from("nav_nodes")
     .select(
-      "id, workspace_id, business_id, parent_id, name, sub, letter, variant, icon, href, sort_order",
+      "id, workspace_id, business_id, parent_id, name, sub, letter, variant, icon, color_hex, logo_url, href, sort_order",
     )
     .eq("business_id", businessId)
     .in("id", ids);

@@ -1,24 +1,14 @@
 // Controlled "new nav node" dialog. The right-click menu opens this
 // directly with a parent_id so the user can drop "Nieuw subtopic" right
 // where the cursor is.
-//
-// Mirrors NewNavNodeButton's modal but without the trigger button —
-// state lives in WorkspaceShell and is dismissed via onClose.
 
 "use client";
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
-import { ALL_VARIANTS } from "@aio/ui/rail/Node";
-
 import { createNavNode } from "../app/actions/nav-nodes";
-
-const QUICK_EMOJIS = [
-  "📁", "📺", "📈", "🤖", "🛠️", "📚",
-  "🎬", "🛍️", "💬", "🔍", "🧠", "📦",
-  "🎯", "📊", "🪙", "✏️",
-];
+import { AppearancePicker, type AppearanceValue } from "./AppearancePicker";
 
 type Props = {
   workspaceSlug: string;
@@ -42,9 +32,13 @@ export function NewNavNodeDialog({
   const ref = useRef<HTMLDialogElement>(null);
   const router = useRouter();
   const [name, setName] = useState("");
-  const [icon, setIcon] = useState("");
-  const [variant, setVariant] = useState<string>("slate");
   const [href, setHref] = useState("");
+  const [appearance, setAppearance] = useState<AppearanceValue>({
+    variant: "slate",
+    icon: "",
+    colorHex: null,
+    logoUrl: null,
+  });
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -61,8 +55,10 @@ export function NewNavNodeDialog({
       business_id: businessId,
       parent_id: parentId,
       name,
-      variant,
-      icon: icon || undefined,
+      variant: appearance.variant,
+      icon: appearance.icon || undefined,
+      color_hex: appearance.colorHex,
+      logo_url: appearance.logoUrl,
       href: href || undefined,
     });
     setPending(false);
@@ -73,8 +69,6 @@ export function NewNavNodeDialog({
     onClose();
     router.refresh();
   };
-
-  const letter = (name || "T").slice(0, 1).toUpperCase();
 
   return (
     <dialog
@@ -87,7 +81,7 @@ export function NewNavNodeDialog({
         color: "var(--app-fg)",
         padding: 0,
         width: "calc(100% - 32px)",
-        maxWidth: 440,
+        maxWidth: 480,
       }}
     >
       <form
@@ -96,7 +90,7 @@ export function NewNavNodeDialog({
           e.preventDefault();
           void submit();
         }}
-        style={{ padding: "20px 22px" }}
+        style={{ padding: "20px 22px", maxHeight: "85vh", overflow: "auto" }}
       >
         <h2
           style={{
@@ -129,70 +123,6 @@ export function NewNavNodeDialog({
           />
         </Field>
 
-        <Field label="Icon (emoji of letter)">
-          <input
-            value={icon}
-            onChange={(e) => setIcon(e.target.value.slice(0, 4))}
-            placeholder="📁"
-            style={input}
-          />
-          <div
-            style={{
-              display: "flex",
-              gap: 6,
-              marginTop: 6,
-              flexWrap: "wrap",
-            }}
-          >
-            {QUICK_EMOJIS.map((e) => (
-              <button
-                key={e}
-                type="button"
-                onClick={() => setIcon(e)}
-                style={{
-                  width: 30,
-                  height: 30,
-                  border: `1.5px solid ${
-                    icon === e ? "var(--tt-green)" : "var(--app-border)"
-                  }`,
-                  background: "var(--app-card-2)",
-                  borderRadius: 8,
-                  cursor: "pointer",
-                  fontSize: 16,
-                  lineHeight: 1,
-                }}
-              >
-                {e}
-              </button>
-            ))}
-          </div>
-        </Field>
-
-        <Field label="Kleur">
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {ALL_VARIANTS.map((v) => (
-              <button
-                key={v}
-                type="button"
-                onClick={() => setVariant(v)}
-                className={`node ${v}`}
-                style={{
-                  width: 28,
-                  height: 28,
-                  fontSize: 11,
-                  outline:
-                    variant === v ? "2.5px solid var(--tt-green)" : "0",
-                  outlineOffset: 2,
-                  cursor: "pointer",
-                  ["--size" as string]: "28px",
-                }}
-              >
-                {icon || letter}
-              </button>
-            ))}
-          </div>
-        </Field>
-
         <Field label="Externe URL (optioneel)">
           <input
             value={href}
@@ -201,6 +131,13 @@ export function NewNavNodeDialog({
             style={input}
           />
         </Field>
+
+        <AppearancePicker
+          value={appearance}
+          onChange={setAppearance}
+          displayName={name || "T"}
+          workspaceId={workspaceId}
+        />
 
         {error && (
           <p

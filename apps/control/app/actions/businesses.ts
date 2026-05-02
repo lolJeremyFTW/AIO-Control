@@ -17,7 +17,13 @@ export type BusinessInput = {
   variant?: string;
   /** Optional emoji (or any 1-3 chars) to render inside the rail node. */
   icon?: string;
+  /** Optional CSS hex (e.g. "#7e3af2") — overrides variant palette. */
+  color_hex?: string | null;
+  /** Optional uploaded logo URL — overrides letter/icon. */
+  logo_url?: string | null;
 };
+
+const HEX_RE = /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
 
 export type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -30,6 +36,11 @@ export async function createBusiness(
   const letter = (input.letter ?? input.name).trim().slice(0, 1).toUpperCase();
   const variant = input.variant ?? "brand";
 
+  const colorHex =
+    input.color_hex && HEX_RE.test(input.color_hex)
+      ? input.color_hex.toLowerCase()
+      : null;
+
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("businesses")
@@ -40,6 +51,8 @@ export async function createBusiness(
       letter,
       variant,
       icon: input.icon?.trim() || null,
+      color_hex: colorHex,
+      logo_url: input.logo_url?.trim() || null,
       status: "paused",
     })
     .select("id")
@@ -61,6 +74,8 @@ export async function updateBusiness(input: {
     sub?: string | null;
     variant?: string;
     icon?: string | null;
+    color_hex?: string | null;
+    logo_url?: string | null;
   };
 }): Promise<ActionResult<null>> {
   const patch: Record<string, unknown> = {};
@@ -75,6 +90,14 @@ export async function updateBusiness(input: {
   if (input.patch.variant !== undefined) patch.variant = input.patch.variant;
   if (input.patch.icon !== undefined)
     patch.icon = input.patch.icon?.toString().trim() || null;
+  if (input.patch.color_hex !== undefined) {
+    const v = input.patch.color_hex;
+    if (v === null || v === "") patch.color_hex = null;
+    else if (HEX_RE.test(v)) patch.color_hex = v.toLowerCase();
+    else return { ok: false, error: "Ongeldige hex (gebruik #rgb of #rrggbb)." };
+  }
+  if (input.patch.logo_url !== undefined)
+    patch.logo_url = input.patch.logo_url?.toString().trim() || null;
 
   if (Object.keys(patch).length === 0) return { ok: true, data: null };
 

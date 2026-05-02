@@ -158,10 +158,16 @@ export function WorkspaceShell({
     if (!drilledBiz) return [];
     const userTopics: Topic[] = (navContext?.children ?? []).map((n) => ({
       id: n.id,
-      label: `${n.icon ? n.icon + " " : ""}${n.name}`,
+      // Drop the emoji from the label — we render it as the node icon
+      // separately so the row-text doesn't double up.
+      label: n.name,
       // Path appended to /[ws]/business/<bizId>: nav drill always goes
       // under /n/, with all currently-selected ids preserved.
       path: `/n/${[...drilledBiz.navPath, n.id].join("/")}`,
+      variant: (n.variant as Topic["variant"]) ?? "dashed",
+      icon: n.icon ? <span style={{ fontSize: 16 }}>{n.icon}</span> : undefined,
+      colorHex: n.color_hex ?? null,
+      logoUrl: n.logo_url ?? null,
     }));
     if (userTopics.length > 0) return userTopics;
     // Fall back to the built-in tabs as a starter set so empty
@@ -197,6 +203,8 @@ export function WorkspaceShell({
     // letter when icon is null/undefined.
     icon: b.icon ? <span style={{ fontSize: 18 }}>{b.icon}</span> : undefined,
     variant: b.variant as RailItem["variant"],
+    colorHex: b.color_hex ?? null,
+    logoUrl: b.logo_url ?? null,
   }));
 
   const drilledRailItem: RailItem | null = drilledBiz
@@ -209,6 +217,8 @@ export function WorkspaceShell({
           <span style={{ fontSize: 18 }}>{drilledBiz.biz.icon}</span>
         ) : undefined,
         variant: drilledBiz.biz.variant as RailItem["variant"],
+        colorHex: drilledBiz.biz.color_hex ?? null,
+        logoUrl: drilledBiz.biz.logo_url ?? null,
       }
     : null;
 
@@ -250,10 +260,13 @@ export function WorkspaceShell({
             setEditing({
               kind: "business",
               id: biz.id,
+              workspace_id: workspace.id,
               name: biz.name,
               sub: biz.sub,
               variant: biz.variant,
               icon: biz.icon,
+              color_hex: biz.color_hex,
+              logo_url: biz.logo_url,
             }),
         },
         { kind: "separator" },
@@ -332,10 +345,13 @@ export function WorkspaceShell({
             setEditing({
               kind: "navnode",
               id: node.id,
+              workspace_id: workspace.id,
               business_id: drilledBiz.biz.id,
               name: node.name,
               variant: node.variant ?? "slate",
               icon: node.icon,
+              color_hex: node.color_hex,
+              logo_url: node.logo_url,
               href: node.href,
             }),
         },

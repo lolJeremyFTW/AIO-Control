@@ -1326,6 +1326,39 @@ a {
   }
 }
 
+/* ─── Native form controls: force a dark, legible look ─────────────
+   `color-scheme: dark` at :root already nudges Chrome/Firefox to use
+   dark popups, but option rendering inside <select> popups still
+   inherits user-agent defaults on some platforms (notably WebKit on
+   macOS, and any platform when the page background is overridden).
+   Explicit colours here keep dropdowns legible everywhere. */
+select,
+input,
+textarea {
+  color-scheme: dark;
+}
+select option,
+select optgroup {
+  background: #1a1c1a;
+  color: #f0eee5;
+}
+select:focus option:checked,
+select option:hover {
+  background: #2a2c2a;
+}
+/* Workspace switcher + any open <details> popout: ensure all text in
+   any custom dropdown defaults to the foreground colour rather than
+   inheriting "white at 55% alpha" from a parent. */
+details[open] > div {
+  color: var(--app-fg);
+}
+/* The lang switcher in the header used --app-fg-3 (55% alpha) for
+   inactive buttons — too dim against the dark header. Bump to fg-2
+   (lighter) for the readable-but-secondary look. */
+.lang button {
+  color: var(--app-fg-2);
+}
+
 /* ─── Rail pin/unpin chevron ────────────────────────────────────────
    Small button on the right edge of the rail that toggles the
    hover-expand behaviour. When `is-locked` is set on .rail, the rail

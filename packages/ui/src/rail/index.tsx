@@ -36,6 +36,10 @@ export type RailItem = {
   variant: NodeVariant;
   badge?: number | "dot";
   icon?: ReactNode;
+  /** Custom hex colour (overrides variant). */
+  colorHex?: string | null;
+  /** Uploaded logo URL (overrides letter/icon). */
+  logoUrl?: string | null;
 };
 
 export type Topic = {
@@ -45,6 +49,14 @@ export type Topic = {
   path: string;
   /** Optional badge (count of open queue items, etc). */
   badge?: number | "dot";
+  /** Optional preset variant (overrides default "dashed"). */
+  variant?: NodeVariant;
+  /** Optional emoji icon. */
+  icon?: ReactNode;
+  /** Optional custom hex (overrides preset). */
+  colorHex?: string | null;
+  /** Optional uploaded logo URL. */
+  logoUrl?: string | null;
 };
 
 type Props = {
@@ -311,8 +323,10 @@ function NavRow({
       <div className="nav-row-circle">
         <Node
           variant={item.variant}
-          letter={item.icon ? undefined : item.letter}
+          letter={item.icon || item.logoUrl ? undefined : item.letter}
           icon={item.icon}
+          colorHex={item.colorHex}
+          logoUrl={item.logoUrl}
           badge={item.badge ?? null}
           selected={selected ?? false}
           tooltip={!expanded ? item.name : null}
@@ -348,8 +362,10 @@ function TopicRow({
 }: TopicRowProps) {
   // Topics use a simpler glyph — a small dashed circle with the first
   // letter — and the same selected ring as businesses, so the brand-green
-  // glow consistently signals "currently active".
+  // glow consistently signals "currently active". When the user picks a
+  // variant or a logo we honour that instead.
   const letter = topic.label.slice(0, 1).toUpperCase();
+  const variant = topic.variant ?? "dashed";
   return (
     <div
       className={"nav-row " + (selected ? "selected" : "")}
@@ -360,8 +376,11 @@ function TopicRow({
     >
       <div className="nav-row-circle">
         <Node
-          variant="dashed"
-          letter={letter}
+          variant={variant}
+          letter={topic.icon || topic.logoUrl ? undefined : letter}
+          icon={topic.icon}
+          colorHex={topic.colorHex}
+          logoUrl={topic.logoUrl}
           selected={selected}
           tooltip={!expanded ? topic.label : null}
           badge={topic.badge ?? null}

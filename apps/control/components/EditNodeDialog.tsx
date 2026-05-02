@@ -2,42 +2,40 @@
 // menu → "Instellingen" item. Dispatches the right server action
 // depending on `target.kind`.
 //
-// Keeps the same layout as NewBusinessDialog so the editing experience
-// matches the create experience visually.
+// Uses AppearancePicker so the appearance editing experience is
+// identical across create + edit + business + nav-node.
 
 "use client";
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
-import { ALL_VARIANTS, type NodeVariant } from "@aio/ui/rail/Node";
-
 import { updateBusiness } from "../app/actions/businesses";
 import { updateNavNode } from "../app/actions/nav-nodes";
-
-const VARIANTS = ALL_VARIANTS;
-const QUICK_EMOJIS = [
-  "🎬", "🎙️", "📺", "🛍️", "📈", "💬", "🤖", "🧠", "✏️", "🎨",
-  "🛠️", "📱", "🌍", "📦", "💼", "🚀", "🪙", "📚", "📰", "🧩",
-  "🎯", "📊", "🧪", "🎵",
-];
+import { AppearancePicker, type AppearanceValue } from "./AppearancePicker";
 
 export type EditTarget =
   | {
       kind: "business";
       id: string;
+      workspace_id: string;
       name: string;
       sub: string | null;
       variant: string;
       icon: string | null;
+      color_hex: string | null;
+      logo_url: string | null;
     }
   | {
       kind: "navnode";
       id: string;
+      workspace_id: string;
       business_id: string;
       name: string;
       variant: string;
       icon: string | null;
+      color_hex: string | null;
+      logo_url: string | null;
       href: string | null;
     };
 
@@ -56,12 +54,12 @@ export function EditNodeDialog({ workspaceSlug, target, onClose }: Props) {
   const [href, setHref] = useState(
     target.kind === "navnode" ? target.href ?? "" : "",
   );
-  const [variant, setVariant] = useState<NodeVariant>(
-    (VARIANTS as readonly string[]).includes(target.variant)
-      ? (target.variant as NodeVariant)
-      : "slate",
-  );
-  const [icon, setIcon] = useState(target.icon ?? "");
+  const [appearance, setAppearance] = useState<AppearanceValue>({
+    variant: target.variant ?? "slate",
+    icon: target.icon ?? "",
+    colorHex: target.color_hex,
+    logoUrl: target.logo_url,
+  });
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const router = useRouter();
@@ -81,8 +79,10 @@ export function EditNodeDialog({ workspaceSlug, target, onClose }: Props) {
         patch: {
           name,
           sub: sub || null,
-          variant,
-          icon: icon || null,
+          variant: appearance.variant,
+          icon: appearance.icon || null,
+          color_hex: appearance.colorHex,
+          logo_url: appearance.logoUrl,
         },
       });
     } else {
@@ -92,8 +92,10 @@ export function EditNodeDialog({ workspaceSlug, target, onClose }: Props) {
         id: target.id,
         patch: {
           name,
-          variant,
-          icon: icon || null,
+          variant: appearance.variant,
+          icon: appearance.icon || null,
+          color_hex: appearance.colorHex,
+          logo_url: appearance.logoUrl,
           href: href || null,
         },
       });
@@ -107,11 +109,8 @@ export function EditNodeDialog({ workspaceSlug, target, onClose }: Props) {
     router.refresh();
   };
 
-  const letter = (name || "X").slice(0, 1).toUpperCase();
   const title =
-    target.kind === "business"
-      ? "Business bewerken"
-      : "Topic bewerken";
+    target.kind === "business" ? "Business bewerken" : "Topic bewerken";
 
   return (
     <dialog
@@ -123,7 +122,7 @@ export function EditNodeDialog({ workspaceSlug, target, onClose }: Props) {
         borderRadius: 16,
         color: "var(--app-fg)",
         padding: 0,
-        maxWidth: 460,
+        maxWidth: 500,
         width: "calc(100% - 32px)",
         boxShadow: "0 24px 60px -12px rgba(0,0,0,0.55)",
       }}
@@ -134,7 +133,7 @@ export function EditNodeDialog({ workspaceSlug, target, onClose }: Props) {
           e.preventDefault();
           void submit();
         }}
-        style={{ padding: "22px 24px" }}
+        style={{ padding: "22px 24px", maxHeight: "85vh", overflow: "auto" }}
       >
         <h2
           style={{
@@ -154,7 +153,7 @@ export function EditNodeDialog({ workspaceSlug, target, onClose }: Props) {
             margin: "0 0 16px",
           }}
         >
-          Pas naam, kleur en emoji aan. Wijzigingen zijn direct zichtbaar.
+          Pas naam, kleur, logo en emoji aan. Wijzigingen zijn direct zichtbaar.
         </p>
 
         <Field label="Naam">
@@ -189,88 +188,12 @@ export function EditNodeDialog({ workspaceSlug, target, onClose }: Props) {
           </Field>
         )}
 
-        <Field label="Kleur">
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {VARIANTS.map((v) => (
-              <button
-                type="button"
-                key={v}
-                aria-label={v}
-                aria-pressed={variant === v}
-                onClick={() => setVariant(v)}
-                className={`node ${v}`}
-                style={{
-                  width: 32,
-                  height: 32,
-                  fontSize: 12,
-                  outline:
-                    variant === v ? "2.5px solid var(--tt-green)" : "0",
-                  outlineOffset: 2,
-                  cursor: "pointer",
-                  ["--size" as string]: "32px",
-                }}
-              >
-                {icon || letter}
-              </button>
-            ))}
-          </div>
-        </Field>
-
-        <Field label="Icon (emoji of letter, optioneel)">
-          <input
-            value={icon}
-            onChange={(e) => setIcon(e.target.value.slice(0, 4))}
-            placeholder="🎬"
-            style={inputStyle}
-          />
-          <div
-            style={{
-              display: "flex",
-              gap: 6,
-              marginTop: 6,
-              flexWrap: "wrap",
-            }}
-          >
-            {QUICK_EMOJIS.map((e) => (
-              <button
-                key={e}
-                type="button"
-                onClick={() => setIcon(e)}
-                style={{
-                  width: 30,
-                  height: 30,
-                  border: `1.5px solid ${
-                    icon === e ? "var(--tt-green)" : "var(--app-border)"
-                  }`,
-                  background: "var(--app-card-2)",
-                  borderRadius: 8,
-                  cursor: "pointer",
-                  fontSize: 16,
-                  lineHeight: 1,
-                }}
-              >
-                {e}
-              </button>
-            ))}
-            {icon && (
-              <button
-                type="button"
-                onClick={() => setIcon("")}
-                style={{
-                  border: "1.5px solid var(--app-border)",
-                  background: "var(--app-card-2)",
-                  color: "var(--app-fg-3)",
-                  borderRadius: 8,
-                  padding: "0 10px",
-                  fontSize: 11,
-                  cursor: "pointer",
-                }}
-              >
-                ✕ wissen
-              </button>
-            )}
-          </div>
-        </Field>
+        <AppearancePicker
+          value={appearance}
+          onChange={setAppearance}
+          displayName={name}
+          workspaceId={target.workspace_id}
+        />
 
         {error && (
           <p
