@@ -1,22 +1,36 @@
-// Lists agents inside a business with a "New agent" button. Server actions
-// archive in place; revalidatePath refreshes the list automatically.
+// Lists agents inside a business. Each card supports right-click for
+// context actions (Run now, Edit, Duplicate, Archive). API-key status
+// pill warns the user when their provider has no resolved key.
 
 "use client";
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
+import { ContextMenu, type ContextMenuItem } from "@aio/ui/context-menu";
 import { PlusIcon } from "@aio/ui/icon";
 
+import {
+  archiveAgent,
+  duplicateAgent,
+} from "../app/actions/agents";
+import { runAgentNow } from "../app/actions/schedules";
 import type { AgentRow } from "../lib/queries/agents";
-import { archiveAgent } from "../app/actions/agents";
 import { NewAgentDialog } from "./NewAgentDialog";
+
+type Target = { id: string; name: string };
 
 type Props = {
   workspaceSlug: string;
   workspaceId: string;
   businessId: string;
   agents: AgentRow[];
+  /** Per-provider key resolution status — when an agent's provider isn't
+   *  in this set we show "key missing" so the user knows why chat won't
+   *  work. Resolved server-side; passed in from the page. */
+  providerKeyStatus?: Record<string, boolean>;
+  telegramTargets?: Target[];
+  customIntegrations?: Target[];
 };
 
 export function AgentsList({
@@ -24,8 +38,84 @@ export function AgentsList({
   workspaceId,
   businessId,
   agents,
+  providerKeyStatus = {},
+  telegramTargets = [],
+  customIntegrations = [],
 }: Props) {
   const [open, setOpen] = useState(false);
+  const [menu, setMenu] = useState<{
+    x: number;
+    y: number;
+    agent: AgentRow;
+  } | null>(null);
+  const router = useRouter();
+  const [, startTransition] = useTransition();
+
+  const buildMenu = (agent: AgentRow): ContextMenuItem[] => [
+    {
+      label: "▶ Run now",
+      onClick: () =>
+        startTransition(async () => {
+          const res = await runAgentNow({
+            workspace_slug: workspaceSlug,
+            workspace_id: workspaceId,
+            agent_id: agent.id,
+            business_id: businessId,
+          });
+          if (res.ok) router.refresh();
+          else alert(res.error);
+        }),
+    },
+    {
+      label: "💬 Open chat",
+      onClick: () => {
+        // Trigger the floating chat panel to open (it lives in WorkspaceShell).
+        // For now we just route to the agent — chat panel reads the first
+        // agent in the workspace by default.
+        const evt = new CustomEvent("aio:open-chat", {
+          detail: { agentId: agent.id },
+        });
+        window.dispatchEvent(evt);
+      },
+    },
+    { kind: "separator" },
+    {
+      label: "Dupliceer",
+      onClick: () =>
+        startTransition(async () => {
+          const res = await duplicateAgent({
+            workspace_slug: workspaceSlug,
+            workspace_id: workspaceId,
+            business_id: businessId,
+            source_id: agent.id,
+          });
+          if (res.ok) router.refresh();
+          else alert(res.error);
+        }),
+    },
+    {
+      label: "Schedules…",
+      onClick: () =>
+        router.push(
+          `/${workspaceSlug}/business/${businessId}/schedules`,
+        ),
+    },
+    { kind: "separator" },
+    {
+      label: "Archiveer",
+      danger: true,
+      onClick: () =>
+        startTransition(async () => {
+          if (!confirm(`Agent "${agent.name}" archiveren?`)) return;
+          await archiveAgent({
+            workspace_slug: workspaceSlug,
+            business_id: businessId,
+            id: agent.id,
+          });
+          router.refresh();
+        }),
+    },
+  ];
 
   return (
     <div>
@@ -92,8 +182,10 @@ export function AgentsList({
             <AgentCard
               key={a.id}
               agent={a}
-              workspaceSlug={workspaceSlug}
-              businessId={businessId}
+              keyOk={providerKeyStatus[a.provider] ?? false}
+              onContextMenu={(e) =>
+                setMenu({ x: e.clientX, y: e.clientY, agent: a })
+              }
             />
           ))}
         </div>
@@ -104,26 +196,36 @@ export function AgentsList({
           workspaceSlug={workspaceSlug}
           workspaceId={workspaceId}
           businessId={businessId}
+          telegramTargets={telegramTargets}
+          customIntegrations={customIntegrations}
           onClose={() => setOpen(false)}
         />
       )}
+
+      <ContextMenu
+        position={menu ? { x: menu.x, y: menu.y } : null}
+        items={menu ? buildMenu(menu.agent) : []}
+        onClose={() => setMenu(null)}
+      />
     </div>
   );
 }
 
 function AgentCard({
   agent,
-  workspaceSlug,
-  businessId,
+  keyOk,
+  onContextMenu,
 }: {
   agent: AgentRow;
-  workspaceSlug: string;
-  businessId: string;
+  keyOk: boolean;
+  onContextMenu: (e: React.MouseEvent) => void;
 }) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
   return (
     <div
+      onContextMenu={(e) => {
+        e.preventDefault();
+        onContextMenu(e);
+      }}
       style={{
         border: "1.5px solid var(--app-border)",
         borderRadius: 14,
@@ -132,9 +234,10 @@ function AgentCard({
         display: "flex",
         flexDirection: "column",
         gap: 6,
+        cursor: "context-menu",
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div style={{ fontWeight: 700, fontSize: 14 }}>{agent.name}</div>
         <span
           style={{
@@ -152,35 +255,38 @@ function AgentCard({
         {agent.provider}
         {agent.model ? ` · ${agent.model}` : ""}
       </div>
-      <button
-        type="button"
-        disabled={pending}
-        onClick={() =>
-          startTransition(async () => {
-            await archiveAgent({
-              workspace_slug: workspaceSlug,
-              business_id: businessId,
-              id: agent.id,
-            });
-            router.refresh();
-          })
-        }
+      <div
         style={{
-          marginTop: 8,
-          alignSelf: "start",
-          fontSize: 11,
-          fontWeight: 700,
-          padding: "5px 10px",
-          border: "1.5px solid var(--app-border)",
-          background: "transparent",
-          color: "var(--app-fg-3)",
-          borderRadius: 8,
-          cursor: pending ? "wait" : "pointer",
-          opacity: pending ? 0.6 : 1,
+          marginTop: 6,
+          display: "flex",
+          gap: 6,
+          alignItems: "center",
         }}
       >
-        {pending ? "Bezig…" : "Archiveren"}
-      </button>
+        <span
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            letterSpacing: "0.14em",
+            textTransform: "uppercase",
+            padding: "3px 7px",
+            borderRadius: 999,
+            border: `1px solid ${keyOk ? "var(--tt-green)" : "var(--rose)"}`,
+            color: keyOk ? "var(--tt-green)" : "var(--rose)",
+            background: keyOk
+              ? "rgba(57,178,85,0.10)"
+              : "rgba(230,82,107,0.10)",
+          }}
+        >
+          {keyOk ? "key set" : "key missing"}
+        </span>
+        <span
+          style={{ fontSize: 10.5, color: "var(--app-fg-3)" }}
+          title="Right-click voor menu"
+        >
+          ⌘ rechts-klik voor menu
+        </span>
+      </div>
     </div>
   );
 }

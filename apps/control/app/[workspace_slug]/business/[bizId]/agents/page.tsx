@@ -7,10 +7,12 @@ import {
   getCurrentUser,
   getWorkspaceBySlug,
 } from "../../../../../lib/auth/workspace";
+import { resolveApiKey } from "../../../../../lib/api-keys/resolve";
 import { listAgentsForWorkspace } from "../../../../../lib/queries/agents";
 import { listBusinesses } from "../../../../../lib/queries/businesses";
 import { AgentsList } from "../../../../../components/AgentsList";
 import { BusinessTabs } from "../../../../../components/BusinessTabs";
+import { createSupabaseServerClient } from "../../../../../lib/supabase/server";
 
 type Props = {
   params: Promise<{ workspace_slug: string; bizId: string }>;
@@ -24,13 +26,44 @@ export default async function BusinessAgentsPage({ params }: Props) {
   const workspace = await getWorkspaceBySlug(workspace_slug);
   if (!workspace) notFound();
 
-  const [businesses, allAgents] = await Promise.all([
+  const supabase = await createSupabaseServerClient();
+  const [
+    businesses,
+    allAgents,
+    { data: telegramRows },
+    { data: customRows },
+  ] = await Promise.all([
     listBusinesses(workspace.id),
     listAgentsForWorkspace(workspace.id),
+    supabase
+      .from("telegram_targets")
+      .select("id, name")
+      .eq("workspace_id", workspace.id)
+      .eq("enabled", true),
+    supabase
+      .from("custom_integrations")
+      .select("id, name")
+      .eq("workspace_id", workspace.id)
+      .eq("enabled", true),
   ]);
   const biz = businesses.find((b) => b.id === bizId);
   if (!biz) notFound();
   const agents = allAgents.filter((a) => a.business_id === bizId);
+
+  // Resolve key status per provider used by this business's agents so
+  // each card can render a "key set / missing" pill. We dedupe so we
+  // only check each provider once per page render.
+  const uniqueProviders = Array.from(new Set(agents.map((a) => a.provider)));
+  const providerKeyStatus: Record<string, boolean> = {};
+  await Promise.all(
+    uniqueProviders.map(async (p) => {
+      const k = await resolveApiKey(p, {
+        workspaceId: workspace.id,
+        businessId: biz.id,
+      });
+      providerKeyStatus[p] = !!k;
+    }),
+  );
 
   return (
     <div className="content">
@@ -44,6 +77,11 @@ export default async function BusinessAgentsPage({ params }: Props) {
         workspaceId={workspace.id}
         businessId={biz.id}
         agents={agents}
+        providerKeyStatus={providerKeyStatus}
+        telegramTargets={(telegramRows ?? []) as { id: string; name: string }[]}
+        customIntegrations={
+          (customRows ?? []) as { id: string; name: string }[]
+        }
       />
     </div>
   );

@@ -13,10 +13,14 @@ import { RoutingRulesEditor } from "./RoutingRulesEditor";
 type Provider = AgentInput["provider"];
 type Kind = NonNullable<AgentInput["kind"]>;
 
+type Target = { id: string; name: string };
+
 type Props = {
   workspaceSlug: string;
   workspaceId: string;
   businessId: string;
+  telegramTargets?: Target[];
+  customIntegrations?: Target[];
   onClose: () => void;
 };
 
@@ -42,6 +46,8 @@ export function NewAgentDialog({
   workspaceSlug,
   workspaceId,
   businessId,
+  telegramTargets = [],
+  customIntegrations = [],
   onClose,
 }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -52,6 +58,8 @@ export function NewAgentDialog({
   const [systemPrompt, setSystemPrompt] = useState("");
   const [endpoint, setEndpoint] = useState("");
   const [routingRulesJson, setRoutingRulesJson] = useState("");
+  const [telegramTargetId, setTelegramTargetId] = useState("");
+  const [customIntegrationId, setCustomIntegrationId] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -77,6 +85,8 @@ export function NewAgentDialog({
       systemPrompt,
       endpoint: needsEndpoint ? endpoint : undefined,
       routingRulesJson: routingRulesJson || undefined,
+      telegram_target_id: telegramTargetId || null,
+      custom_integration_id: customIntegrationId || null,
     });
     setPending(false);
     if (!res.ok) {
@@ -206,6 +216,49 @@ export function NewAgentDialog({
             style={{ ...inputStyle, resize: "vertical", minHeight: 80 }}
           />
         </Field>
+
+        {(telegramTargets.length > 0 || customIntegrations.length > 0) && (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 12,
+            }}
+          >
+            {telegramTargets.length > 0 && (
+              <Field label="Telegram channel (optioneel)">
+                <select
+                  value={telegramTargetId}
+                  onChange={(e) => setTelegramTargetId(e.target.value)}
+                  style={inputStyle}
+                >
+                  <option value="">— Workspace default —</option>
+                  {telegramTargets.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
+            {customIntegrations.length > 0 && (
+              <Field label="Custom integration (optioneel)">
+                <select
+                  value={customIntegrationId}
+                  onChange={(e) => setCustomIntegrationId(e.target.value)}
+                  style={inputStyle}
+                >
+                  <option value="">— Workspace default —</option>
+                  {customIntegrations.map((i) => (
+                    <option key={i.id} value={i.id}>
+                      {i.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
+          </div>
+        )}
 
         <details style={{ marginBottom: 12 }}>
           <summary

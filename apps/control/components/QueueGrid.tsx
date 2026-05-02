@@ -5,7 +5,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
+
+import { ContextMenu, type ContextMenuItem } from "@aio/ui/context-menu";
 
 import {
   approveQueueItem,
@@ -19,21 +21,83 @@ type Props = {
 };
 
 export function QueueGrid({ items, workspaceSlug }: Props) {
+  const router = useRouter();
+  const [, startTransition] = useTransition();
+  const [menu, setMenu] = useState<{
+    x: number;
+    y: number;
+    item: QueueRow;
+  } | null>(null);
+
+  const buildMenu = (q: QueueRow): ContextMenuItem[] => {
+    const decide = (decision: "approve" | "reject") =>
+      startTransition(async () => {
+        const fn = decision === "approve" ? approveQueueItem : rejectQueueItem;
+        await fn({
+          id: q.id,
+          workspace_slug: workspaceSlug,
+          business_id: q.business_id,
+        });
+        router.refresh();
+      });
+    return [
+      {
+        label: "✓ Approve",
+        onClick: () => decide("approve"),
+      },
+      {
+        label: "✗ Reject",
+        danger: true,
+        onClick: () => decide("reject"),
+      },
+      { kind: "separator" },
+      {
+        label: "Open business",
+        onClick: () => {
+          if (q.business_id) {
+            router.push(`/${workspaceSlug}/business/${q.business_id}`);
+          }
+        },
+        disabled: !q.business_id,
+      },
+      {
+        label: "Kopieer titel",
+        onClick: () => navigator.clipboard.writeText(q.title),
+      },
+    ];
+  };
+
   return (
-    <div className="queue">
-      {items.map((q) => (
-        <QueueCard key={q.id} item={q} workspaceSlug={workspaceSlug} />
-      ))}
-    </div>
+    <>
+      <div className="queue">
+        {items.map((q) => (
+          <QueueCard
+            key={q.id}
+            item={q}
+            workspaceSlug={workspaceSlug}
+            onContextMenu={(e) =>
+              setMenu({ x: e.clientX, y: e.clientY, item: q })
+            }
+          />
+        ))}
+      </div>
+      <ContextMenu
+        position={menu ? { x: menu.x, y: menu.y } : null}
+        items={menu ? buildMenu(menu.item) : []}
+        onClose={() => setMenu(null)}
+      />
+    </>
   );
 }
 
 function QueueCard({
   item: q,
   workspaceSlug,
+  onContextMenu,
 }: {
   item: QueueRow;
   workspaceSlug: string;
+  onContextMenu: (e: React.MouseEvent) => void;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -52,7 +116,13 @@ function QueueCard({
     });
 
   return (
-    <div className="qcard">
+    <div
+      className="qcard"
+      onContextMenu={(e) => {
+        e.preventDefault();
+        onContextMenu(e);
+      }}
+    >
       <span className={`pill ${cls}`.trim()}>
         {q.state === "fail"
           ? "Handmatige check"

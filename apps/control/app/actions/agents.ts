@@ -29,6 +29,9 @@ export type AgentInput = {
   maxTokens?: number;
   /** JSON-encoded RoutingRule[] from @aio/ai/router. Validated upstream. */
   routingRulesJson?: string;
+  /** Optional notification routing — falls back to workspace defaults. */
+  telegram_target_id?: string | null;
+  custom_integration_id?: string | null;
 };
 
 export type ActionResult<T> =
@@ -85,12 +88,113 @@ export async function createAgent(
         maxTokens: input.maxTokens,
         routingRules,
       },
+      telegram_target_id: input.telegram_target_id ?? null,
+      custom_integration_id: input.custom_integration_id ?? null,
     })
     .select("id")
     .single();
   if (error || !data) {
     return { ok: false, error: error?.message ?? "Insert failed." };
   }
+  revalidatePath(`/${input.workspace_slug}/business/${input.business_id}`);
+  return { ok: true, data: { id: data.id } };
+}
+
+export async function updateAgent(input: {
+  workspace_slug: string;
+  business_id: string;
+  id: string;
+  patch: {
+    name?: string;
+    kind?: AgentInput["kind"];
+    provider?: AgentInput["provider"];
+    model?: string | null;
+    systemPrompt?: string | null;
+    endpoint?: string | null;
+    telegram_target_id?: string | null;
+    custom_integration_id?: string | null;
+  };
+}): Promise<ActionResult<null>> {
+  const patch: Record<string, unknown> = {};
+  if (input.patch.name !== undefined) {
+    if (!input.patch.name.trim())
+      return { ok: false, error: "Naam mag niet leeg zijn." };
+    patch.name = input.patch.name.trim();
+  }
+  if (input.patch.kind !== undefined) patch.kind = input.patch.kind;
+  if (input.patch.provider !== undefined) patch.provider = input.patch.provider;
+  if (input.patch.model !== undefined)
+    patch.model = input.patch.model?.toString().trim() || null;
+  if (input.patch.telegram_target_id !== undefined)
+    patch.telegram_target_id = input.patch.telegram_target_id ?? null;
+  if (input.patch.custom_integration_id !== undefined)
+    patch.custom_integration_id = input.patch.custom_integration_id ?? null;
+
+  // Config fields are merged into the existing jsonb so we don't
+  // clobber routing rules or temperature.
+  if (
+    input.patch.systemPrompt !== undefined ||
+    input.patch.endpoint !== undefined
+  ) {
+    const supabase = await createSupabaseServerClient();
+    const { data: cur } = await supabase
+      .from("agents")
+      .select("config")
+      .eq("id", input.id)
+      .maybeSingle();
+    const config = (cur?.config ?? {}) as Record<string, unknown>;
+    if (input.patch.systemPrompt !== undefined)
+      config.systemPrompt = input.patch.systemPrompt?.trim() || null;
+    if (input.patch.endpoint !== undefined)
+      config.endpoint = input.patch.endpoint?.trim() || null;
+    patch.config = config;
+  }
+
+  if (Object.keys(patch).length === 0) return { ok: true, data: null };
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase
+    .from("agents")
+    .update(patch)
+    .eq("id", input.id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath(`/${input.workspace_slug}/business/${input.business_id}`);
+  return { ok: true, data: null };
+}
+
+export async function duplicateAgent(input: {
+  workspace_slug: string;
+  workspace_id: string;
+  business_id: string;
+  source_id: string;
+}): Promise<ActionResult<{ id: string }>> {
+  const supabase = await createSupabaseServerClient();
+  const { data: src } = await supabase
+    .from("agents")
+    .select(
+      "name, kind, provider, model, config, telegram_target_id, custom_integration_id",
+    )
+    .eq("id", input.source_id)
+    .maybeSingle();
+  if (!src) return { ok: false, error: "Origineel niet gevonden." };
+
+  const { data, error } = await supabase
+    .from("agents")
+    .insert({
+      workspace_id: input.workspace_id,
+      business_id: input.business_id,
+      name: `${src.name} (kopie)`,
+      kind: src.kind,
+      provider: src.provider,
+      model: src.model,
+      config: src.config,
+      telegram_target_id: src.telegram_target_id,
+      custom_integration_id: src.custom_integration_id,
+    })
+    .select("id")
+    .single();
+  if (error || !data) return { ok: false, error: error?.message ?? "Insert faalde." };
+
   revalidatePath(`/${input.workspace_slug}/business/${input.business_id}`);
   return { ok: true, data: { id: data.id } };
 }
