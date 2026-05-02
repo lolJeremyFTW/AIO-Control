@@ -9,9 +9,11 @@ import {
   getWorkspaceBySlug,
 } from "../../../lib/auth/workspace";
 import { signOutAction } from "../../(auth)/actions";
+import { DangerZone } from "../../../components/DangerZone";
 import { NotificationsButton } from "../../../components/NotificationsButton";
 import { TeamPanel } from "../../../components/TeamPanel";
 import { listWorkspaceMembers } from "../../../lib/queries/members";
+import { createSupabaseServerClient } from "../../../lib/supabase/server";
 
 type Props = { params: Promise<{ workspace_slug: string }> };
 
@@ -31,6 +33,15 @@ export default async function SettingsPage({ params }: Props) {
   if (!workspace) redirect("/login");
 
   const members = await listWorkspaceMembers(workspace.id);
+  // Determine if the signed-in user is the owner — Danger zone uses this
+  // to show or hide destructive actions.
+  const supabase = await createSupabaseServerClient();
+  const { data: ownerCheck } = await supabase
+    .from("workspaces")
+    .select("owner_id")
+    .eq("id", workspace.id)
+    .maybeSingle();
+  const isOwner = !!ownerCheck && ownerCheck.owner_id === user.id;
 
   return (
     <div className="content">
@@ -106,12 +117,13 @@ export default async function SettingsPage({ params }: Props) {
           <SectionCard
             id="danger"
             title="Danger zone"
-            desc="Onomkeerbare acties. Komt in fase 8."
+            desc="Data exporteren of de workspace permanent verwijderen."
           >
-            <p style={{ fontSize: 12.5, color: "var(--app-fg-3)" }}>
-              Workspace verwijderen / data exporteren — nog niet
-              geïmplementeerd.
-            </p>
+            <DangerZone
+              workspaceId={workspace.id}
+              workspaceSlug={workspace.slug}
+              isOwner={isOwner}
+            />
           </SectionCard>
         </div>
       </div>

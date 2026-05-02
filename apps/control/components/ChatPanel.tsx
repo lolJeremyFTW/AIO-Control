@@ -141,13 +141,18 @@ export function ChatPanel({ agents }: Props) {
   }, [agentId, input, messages, sending]);
 
   if (agents.length === 0) {
-    // No agents yet; we still show the bubble so the affordance exists, but
-    // a click opens an empty-state panel that points at /agents.
+    // No agents yet; we still show the bubble so the affordance is
+    // discoverable. Clicking it pops a hint that points at the agents tab
+    // of any business — that's where the user can create one.
     return (
       <div
         className="chatbox"
-        title="Voeg eerst een agent toe"
-        onClick={() => alert("Voeg eerst een agent toe (komt in fase 3.5).")}
+        title="Voeg eerst een agent toe in een business"
+        onClick={() =>
+          alert(
+            "Maak eerst een agent aan: open een business in de left side nav → tab \"Agents\" → \"+ Nieuwe agent\".",
+          )
+        }
       >
         <ChatIcon />
       </div>

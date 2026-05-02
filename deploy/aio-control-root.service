@@ -1,0 +1,19 @@
+[Unit]
+Description=AIO Control (subdomain build, no basePath, port 3011)
+After=network.target aio-control.service
+Wants=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/jeremy/aio-control/.staged-root/apps/control
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=2
+User=jeremy
+Environment=NODE_ENV=production
+Environment=PORT=3011
+Environment=HOSTNAME=127.0.0.1
+EnvironmentFile=/home/jeremy/aio-control/.staged-root/apps/control/.env
+
+[Install]
+WantedBy=multi-user.target

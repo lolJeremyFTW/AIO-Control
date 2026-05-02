@@ -28,12 +28,18 @@ export function NotificationsButton() {
         setStatus("unsupported");
         return;
       }
-      const keyRes = await fetch("/api/push/key").catch(() => null);
+      const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+      const keyRes = await fetch(`${base}/api/push/key`).catch(() => null);
       if (!keyRes || keyRes.status === 503) {
         setStatus("no-vapid");
         return;
       }
-      const reg = await navigator.serviceWorker.register("/sw.js");
+      // The SW lives under the same basePath the app does. Scope MUST start
+      // at or above the SW URL — `${base}/` covers everything served at
+      // /aio/* (and falls back to "/" when there's no basePath).
+      const reg = await navigator.serviceWorker.register(`${base}/sw.js`, {
+        scope: `${base}/`,
+      });
       const existing = await reg.pushManager.getSubscription();
       if (existing) setStatus("on");
       else if (Notification.permission === "denied") setStatus("denied");
@@ -43,10 +49,13 @@ export function NotificationsButton() {
     });
   }, []);
 
+  const apiUrl = (path: string) =>
+    (process.env.NEXT_PUBLIC_BASE_PATH ?? "") + path;
+
   const subscribe = async () => {
     try {
       setError(null);
-      const keyRes = await fetch("/api/push/key");
+      const keyRes = await fetch(apiUrl("/api/push/key"));
       const { key } = await keyRes.json();
       const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.subscribe({
@@ -54,7 +63,7 @@ export function NotificationsButton() {
         applicationServerKey: urlBase64ToUint8Array(key),
       });
       const json = sub.toJSON();
-      const res = await fetch("/api/push/subscribe", {
+      const res = await fetch(apiUrl("/api/push/subscribe"), {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -77,7 +86,9 @@ export function NotificationsButton() {
       const sub = await reg.pushManager.getSubscription();
       if (sub) {
         await fetch(
-          `/api/push/subscribe?endpoint=${encodeURIComponent(sub.endpoint)}`,
+          apiUrl(
+            `/api/push/subscribe?endpoint=${encodeURIComponent(sub.endpoint)}`,
+          ),
           { method: "DELETE" },
         );
         await sub.unsubscribe();
@@ -90,7 +101,7 @@ export function NotificationsButton() {
 
   const sendTest = async () => {
     setError(null);
-    const res = await fetch("/api/push/test", { method: "POST" });
+    const res = await fetch(apiUrl("/api/push/test"), { method: "POST" });
     if (!res.ok) setError(await res.text());
   };
 

@@ -1,0 +1,19 @@
+[Unit]
+Description=AIO Control (path /aio build, port 3010)
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/jeremy/aio-control/.staged-aio/apps/control
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=2
+User=jeremy
+Environment=NODE_ENV=production
+Environment=PORT=3010
+Environment=HOSTNAME=127.0.0.1
+EnvironmentFile=/home/jeremy/aio-control/.staged-aio/apps/control/.env
+
+[Install]
+WantedBy=multi-user.target

@@ -1,17 +1,22 @@
 #!/usr/bin/env bash
-# vps-deploy.sh — pulls latest main, installs deps, builds Next.js standalone,
-# stages it under .next/standalone/apps/control, and bounces the systemd unit.
-# Run by GH Actions deploy.yml or manually over SSH.
+# vps-deploy.sh — pulls latest main, installs deps, then BUILDS TWICE:
+#   1. BASE_PATH=/aio  → staged in .staged-aio/, served by aio-control on :3010
+#                        (used by https://tromptech.life/aio/*)
+#   2. BASE_PATH=""    → staged in .staged-root/, served by aio-control-root on :3011
+#                        (used by https://aio.tromptech.life/*)
+# Both builds share the same .env.production. They're independent Node
+# processes pointing at the same Supabase, so logging in on one URL gives
+# you a session on the other (cookies are scoped to .tromptech.life via
+# Supabase's default cookie config).
 #
-# Idempotent: re-running on the same SHA is safe (pnpm install --frozen-lockfile
-# is a no-op, build is cached by Turborepo when nothing changed).
+# Idempotent: re-running on the same SHA is safe.
 
 set -euo pipefail
 
 ROOT="/home/jeremy/aio-control"
 APP="$ROOT/apps/control"
-STAGE="$APP/.next/standalone/apps/control"
-SERVICE="aio-control"
+STAGE_AIO="$ROOT/.staged-aio"
+STAGE_ROOT="$ROOT/.staged-root"
 
 cd "$ROOT"
 
@@ -22,42 +27,69 @@ git reset --hard origin/main
 echo "▸ Installing dependencies"
 pnpm install --frozen-lockfile
 
-# GIT_COMMIT_SHA may be passed in by the caller (GH Actions); if not, derive it.
 GIT_COMMIT_SHA="${GIT_COMMIT_SHA:-$(git rev-parse HEAD)}"
 BUILD_TIME="$(date -Iseconds)"
 export GIT_COMMIT_SHA BUILD_TIME
 
-echo "▸ Building (BASE_PATH=/aio, commit ${GIT_COMMIT_SHA:0:8})"
-BASE_PATH=/aio pnpm build
+build_and_stage() {
+  local label="$1"
+  local base_path="$2"
+  local stage_dir="$3"
+  echo "▸ Building ($label, BASE_PATH='${base_path}', commit ${GIT_COMMIT_SHA:0:8})"
 
-echo "▸ Staging standalone bundle"
-# Static + public + env need to live next to server.js inside the standalone tree.
-rm -rf "$STAGE/.next/static" "$STAGE/public" 2>/dev/null || true
-cp -r "$APP/.next/static" "$STAGE/.next/static"
-if [[ -d "$APP/public" ]]; then
-  cp -r "$APP/public" "$STAGE/public"
-fi
-cp "$APP/.env.production" "$STAGE/.env"
+  # Wipe the prior build so basePath flips don't leak between builds.
+  rm -rf "$APP/.next"
+  BASE_PATH="$base_path" pnpm build
 
-# Inject the version metadata so /api/version reflects this deploy.
-{
-  echo ""
-  echo "GIT_COMMIT_SHA=$GIT_COMMIT_SHA"
-  echo "BUILD_TIME=$BUILD_TIME"
-} >> "$STAGE/.env"
+  # Stage the standalone bundle. Standalone produces apps/control under
+  # the .next/standalone tree because we're in a monorepo — preserve that.
+  rm -rf "$stage_dir"
+  mkdir -p "$stage_dir"
+  cp -r "$APP/.next/standalone/." "$stage_dir/"
+  mkdir -p "$stage_dir/apps/control/.next"
+  cp -r "$APP/.next/static" "$stage_dir/apps/control/.next/static"
+  if [[ -d "$APP/public" ]]; then
+    cp -r "$APP/public" "$stage_dir/apps/control/public"
+  fi
 
-echo "▸ Restarting $SERVICE"
-sudo systemctl restart "$SERVICE"
+  # Bake .env.production + version metadata into the standalone tree.
+  cp "$APP/.env.production" "$stage_dir/apps/control/.env"
+  {
+    echo ""
+    echo "GIT_COMMIT_SHA=$GIT_COMMIT_SHA"
+    echo "BUILD_TIME=$BUILD_TIME"
+    # Override BASE_PATH per build so process.env matches what Next baked in.
+    echo "BASE_PATH=$base_path"
+  } >> "$stage_dir/apps/control/.env"
+}
 
-echo "▸ Waiting for /api/health"
+build_and_stage "path /aio"        "/aio" "$STAGE_AIO"
+build_and_stage "subdomain root"   ""     "$STAGE_ROOT"
+
+echo "▸ Restarting services"
+sudo systemctl restart aio-control
+sudo systemctl restart aio-control-root
+
+echo "▸ Waiting for both health endpoints"
+ok=0
 for i in {1..15}; do
-  if curl -fsS -o /dev/null "http://127.0.0.1:3010/aio/api/health"; then
-    echo "✓ deploy ${GIT_COMMIT_SHA:0:8} live after ${i}s"
-    exit 0
+  s1=$(curl -fsS -o /dev/null -w "%{http_code}" "http://127.0.0.1:3010/aio/api/health" || echo 000)
+  s2=$(curl -fsS -o /dev/null -w "%{http_code}" "http://127.0.0.1:3011/api/health" || echo 000)
+  if [[ "$s1" == "200" && "$s2" == "200" ]]; then
+    ok=1; break
   fi
   sleep 1
 done
 
-echo "✗ /api/health did not come up; tailing service logs:"
-sudo journalctl -u "$SERVICE" --since "30s ago" --no-pager | tail -40
-exit 1
+if [[ $ok -ne 1 ]]; then
+  echo "✗ One of the services didn't come up:"
+  echo "  :3010/aio/api/health = $s1"
+  echo "  :3011/api/health     = $s2"
+  echo "--- aio-control logs ---"
+  sudo journalctl -u aio-control --since "60s ago" --no-pager | tail -20
+  echo "--- aio-control-root logs ---"
+  sudo journalctl -u aio-control-root --since "60s ago" --no-pager | tail -20
+  exit 1
+fi
+
+echo "✓ deploy ${GIT_COMMIT_SHA:0:8} live (path :3010, subdomain :3011)"

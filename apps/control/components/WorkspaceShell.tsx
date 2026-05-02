@@ -1,14 +1,14 @@
-// Client wrapper around the Rail + Header. We keep this as a single client
-// component so both the rail and the header share the same navigation
-// callbacks (workspace switch, page jump) without prop-drilling.
+// Client wrapper around the Rail + Header. The rail's drill-in state is
+// derived from the URL: when we're on /[ws]/business/[bizId]/* the rail
+// swaps to that business's topics + a back row.
 
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useMemo, useState, type ReactNode } from "react";
 
 import { Header } from "@aio/ui/header";
-import { Rail, type RailItem } from "@aio/ui/rail";
+import { Rail, type RailItem, type Topic } from "@aio/ui/rail";
 
 import type { WorkspaceListItem } from "../lib/auth/workspace";
 import type { BusinessRow } from "../lib/queries/businesses";
@@ -33,12 +33,16 @@ type Props = {
   workspaces: WorkspaceListItem[];
   businesses: BusinessRow[];
   weather?: { city: string; date: string; temp: string };
-  selectedBusinessId?: string | null;
   page?: "dashboard" | "settings" | "profile";
-  pageTitle?: string;
-  pageSub?: string;
   children: ReactNode;
 };
+
+const TOPICS: Topic[] = [
+  { id: "queue", label: "Wachtrij", path: "" },
+  { id: "agents", label: "Agents", path: "/agents" },
+  { id: "schedules", label: "Schedules", path: "/schedules" },
+  { id: "integrations", label: "Integrations", path: "/integrations" },
+];
 
 export function WorkspaceShell({
   profile,
@@ -46,16 +50,35 @@ export function WorkspaceShell({
   workspaces,
   businesses,
   weather,
-  selectedBusinessId,
-  page = "dashboard",
-  pageTitle,
-  pageSub,
+  page: pageProp = "dashboard",
   children,
 }: Props) {
   const router = useRouter();
+  const pathname = usePathname() ?? "";
   const [newBusinessOpen, setNewBusinessOpen] = useState(false);
   const [railOpen, setRailOpen] = useState(false);
   const closeRail = () => setRailOpen(false);
+
+  // Derive whether we're drilled into a specific business from the URL —
+  // /[ws]/business/<id>/<topic?>. This is more reliable than threading
+  // page-prop state through every page.tsx in the tree.
+  const drilledBiz = useMemo(() => {
+    const m = pathname.match(
+      new RegExp(`^/${workspace.slug}/business/([^/]+)(?:/([^/]+))?`),
+    );
+    if (!m) return null;
+    const biz = businesses.find((b) => b.id === m[1]);
+    if (!biz) return null;
+    const topicSlug = m[2] ?? "queue";
+    const topicId =
+      TOPICS.find((t) => t.id === topicSlug)?.id ??
+      (topicSlug === "" ? "queue" : "queue");
+    return { biz, topicId };
+  }, [pathname, workspace.slug, businesses]);
+
+  // The page prop only matters for the top-level rail (settings vs profile vs
+  // dashboard). When drilled in, we don't apply the prop styling.
+  const page = drilledBiz ? "dashboard" : pageProp;
 
   const profileItem: RailItem = {
     id: "me",
@@ -73,20 +96,37 @@ export function WorkspaceShell({
     variant: b.variant as RailItem["variant"],
   }));
 
-  const headerTitle = pageTitle ??
-    (page === "settings"
-      ? "Settings"
-      : page === "profile"
-        ? "Profile"
-        : "Dashboard");
+  const drilledRailItem: RailItem | null = drilledBiz
+    ? {
+        id: drilledBiz.biz.id,
+        name: drilledBiz.biz.name,
+        sub: drilledBiz.biz.sub ?? undefined,
+        letter: drilledBiz.biz.letter,
+        variant: drilledBiz.biz.variant as RailItem["variant"],
+      }
+    : null;
 
   return (
     <div className="app-shell">
       <Rail
         profile={profileItem}
         businesses={railBusinesses}
-        selectedBusinessId={selectedBusinessId ?? null}
+        selectedBusinessId={drilledBiz?.biz.id ?? null}
         page={page}
+        drilledInto={drilledRailItem}
+        topics={drilledBiz ? TOPICS : []}
+        selectedTopicId={drilledBiz?.topicId ?? null}
+        onBack={() => {
+          closeRail();
+          router.push(`/${workspace.slug}/dashboard`);
+        }}
+        onSelectTopic={(t) => {
+          if (!drilledBiz) return;
+          closeRail();
+          router.push(
+            `/${workspace.slug}/business/${drilledBiz.biz.id}${t.path}`,
+          );
+        }}
         mobileOpen={railOpen}
         onMobileClose={closeRail}
         onSelectProfile={() => {
@@ -107,7 +147,7 @@ export function WorkspaceShell({
         }}
       />
 
-      {/* Backdrop only renders below 900px (CSS gates it via display) but we
+      {/* Backdrop only renders below 800px (CSS gates it via display) but we
           render the node unconditionally so the show/hide animation can run. */}
       <div
         className={"rail-backdrop " + (railOpen ? "is-open" : "")}
@@ -120,8 +160,14 @@ export function WorkspaceShell({
           crumb={{
             workspaceName: workspace.name,
             workspaceLetter: workspace.name.slice(0, 1).toUpperCase(),
-            pageTitle: headerTitle,
-            pageSub,
+            pageTitle: drilledBiz
+              ? drilledBiz.biz.name
+              : page === "settings"
+                ? "Settings"
+                : page === "profile"
+                  ? "Profile"
+                  : "Dashboard",
+            pageSub: drilledBiz?.biz.sub ?? undefined,
           }}
           notifications={0}
           avatarLetter={profile.letter}
