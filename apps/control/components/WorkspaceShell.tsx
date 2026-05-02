@@ -30,6 +30,7 @@ import {
   duplicateNavNode,
   moveNavNode,
   reorderNavNode,
+  swapNavNodeOrder,
 } from "../app/actions/nav-nodes";
 import { setLocale } from "../app/actions/locale";
 import { EditNodeDialog, type EditTarget } from "./EditNodeDialog";
@@ -554,6 +555,17 @@ export function WorkspaceShell({
         }}
         onContextMenuRail={(e, origin) => {
           setMenu({ x: e.clientX, y: e.clientY, origin });
+        }}
+        onReorderTopic={async (sourceId, targetId) => {
+          if (!drilledBiz) return;
+          const res = await swapNavNodeOrder({
+            workspace_slug: workspace.slug,
+            business_id: drilledBiz.biz.id,
+            source_id: sourceId,
+            target_id: targetId,
+          });
+          if (res.ok) router.refresh();
+          else alert(res.error);
         }}
       />
 

@@ -10,6 +10,7 @@ import { useState, useTransition } from "react";
 
 import type { AgentRow } from "../lib/queries/agents";
 import type { ScheduleRow } from "../lib/queries/schedules";
+import { EditScheduleDialog } from "./EditScheduleDialog";
 import {
   createCronSchedule,
   createWebhookSchedule,
@@ -47,6 +48,9 @@ export function SchedulesPanel({
   const [cronOpen, setCronOpen] = useState(false);
   const [cronExpr, setCronExpr] = useState("0 9 * * *");
   const [cronPrompt, setCronPrompt] = useState("");
+  const [editingSchedule, setEditingSchedule] = useState<ScheduleRow | null>(
+    null,
+  );
 
   const createWebhook = () => {
     if (!agentId) return setError("Kies eerst een agent.");
@@ -466,7 +470,15 @@ export function SchedulesPanel({
                       {new Date(s.last_fired_at).toLocaleString("nl-NL")}
                     </span>
                   )}
-                  <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+                  <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      disabled={pending}
+                      onClick={() => setEditingSchedule(s)}
+                      style={btnSecondary(pending)}
+                    >
+                      ✎ Bewerken
+                    </button>
                     {s.kind === "webhook" && (
                       <button
                         type="button"
@@ -492,6 +504,17 @@ export function SchedulesPanel({
           </div>
         )}
       </section>
+
+      {editingSchedule && (
+        <EditScheduleDialog
+          workspaceSlug={workspaceSlug}
+          schedule={editingSchedule}
+          onClose={() => {
+            setEditingSchedule(null);
+            router.refresh();
+          }}
+        />
+      )}
     </div>
   );
 }

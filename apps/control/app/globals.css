@@ -1412,6 +1412,19 @@ details[open] > div {
   }
 }
 
+/* Drop indicator while dragging a topic over another in the rail. */
+.nav-row.drop-active {
+  outline: 2px dashed var(--tt-green);
+  outline-offset: -4px;
+  background: rgba(57, 178, 85, 0.06);
+}
+.nav-row[draggable="true"] {
+  cursor: grab;
+}
+.nav-row[draggable="true"]:active {
+  cursor: grabbing;
+}
+
 /* ─── Custom right-click context menu ──────────────────────────────
    Floating panel positioned at the cursor by JS; CSS just styles the
    chrome. Items are buttons so keyboard navigation Just Works. */

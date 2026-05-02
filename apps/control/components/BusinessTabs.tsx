@@ -17,6 +17,7 @@ export function BusinessTabs({ workspaceSlug, businessId }: Props) {
     { href: base, label: "Wachtrij", match: (p) => p === base },
     { href: `${base}/agents`, label: "Agents", match: (p) => p.startsWith(`${base}/agents`) },
     { href: `${base}/schedules`, label: "Schedules", match: (p) => p.startsWith(`${base}/schedules`) },
+    { href: `${base}/runs`, label: "Runs", match: (p) => p.startsWith(`${base}/runs`) },
     { href: `${base}/integrations`, label: "Integrations", match: (p) => p.startsWith(`${base}/integrations`) },
   ];
   return (

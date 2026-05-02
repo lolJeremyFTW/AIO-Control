@@ -199,6 +199,41 @@ export async function moveNavNode(input: {
   return { ok: true, data: null };
 }
 
+export async function swapNavNodeOrder(input: {
+  workspace_slug: string;
+  business_id: string;
+  source_id: string;
+  target_id: string;
+}): Promise<ActionResult<null>> {
+  if (input.source_id === input.target_id) return { ok: true, data: null };
+  const supabase = await createSupabaseServerClient();
+  const { data: rows, error } = await supabase
+    .from("nav_nodes")
+    .select("id, sort_order")
+    .in("id", [input.source_id, input.target_id]);
+  if (error || !rows || rows.length !== 2) {
+    return { ok: false, error: error?.message ?? "Topics niet gevonden." };
+  }
+  const a = rows.find((r) => r.id === input.source_id);
+  const b = rows.find((r) => r.id === input.target_id);
+  if (!a || !b) return { ok: false, error: "Topics niet gevonden." };
+
+  await supabase
+    .from("nav_nodes")
+    .update({ sort_order: b.sort_order })
+    .eq("id", a.id);
+  await supabase
+    .from("nav_nodes")
+    .update({ sort_order: a.sort_order })
+    .eq("id", b.id);
+
+  revalidatePath(
+    `/${input.workspace_slug}/business/${input.business_id}`,
+    "layout",
+  );
+  return { ok: true, data: null };
+}
+
 export async function reorderNavNode(input: {
   workspace_slug: string;
   business_id: string;

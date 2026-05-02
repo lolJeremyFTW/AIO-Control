@@ -85,6 +85,9 @@ type Props = {
     e: ReactMouseEvent,
     origin: ContextMenuOrigin,
   ) => void;
+  /** Called when the user drops a topic onto another topic. The shell
+   *  swaps their sort_orders. */
+  onReorderTopic?: (sourceId: string, targetId: string) => void;
 };
 
 export function Rail({
@@ -105,6 +108,7 @@ export function Rail({
   onOpenSettings,
   page = "dashboard",
   onContextMenuRail,
+  onReorderTopic,
 }: Props) {
   const [hover, setHover] = useState(false);
 
@@ -272,6 +276,11 @@ export function Rail({
                   e.stopPropagation();
                   onContextMenuRail?.(e, { kind: "topic", id: t.id });
                 }}
+                onDropOn={
+                  onReorderTopic
+                    ? (sourceId) => onReorderTopic(sourceId, t.id)
+                    : undefined
+                }
               />
             ))}
           </>
@@ -351,6 +360,9 @@ type TopicRowProps = {
   expanded: boolean;
   onClick?: () => void;
   onContextMenu?: (e: ReactMouseEvent) => void;
+  /** Drag-and-drop reorder hook. The TopicRow becomes a drag source
+   *  AND drop target; on drop the source's id is handed back. */
+  onDropOn?: (sourceId: string) => void;
 };
 
 function TopicRow({
@@ -359,7 +371,9 @@ function TopicRow({
   expanded,
   onClick,
   onContextMenu,
+  onDropOn,
 }: TopicRowProps) {
+  const [dropActive, setDropActive] = useState(false);
   // Topics use a simpler glyph — a small dashed circle with the first
   // letter — and the same selected ring as businesses, so the brand-green
   // glow consistently signals "currently active". When the user picks a
@@ -368,11 +382,36 @@ function TopicRow({
   const variant = topic.variant ?? "dashed";
   return (
     <div
-      className={"nav-row " + (selected ? "selected" : "")}
+      className={
+        "nav-row " +
+        (selected ? "selected " : "") +
+        (dropActive ? "drop-active" : "")
+      }
       onClick={onClick}
       onContextMenu={onContextMenu}
       role="button"
       tabIndex={0}
+      draggable={!!onDropOn}
+      onDragStart={(e) => {
+        if (!onDropOn) return;
+        e.dataTransfer.setData("text/aio-topic", topic.id);
+        e.dataTransfer.effectAllowed = "move";
+      }}
+      onDragOver={(e) => {
+        if (!onDropOn) return;
+        if (!e.dataTransfer.types.includes("text/aio-topic")) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        setDropActive(true);
+      }}
+      onDragLeave={() => setDropActive(false)}
+      onDrop={(e) => {
+        if (!onDropOn) return;
+        e.preventDefault();
+        setDropActive(false);
+        const sourceId = e.dataTransfer.getData("text/aio-topic");
+        if (sourceId && sourceId !== topic.id) onDropOn(sourceId);
+      }}
     >
       <div className="nav-row-circle">
         <Node

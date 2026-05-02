@@ -20,6 +20,7 @@
 
 import { NextResponse } from "next/server";
 
+import { dispatchTelegramCommand } from "../../../../../lib/notify/telegram-commands";
 import { getServiceRoleSupabase } from "../../../../../lib/supabase/service";
 
 export const dynamic = "force-dynamic";
@@ -107,16 +108,36 @@ export async function POST(req: Request) {
     if (denied || !allowed) continue;
 
     // Log it. The table is created by migration 017 below.
-    await supabase.from("telegram_inbound").insert({
-      workspace_id: t.workspace_id,
-      target_id: t.id,
-      chat_id: chatId,
-      message_thread_id: msg.message_thread_id ?? null,
-      from_user_id: msg.from?.id ?? null,
-      from_username: username,
-      text: msg.text ?? null,
-      raw: msg as unknown as object,
-    });
+    const { data: inbound } = await supabase
+      .from("telegram_inbound")
+      .insert({
+        workspace_id: t.workspace_id,
+        target_id: t.id,
+        chat_id: chatId,
+        message_thread_id: msg.message_thread_id ?? null,
+        from_user_id: msg.from?.id ?? null,
+        from_username: username,
+        text: msg.text ?? null,
+        raw: msg as unknown as object,
+      })
+      .select("id")
+      .single();
+
+    // Dispatch slash-commands. Don't await — Telegram retries on
+    // timeout, so we want to ack fast and let dispatch run async.
+    if (inbound && msg.text?.trim().startsWith("/")) {
+      void dispatchTelegramCommand({
+        workspace_id: t.workspace_id,
+        target_id: t.id,
+        chat_id: chatId,
+        message_thread_id: msg.message_thread_id ?? null,
+        inbound_id: (inbound as { id: string }).id,
+        text: msg.text,
+        from_username: username,
+      }).catch((err) => {
+        console.error("dispatchTelegramCommand failed", err);
+      });
+    }
   }
 
   return NextResponse.json({ ok: true });
