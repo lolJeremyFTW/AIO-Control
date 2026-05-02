@@ -21,8 +21,16 @@ import type { BusinessRow } from "../lib/queries/businesses";
 import type { NavNode } from "../lib/queries/nav-nodes";
 import { translate, type Locale, type T } from "../lib/i18n/dict";
 import { signOutAction } from "../app/(auth)/actions";
-import { archiveBusiness } from "../app/actions/businesses";
-import { archiveNavNode } from "../app/actions/nav-nodes";
+import {
+  archiveBusiness,
+  duplicateBusiness,
+} from "../app/actions/businesses";
+import {
+  archiveNavNode,
+  duplicateNavNode,
+  moveNavNode,
+  reorderNavNode,
+} from "../app/actions/nav-nodes";
 import { setLocale } from "../app/actions/locale";
 import { EditNodeDialog, type EditTarget } from "./EditNodeDialog";
 import { NewBusinessDialog } from "./NewBusinessDialog";
@@ -238,12 +246,14 @@ export function WorkspaceShell({
     if (origin.kind === "business" || origin.kind === "drilled-business") {
       const biz = businesses.find((b) => b.id === origin.id);
       if (!biz) return [];
+      const path = `/${workspace.slug}/business/${biz.id}`;
       return [
+        { label: "Open", onClick: () => router.push(path) },
         {
-          label: "Open",
-          onClick: () =>
-            router.push(`/${workspace.slug}/business/${biz.id}`),
+          label: "Open in nieuw tabblad",
+          onClick: () => window.open(path, "_blank", "noopener"),
         },
+        { kind: "separator" },
         {
           label: "Nieuw topic",
           onClick: () =>
@@ -252,6 +262,14 @@ export function WorkspaceShell({
               parentId: null,
               title: `Nieuw topic in ${biz.name}`,
             }),
+        },
+        {
+          label: "Agents",
+          onClick: () => router.push(`${path}/agents`),
+        },
+        {
+          label: "Schedules",
+          onClick: () => router.push(`${path}/schedules`),
         },
         { kind: "separator" },
         {
@@ -268,6 +286,25 @@ export function WorkspaceShell({
               color_hex: biz.color_hex,
               logo_url: biz.logo_url,
             }),
+        },
+        {
+          label: "Dupliceer",
+          onClick: async () => {
+            const res = await duplicateBusiness({
+              workspace_slug: workspace.slug,
+              workspace_id: workspace.id,
+              source_id: biz.id,
+            });
+            if (res.ok) router.refresh();
+            else alert(res.error);
+          },
+        },
+        {
+          label: "Kopieer link",
+          onClick: () =>
+            navigator.clipboard.writeText(
+              `${window.location.origin}${path}`,
+            ),
         },
         { kind: "separator" },
         {
@@ -321,14 +358,24 @@ export function WorkspaceShell({
         idx >= 0
           ? drilledBiz.navPath.slice(0, idx + 1)
           : [...drilledBiz.navPath, node.id];
+      const fullPath = `/${workspace.slug}/business/${drilledBiz.biz.id}/n/${pathSegments.join("/")}`;
+      // Possible move targets: every other node in the same business +
+      // a "(business root)" option. We cap depth at 5 to keep menu sane.
+      const moveTargets = navNodes
+        .filter(
+          (n) =>
+            n.business_id === drilledBiz.biz.id &&
+            n.id !== node.id &&
+            n.parent_id !== node.id, // skip immediate children
+        )
+        .slice(0, 12);
       return [
+        { label: "Open", onClick: () => router.push(fullPath) },
         {
-          label: "Open",
-          onClick: () =>
-            router.push(
-              `/${workspace.slug}/business/${drilledBiz.biz.id}/n/${pathSegments.join("/")}`,
-            ),
+          label: "Open in nieuw tabblad",
+          onClick: () => window.open(fullPath, "_blank", "noopener"),
         },
+        { kind: "separator" },
         {
           label: "Nieuw subtopic",
           onClick: () =>
@@ -338,7 +385,6 @@ export function WorkspaceShell({
               title: `Nieuw subtopic in ${node.name}`,
             }),
         },
-        { kind: "separator" },
         {
           label: "Instellingen…",
           onClick: () =>
@@ -354,6 +400,83 @@ export function WorkspaceShell({
               logo_url: node.logo_url,
               href: node.href,
             }),
+        },
+        {
+          label: "Dupliceer",
+          onClick: async () => {
+            const res = await duplicateNavNode({
+              workspace_slug: workspace.slug,
+              workspace_id: workspace.id,
+              business_id: drilledBiz.biz.id,
+              source_id: node.id,
+            });
+            if (res.ok) router.refresh();
+            else alert(res.error);
+          },
+        },
+        { kind: "separator" },
+        {
+          label: "↑ Naar boven",
+          onClick: async () => {
+            const res = await reorderNavNode({
+              workspace_slug: workspace.slug,
+              business_id: drilledBiz.biz.id,
+              id: node.id,
+              direction: "up",
+            });
+            if (res.ok) router.refresh();
+            else alert(res.error);
+          },
+        },
+        {
+          label: "↓ Naar beneden",
+          onClick: async () => {
+            const res = await reorderNavNode({
+              workspace_slug: workspace.slug,
+              business_id: drilledBiz.biz.id,
+              id: node.id,
+              direction: "down",
+            });
+            if (res.ok) router.refresh();
+            else alert(res.error);
+          },
+        },
+        { kind: "separator" },
+        {
+          label: "Verplaats naar root",
+          onClick: async () => {
+            const res = await moveNavNode({
+              workspace_slug: workspace.slug,
+              business_id: drilledBiz.biz.id,
+              id: node.id,
+              new_parent_id: null,
+            });
+            if (res.ok) router.refresh();
+            else alert(res.error);
+          },
+        },
+        ...moveTargets.slice(0, 6).map(
+          (target): ContextMenuItem => ({
+            label: `Verplaats onder ${target.icon ?? ""}${target.name}`,
+            onClick: async () => {
+              const res = await moveNavNode({
+                workspace_slug: workspace.slug,
+                business_id: drilledBiz.biz.id,
+                id: node.id,
+                new_parent_id: target.id,
+              });
+              if (res.ok) router.refresh();
+              else alert(res.error);
+            },
+          }),
+        ),
+        { kind: "separator" },
+        {
+          label: "Kopieer link",
+          onClick: () =>
+            navigator.clipboard.writeText(
+              `${window.location.origin}${fullPath}`,
+            ),
         },
         { kind: "separator" },
         {

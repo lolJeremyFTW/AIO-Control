@@ -92,6 +92,16 @@ export interface StreamChatOptions {
   messages: ChatMessage[];
   /** Pulled from the runs row so we can attribute cost back to a single run. */
   runId?: string;
+  /** Resolved per-tenant API key (workspace/business/navnode override).
+   *  When omitted, providers fall back to process.env.<PROVIDER>_API_KEY. */
+  apiKey?: string | null;
+  /** Tenancy context — providers that need a re-resolve (e.g. routing
+   *  rule jumps to a different provider) can re-look up via this. */
+  tenant?: {
+    workspaceId: string;
+    businessId?: string | null;
+    navNodeId?: string | null;
+  };
 }
 
 export async function* streamChat(

@@ -5,6 +5,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 
+import { dispatchRunEvent } from "../../../../../lib/notify/dispatch";
 import { getServiceRoleSupabase } from "../../../../../lib/supabase/service";
 
 export const dynamic = "force-dynamic";
@@ -59,5 +60,23 @@ export async function POST(
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  // Re-fetch the now-updated run row so the dispatcher has full
+  // context (workspace_id, agent_id, schedule_id) to decide which
+  // Telegram + custom integration to fire.
+  const { data: run } = await supabase
+    .from("runs")
+    .select(
+      "id, workspace_id, business_id, agent_id, schedule_id, status, cost_cents, duration_ms, output, error_text",
+    )
+    .eq("id", run_id)
+    .maybeSingle();
+  if (run) {
+    void dispatchRunEvent(
+      run as Parameters<typeof dispatchRunEvent>[0],
+      run.status === "failed" ? "failed" : "done",
+    );
+  }
+
   return NextResponse.json({ ok: true });
 }

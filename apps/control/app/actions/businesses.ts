@@ -112,6 +112,45 @@ export async function updateBusiness(input: {
   return { ok: true, data: null };
 }
 
+export async function duplicateBusiness(input: {
+  workspace_slug: string;
+  workspace_id: string;
+  source_id: string;
+}): Promise<ActionResult<{ id: string }>> {
+  const supabase = await createSupabaseServerClient();
+  const { data: src, error: srcErr } = await supabase
+    .from("businesses")
+    .select(
+      "name, sub, letter, variant, icon, color_hex, logo_url, status, primary_action",
+    )
+    .eq("id", input.source_id)
+    .maybeSingle();
+  if (srcErr || !src) {
+    return { ok: false, error: srcErr?.message ?? "Origineel niet gevonden." };
+  }
+  const { data, error } = await supabase
+    .from("businesses")
+    .insert({
+      workspace_id: input.workspace_id,
+      name: `${src.name} (kopie)`,
+      sub: src.sub,
+      letter: src.letter,
+      variant: src.variant,
+      icon: src.icon,
+      color_hex: src.color_hex,
+      logo_url: src.logo_url,
+      status: "paused",
+      primary_action: src.primary_action,
+    })
+    .select("id")
+    .single();
+  if (error || !data) {
+    return { ok: false, error: error?.message ?? "Insert faalde." };
+  }
+  revalidatePath(`/${input.workspace_slug}/dashboard`);
+  return { ok: true, data: { id: data.id } };
+}
+
 export async function archiveBusiness({
   workspace_slug,
   id,

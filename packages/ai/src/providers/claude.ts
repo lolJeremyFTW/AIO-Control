@@ -19,12 +19,13 @@ const DEFAULT_MODEL = "claude-sonnet-4-6";
 export async function* streamClaude(
   opts: StreamChatOptions,
 ): AsyncIterable<AGUIEvent> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = opts.apiKey || process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     yield {
       type: "error",
       code: "missing_key",
-      message: "ANTHROPIC_API_KEY is not configured.",
+      message:
+        "Geen Anthropic API key gevonden. Stel 'm in via Settings → API Keys (workspace, business of topic).",
     };
     return;
   }

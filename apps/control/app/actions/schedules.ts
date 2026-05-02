@@ -35,6 +35,12 @@ export async function createCronSchedule(input: {
   prompt: string;
   callback_url: string;
   mcp_servers?: Array<{ name: string; url: string }>;
+  title?: string | null;
+  description?: string | null;
+  instructions?: string | null;
+  timezone?: string;
+  telegram_target_id?: string | null;
+  custom_integration_id?: string | null;
 }): Promise<ActionResult<{ id: string; routine_id: string }>> {
   const supabase = await createSupabaseServerClient();
 
@@ -67,14 +73,15 @@ export async function createCronSchedule(input: {
       kind: "cron" satisfies ScheduleKind,
       cron_expr: input.cron_expr,
       provider_routine_id: routine.id,
-      // pgp_sym_encrypt expects a text input; we route through a SQL fragment
-      // by calling the rpc. For phase 4 we wrap the bearer with a tiny
-      // helper RPC declared in the next migration. Until then we store base64
-      // of the bearer (still better than plaintext but not at-rest crypto —
-      // see TODO in 005_secrets.sql).
       provider_bearer_token: routine.bearer_token
         ? Buffer.from(routine.bearer_token, "utf8").toString("base64")
         : null,
+      title: input.title ?? null,
+      description: input.description ?? null,
+      instructions: input.instructions ?? null,
+      timezone: input.timezone ?? "Europe/Amsterdam",
+      telegram_target_id: input.telegram_target_id ?? null,
+      custom_integration_id: input.custom_integration_id ?? null,
     })
     .select("id, provider_routine_id")
     .single();

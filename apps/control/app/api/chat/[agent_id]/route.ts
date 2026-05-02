@@ -12,6 +12,8 @@ import {
 } from "@aio/ai/router";
 import type { AGUIEvent, ChatMessage } from "@aio/ai/ag-ui";
 
+import { resolveApiKey } from "../../../../lib/api-keys/resolve";
+import { dispatchRunEvent } from "../../../../lib/notify/dispatch";
 import { getAgentById } from "../../../../lib/queries/agents";
 import { createSupabaseServerClient } from "../../../../lib/supabase/server";
 
@@ -69,6 +71,14 @@ export async function POST(
   const config = (agent.config ?? {}) as AgentConfig;
   if (agent.model && !config.model) config.model = agent.model;
 
+  // Resolve the per-tenant API key for this agent's provider. Order
+  // is navnode → business → workspace → env-var fallback. Set up once
+  // per request — providers reuse it.
+  const apiKey = await resolveApiKey(agent.provider, {
+    workspaceId: agent.workspace_id,
+    businessId: agent.business_id,
+  });
+
   const encoder = new TextEncoder();
   const finishedAt = { ts: 0 };
   let assistantText = "";
@@ -88,6 +98,11 @@ export async function POST(
           config,
           messages: body.messages,
           runId: run.id,
+          apiKey,
+          tenant: {
+            workspaceId: agent.workspace_id,
+            businessId: agent.business_id,
+          },
         })) {
           if (event.type === "token") assistantText += event.delta;
           if (event.type === "message_end") {
@@ -126,6 +141,24 @@ export async function POST(
           .then(({ error }) => {
             if (error) console.error("update run failed", error);
           });
+
+        // Fan out to Telegram + custom integrations on run completion.
+        // Best-effort, no await for the user-facing response.
+        void dispatchRunEvent(
+          {
+            id: run.id,
+            workspace_id: agent.workspace_id,
+            business_id: agent.business_id,
+            agent_id: agent.id,
+            schedule_id: null,
+            status: "done",
+            cost_cents: usage?.cost ?? 0,
+            duration_ms: 0,
+            output: { text: assistantText },
+            error_text: null,
+          },
+          "done",
+        );
 
         if (body.thread_id) {
           await supabase

@@ -16,7 +16,9 @@ import {
 } from "../../../../../lib/queries/schedules";
 import { BusinessTabs } from "../../../../../components/BusinessTabs";
 import { RunsTimeline } from "../../../../../components/RunsTimeline";
+import { ScheduleBuilder } from "../../../../../components/ScheduleBuilder";
 import { SchedulesPanel } from "../../../../../components/SchedulesPanel";
+import { createSupabaseServerClient } from "../../../../../lib/supabase/server";
 
 type Props = {
   params: Promise<{ workspace_slug: string; bizId: string }>;
@@ -30,16 +32,37 @@ export default async function BusinessSchedulesPage({ params }: Props) {
   const workspace = await getWorkspaceBySlug(workspace_slug);
   if (!workspace) notFound();
 
-  const [businesses, allAgents, schedules, runs, hdrs] = await Promise.all([
+  const supabase = await createSupabaseServerClient();
+  const [
+    businesses,
+    allAgents,
+    schedules,
+    runs,
+    hdrs,
+    { data: telegramRows },
+    { data: customRows },
+  ] = await Promise.all([
     listBusinesses(workspace.id),
     listAgentsForWorkspace(workspace.id),
     listSchedulesForBusiness(bizId),
     listRecentRunsForBusiness(bizId, 12),
     headers(),
+    supabase
+      .from("telegram_targets")
+      .select("id, name")
+      .eq("workspace_id", workspace.id)
+      .eq("enabled", true),
+    supabase
+      .from("custom_integrations")
+      .select("id, name")
+      .eq("workspace_id", workspace.id)
+      .eq("enabled", true),
   ]);
   const biz = businesses.find((b) => b.id === bizId);
   if (!biz) notFound();
   const agents = allAgents.filter((a) => a.business_id === bizId);
+  const telegramTargets = (telegramRows ?? []) as { id: string; name: string }[];
+  const customIntegrations = (customRows ?? []) as { id: string; name: string }[];
 
   // Build the public origin webhook URLs should resolve under. In production
   // this is whatever Caddy fronts (tromptech.life); in dev it falls back to
@@ -56,6 +79,20 @@ export default async function BusinessSchedulesPage({ params }: Props) {
         <span className="sub">Cron · webhooks · run history</span>
       </div>
       <BusinessTabs workspaceSlug={workspace_slug} businessId={biz.id} />
+
+      {agents.length > 0 && (
+        <div style={{ marginBottom: 22 }}>
+          <ScheduleBuilder
+            workspaceSlug={workspace.slug}
+            workspaceId={workspace.id}
+            businessId={biz.id}
+            agents={agents}
+            triggerOrigin={triggerOrigin}
+            telegramTargets={telegramTargets}
+            customIntegrations={customIntegrations}
+          />
+        </div>
+      )}
 
       <SchedulesPanel
         workspaceSlug={workspace.slug}

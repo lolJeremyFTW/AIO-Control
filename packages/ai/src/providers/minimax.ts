@@ -26,12 +26,13 @@ const DEFAULT_MODEL = "MiniMax-M2.7-Highspeed";
 export async function* streamMinimax(
   opts: StreamChatOptions,
 ): AsyncIterable<AGUIEvent> {
-  const apiKey = process.env.MINIMAX_API_KEY;
+  const apiKey = opts.apiKey || process.env.MINIMAX_API_KEY;
   if (!apiKey) {
     yield {
       type: "error",
       code: "missing_key",
-      message: "MINIMAX_API_KEY is not configured.",
+      message:
+        "Geen MiniMax API key gevonden. Stel 'm in via Settings → API Keys.",
     };
     return;
   }
@@ -76,6 +77,29 @@ export async function* streamMinimax(
       type: "error",
       code: `minimax_${response.status}`,
       message: await response.text().catch(() => response.statusText),
+    };
+    return;
+  }
+
+  // MiniMax returns HTTP 200 + a JSON envelope when the key is missing
+  // or invalid. Detect that BEFORE we start reading SSE chunks so the
+  // user gets a real error instead of an empty assistant message.
+  const ctype = response.headers.get("content-type") ?? "";
+  if (ctype.includes("application/json") && !ctype.includes("event-stream")) {
+    const body = await response.text().catch(() => "");
+    let msg = body;
+    try {
+      const j = JSON.parse(body) as {
+        base_resp?: { status_code?: number; status_msg?: string };
+      };
+      if (j.base_resp?.status_msg) msg = j.base_resp.status_msg;
+    } catch {
+      /* keep raw body */
+    }
+    yield {
+      type: "error",
+      code: "minimax_invalid_response",
+      message: `MiniMax: ${msg}`,
     };
     return;
   }

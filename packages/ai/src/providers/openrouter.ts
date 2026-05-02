@@ -12,12 +12,13 @@ const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 export async function* streamOpenRouter(
   opts: StreamChatOptions,
 ): AsyncIterable<AGUIEvent> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
+  const apiKey = opts.apiKey || process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
     yield {
       type: "error",
       code: "missing_key",
-      message: "OPENROUTER_API_KEY is not configured.",
+      message:
+        "Geen OpenRouter API key gevonden. Stel 'm in via Settings → API Keys.",
     };
     return;
   }

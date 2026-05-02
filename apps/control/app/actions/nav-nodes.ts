@@ -118,6 +118,138 @@ export async function updateNavNode(input: {
   return { ok: true, data: null };
 }
 
+export async function duplicateNavNode(input: {
+  workspace_slug: string;
+  workspace_id: string;
+  business_id: string;
+  source_id: string;
+}): Promise<ActionResult<{ id: string }>> {
+  const supabase = await createSupabaseServerClient();
+  const { data: src, error: srcErr } = await supabase
+    .from("nav_nodes")
+    .select("name, parent_id, variant, icon, color_hex, logo_url, href, sort_order")
+    .eq("id", input.source_id)
+    .maybeSingle();
+  if (srcErr || !src) {
+    return { ok: false, error: srcErr?.message ?? "Origineel niet gevonden." };
+  }
+  const { data, error } = await supabase
+    .from("nav_nodes")
+    .insert({
+      workspace_id: input.workspace_id,
+      business_id: input.business_id,
+      parent_id: src.parent_id,
+      name: `${src.name} (kopie)`,
+      letter: src.name.slice(0, 1).toUpperCase(),
+      variant: src.variant,
+      icon: src.icon,
+      color_hex: src.color_hex,
+      logo_url: src.logo_url,
+      href: src.href,
+      sort_order: (src.sort_order ?? 0) + 1,
+    })
+    .select("id")
+    .single();
+  if (error || !data) {
+    return { ok: false, error: error?.message ?? "Insert faalde." };
+  }
+  revalidatePath(
+    `/${input.workspace_slug}/business/${input.business_id}`,
+    "layout",
+  );
+  return { ok: true, data: { id: data.id } };
+}
+
+export async function moveNavNode(input: {
+  workspace_slug: string;
+  business_id: string;
+  id: string;
+  new_parent_id: string | null;
+}): Promise<ActionResult<null>> {
+  // Guard: can't move a node under itself or any of its descendants.
+  if (input.new_parent_id === input.id) {
+    return { ok: false, error: "Kan niet onder zichzelf hangen." };
+  }
+  const supabase = await createSupabaseServerClient();
+  // Walk up from new_parent_id to make sure we don't hit input.id
+  let cursor: string | null = input.new_parent_id;
+  for (let i = 0; cursor && i < 32; i++) {
+    if (cursor === input.id) {
+      return {
+        ok: false,
+        error: "Cyclus — je kunt een topic niet onder een eigen subtopic hangen.",
+      };
+    }
+    const { data: parent } = await supabase
+      .from("nav_nodes")
+      .select("parent_id")
+      .eq("id", cursor)
+      .maybeSingle();
+    cursor = (parent?.parent_id as string | null) ?? null;
+  }
+  const { error } = await supabase
+    .from("nav_nodes")
+    .update({ parent_id: input.new_parent_id })
+    .eq("id", input.id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath(
+    `/${input.workspace_slug}/business/${input.business_id}`,
+    "layout",
+  );
+  return { ok: true, data: null };
+}
+
+export async function reorderNavNode(input: {
+  workspace_slug: string;
+  business_id: string;
+  id: string;
+  direction: "up" | "down";
+}): Promise<ActionResult<null>> {
+  const supabase = await createSupabaseServerClient();
+  // Look up the node + its current sort_order.
+  const { data: node } = await supabase
+    .from("nav_nodes")
+    .select("id, parent_id, sort_order")
+    .eq("id", input.id)
+    .maybeSingle();
+  if (!node) return { ok: false, error: "Topic niet gevonden." };
+
+  // Find the immediate sibling above/below.
+  const op = input.direction === "up" ? "lt" : "gt";
+  const order = input.direction === "up" ? "desc" : "asc";
+  const sib = await supabase
+    .from("nav_nodes")
+    .select("id, sort_order")
+    .eq("business_id", input.business_id)
+    .filter(
+      "parent_id",
+      node.parent_id == null ? "is" : "eq",
+      node.parent_id ?? null,
+    )
+    .filter("sort_order", op, node.sort_order)
+    .order("sort_order", { ascending: order === "asc" })
+    .limit(1)
+    .maybeSingle();
+
+  if (!sib.data) return { ok: true, data: null }; // already at edge
+
+  // Swap sort_orders.
+  await supabase
+    .from("nav_nodes")
+    .update({ sort_order: sib.data.sort_order })
+    .eq("id", input.id);
+  await supabase
+    .from("nav_nodes")
+    .update({ sort_order: node.sort_order })
+    .eq("id", sib.data.id);
+
+  revalidatePath(
+    `/${input.workspace_slug}/business/${input.business_id}`,
+    "layout",
+  );
+  return { ok: true, data: null };
+}
+
 export async function archiveNavNode(input: {
   workspace_slug: string;
   business_id: string;

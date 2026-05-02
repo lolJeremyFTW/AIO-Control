@@ -55,13 +55,56 @@ export function NotificationsButton() {
   const subscribe = async () => {
     try {
       setError(null);
+
+      // 1. Ask for OS-level notification permission FIRST. Chrome on
+      //    desktop will otherwise throw "Registration failed -
+      //    permission denied" when pushManager.subscribe is called
+      //    before the user has been prompted. Calling this from inside
+      //    a click handler keeps it as a valid user-gesture.
+      if (Notification.permission === "default") {
+        const result = await Notification.requestPermission();
+        if (result !== "granted") {
+          setStatus(result === "denied" ? "denied" : "off");
+          setError(
+            result === "denied"
+              ? "Toestemming geweigerd. Sta toe via het slot-icoon links van het adres en probeer opnieuw."
+              : "Toestemming nog niet gegeven.",
+          );
+          return;
+        }
+      } else if (Notification.permission === "denied") {
+        setStatus("denied");
+        setError(
+          "Notificaties zijn geblokkeerd door de browser. Sta toe via het slot-icoon links van het adres.",
+        );
+        return;
+      }
+
+      // 2. Get the VAPID public key so the push service knows which
+      //    server is sending pushes.
       const keyRes = await fetch(apiUrl("/api/push/key"));
-      const { key } = await keyRes.json();
+      if (!keyRes.ok) throw new Error("VAPID key endpoint gaf " + keyRes.status);
+      const { key } = (await keyRes.json()) as { key: string };
+
+      // 3. Register the SW (idempotent — re-running is fine).
+      const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+      await navigator.serviceWorker.register(`${base}/sw.js`, {
+        scope: `${base}/`,
+      });
       const reg = await navigator.serviceWorker.ready;
+
+      // 4. Subscribe to push. If a stale subscription exists from a
+      //    previous VAPID key, drop it first — pushManager refuses to
+      //    re-subscribe with a different applicationServerKey.
+      const existing = await reg.pushManager.getSubscription();
+      if (existing) await existing.unsubscribe();
+
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(key),
       });
+
+      // 5. Persist on the server so it can fan out push events to us.
       const json = sub.toJSON();
       const res = await fetch(apiUrl("/api/push/subscribe"), {
         method: "POST",
@@ -75,7 +118,18 @@ export function NotificationsButton() {
       if (!res.ok) throw new Error(await res.text());
       setStatus("on");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "subscribe failed");
+      const msg = err instanceof Error ? err.message : "subscribe failed";
+      // Translate common browser errors into something actionable.
+      if (/permission denied/i.test(msg)) {
+        setStatus("denied");
+        setError(
+          "Browser blokkeerde de subscription. Check OS-instellingen: " +
+            "macOS → Systeem → Meldingen → Chrome (of jouw browser) op AAN. " +
+            "Op Windows: Instellingen → Systeem → Meldingen → Chrome aan.",
+        );
+      } else {
+        setError(msg);
+      }
     }
   };
 

@@ -9,17 +9,33 @@ import {
   getWorkspaceBySlug,
 } from "../../../lib/auth/workspace";
 import { signOutAction } from "../../(auth)/actions";
+import { listApiKeys } from "../../actions/api-keys";
+import { ApiKeysPanel } from "../../../components/ApiKeysPanel";
+import {
+  CustomIntegrationsPanel,
+  type CustomIntegrationRow,
+} from "../../../components/CustomIntegrationsPanel";
 import { DangerZone } from "../../../components/DangerZone";
 import { NotificationsButton } from "../../../components/NotificationsButton";
 import { TeamPanel } from "../../../components/TeamPanel";
+import {
+  TelegramPanel,
+  type TelegramTargetRow,
+} from "../../../components/TelegramPanel";
 import { WeatherSettings } from "../../../components/WeatherSettings";
+import { listBusinesses } from "../../../lib/queries/businesses";
 import { listWorkspaceMembers } from "../../../lib/queries/members";
+import type { NavNode } from "../../../lib/queries/nav-nodes";
 import { createSupabaseServerClient } from "../../../lib/supabase/server";
 
 type Props = { params: Promise<{ workspace_slug: string }> };
 
 const SECTIONS = [
   { id: "general", label: "General" },
+  { id: "weather", label: "Weather" },
+  { id: "api-keys", label: "API Keys" },
+  { id: "telegram", label: "Telegram" },
+  { id: "custom-integrations", label: "Custom integrations" },
   { id: "notifications", label: "Notifications" },
   { id: "team", label: "Team & roles" },
   { id: "danger", label: "Danger zone" },
@@ -35,14 +51,51 @@ export default async function SettingsPage({ params }: Props) {
 
   const members = await listWorkspaceMembers(workspace.id);
   // Determine if the signed-in user is the owner — Danger zone uses this
-  // to show or hide destructive actions. We pull weather coords on the
-  // same trip so the settings form starts pre-filled.
+  // to show or hide destructive actions. We pull weather coords + the
+  // tiered-API-key state + business + nav-nodes on the same trip so the
+  // settings page renders in one round trip.
   const supabase = await createSupabaseServerClient();
-  const { data: wsExtra } = await supabase
-    .from("workspaces")
-    .select("owner_id, weather_city, weather_lat, weather_lon")
-    .eq("id", workspace.id)
-    .maybeSingle();
+  const [
+    { data: wsExtra },
+    apiKeys,
+    businesses,
+    { data: navRows },
+    { data: telegramRows },
+    { data: customIntegrationsRows },
+  ] = await Promise.all([
+    supabase
+      .from("workspaces")
+      .select("owner_id, weather_city, weather_lat, weather_lon")
+      .eq("id", workspace.id)
+      .maybeSingle(),
+    listApiKeys(workspace.id),
+    listBusinesses(workspace.id),
+    supabase
+      .from("nav_nodes")
+      .select(
+        "id, workspace_id, business_id, parent_id, name, sub, letter, variant, icon, color_hex, logo_url, href, sort_order",
+      )
+      .eq("workspace_id", workspace.id)
+      .is("archived_at", null),
+    supabase
+      .from("telegram_targets")
+      .select(
+        "id, scope, scope_id, name, chat_id, topic_id, allowlist, denylist, send_run_done, send_run_fail, send_queue_review, enabled",
+      )
+      .eq("workspace_id", workspace.id)
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("custom_integrations")
+      .select(
+        "id, scope, scope_id, name, url, method, headers, body_template, on_run_done, on_run_fail, on_queue_review, enabled",
+      )
+      .eq("workspace_id", workspace.id)
+      .order("created_at", { ascending: true }),
+  ]);
+  const navNodes = (navRows ?? []) as NavNode[];
+  const telegramTargets = (telegramRows ?? []) as TelegramTargetRow[];
+  const customIntegrations = (customIntegrationsRows ??
+    []) as CustomIntegrationRow[];
   const isOwner = !!wsExtra && wsExtra.owner_id === user.id;
   const weatherInitial = {
     city: wsExtra?.weather_city ?? "Breda",
@@ -98,6 +151,60 @@ export default async function SettingsPage({ params }: Props) {
                 Sign out
               </button>
             </form>
+          </SectionCard>
+
+          <SectionCard
+            id="weather"
+            title="Weather chip"
+            desc="De rechterbovenhoek van de header toont een weer-chip per workspace."
+          >
+            <WeatherSettings
+              workspaceId={workspace.id}
+              workspaceSlug={workspace.slug}
+              initial={weatherInitial}
+            />
+          </SectionCard>
+
+          <SectionCard
+            id="api-keys"
+            title="API Keys"
+            desc="Workspace-defaults of overrides per business of topic. Encryptie via pgcrypto."
+          >
+            <ApiKeysPanel
+              workspaceSlug={workspace.slug}
+              workspaceId={workspace.id}
+              initialKeys={apiKeys}
+              businesses={businesses}
+              navNodes={navNodes}
+            />
+          </SectionCard>
+
+          <SectionCard
+            id="telegram"
+            title="Telegram"
+            desc="Stuur run-rapporten naar één of meer Telegram-channels."
+          >
+            <TelegramPanel
+              workspaceSlug={workspace.slug}
+              workspaceId={workspace.id}
+              initialTargets={telegramTargets}
+              businesses={businesses}
+              navNodes={navNodes}
+            />
+          </SectionCard>
+
+          <SectionCard
+            id="custom-integrations"
+            title="Custom integrations"
+            desc="Algemene HTTP webhooks / API calls. Mustache placeholders voor run-data."
+          >
+            <CustomIntegrationsPanel
+              workspaceSlug={workspace.slug}
+              workspaceId={workspace.id}
+              initialItems={customIntegrations}
+              businesses={businesses}
+              navNodes={navNodes}
+            />
           </SectionCard>
 
           <SectionCard
