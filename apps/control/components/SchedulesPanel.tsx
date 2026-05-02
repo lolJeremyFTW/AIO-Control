@@ -16,6 +16,7 @@ import {
   deleteSchedule,
   rotateWebhookSecret,
   runAgentNow,
+  toggleSchedule,
 } from "../app/actions/schedules";
 
 type Props = {
@@ -131,6 +132,18 @@ export function SchedulesPanel({
       const res = await deleteSchedule({
         workspace_slug: workspaceSlug,
         schedule_id: id,
+      });
+      if (!res.ok) setError(res.error);
+      router.refresh();
+    });
+  };
+
+  const toggle = (id: string, enabled: boolean) => {
+    startTransition(async () => {
+      const res = await toggleSchedule({
+        workspace_slug: workspaceSlug,
+        schedule_id: id,
+        enabled,
       });
       if (!res.ok) setError(res.error);
       router.refresh();
@@ -364,6 +377,7 @@ export function SchedulesPanel({
                     style={{
                       display: "flex",
                       justifyContent: "space-between",
+                      alignItems: "flex-start",
                       gap: 8,
                     }}
                   >
@@ -383,13 +397,28 @@ export function SchedulesPanel({
                     >
                       {s.kind}
                     </span>
-                    {s.last_fired_at && (
-                      <span
-                        style={{ fontSize: 11, color: "var(--app-fg-3)" }}
-                      >
-                        laatst {new Date(s.last_fired_at).toLocaleString("nl-NL")}
-                      </span>
-                    )}
+                    <label
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        fontSize: 10.5,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        color: s.enabled
+                          ? "var(--tt-green)"
+                          : "var(--app-fg-3)",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={s.enabled}
+                        disabled={pending}
+                        onChange={() => toggle(s.id, !s.enabled)}
+                        style={{ accentColor: "var(--tt-green)" }}
+                      />
+                      {s.enabled ? "AAN" : "GEPAUZEERD"}
+                    </label>
                   </div>
                   <div
                     style={{
@@ -399,8 +428,19 @@ export function SchedulesPanel({
                       color: "var(--app-fg)",
                     }}
                   >
-                    {agent?.name ?? "Onbekende agent"}
+                    {s.title ?? agent?.name ?? "Onbekende agent"}
                   </div>
+                  {s.description && (
+                    <div
+                      style={{
+                        fontSize: 11.5,
+                        color: "var(--app-fg-3)",
+                        marginTop: 2,
+                      }}
+                    >
+                      {s.description}
+                    </div>
+                  )}
                   {s.cron_expr && (
                     <code
                       style={{
@@ -412,6 +452,19 @@ export function SchedulesPanel({
                     >
                       {s.cron_expr}
                     </code>
+                  )}
+                  {s.last_fired_at && (
+                    <span
+                      style={{
+                        fontSize: 11,
+                        color: "var(--app-fg-3)",
+                        marginTop: 4,
+                        display: "block",
+                      }}
+                    >
+                      Laatst gevuurd:{" "}
+                      {new Date(s.last_fired_at).toLocaleString("nl-NL")}
+                    </span>
                   )}
                   <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
                     {s.kind === "webhook" && (

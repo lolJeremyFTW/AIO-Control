@@ -16,6 +16,8 @@ import {
 } from "../app/actions/agents";
 import { runAgentNow } from "../app/actions/schedules";
 import type { AgentRow } from "../lib/queries/agents";
+import { AgentRunsPanel } from "./AgentRunsPanel";
+import { EditAgentDialog } from "./EditAgentDialog";
 import { NewAgentDialog } from "./NewAgentDialog";
 
 type Target = { id: string; name: string };
@@ -43,6 +45,7 @@ export function AgentsList({
   customIntegrations = [],
 }: Props) {
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<AgentRow | null>(null);
   const [menu, setMenu] = useState<{
     x: number;
     y: number;
@@ -69,9 +72,6 @@ export function AgentsList({
     {
       label: "💬 Open chat",
       onClick: () => {
-        // Trigger the floating chat panel to open (it lives in WorkspaceShell).
-        // For now we just route to the agent — chat panel reads the first
-        // agent in the workspace by default.
         const evt = new CustomEvent("aio:open-chat", {
           detail: { agentId: agent.id },
         });
@@ -79,6 +79,10 @@ export function AgentsList({
       },
     },
     { kind: "separator" },
+    {
+      label: "✎ Bewerken…",
+      onClick: () => setEditing(agent),
+    },
     {
       label: "Dupliceer",
       onClick: () =>
@@ -182,6 +186,7 @@ export function AgentsList({
             <AgentCard
               key={a.id}
               agent={a}
+              workspaceSlug={workspaceSlug}
               keyOk={providerKeyStatus[a.provider] ?? false}
               onContextMenu={(e) =>
                 setMenu({ x: e.clientX, y: e.clientY, agent: a })
@@ -202,6 +207,17 @@ export function AgentsList({
         />
       )}
 
+      {editing && (
+        <EditAgentDialog
+          workspaceSlug={workspaceSlug}
+          businessId={businessId}
+          agent={editing}
+          telegramTargets={telegramTargets}
+          customIntegrations={customIntegrations}
+          onClose={() => setEditing(null)}
+        />
+      )}
+
       <ContextMenu
         position={menu ? { x: menu.x, y: menu.y } : null}
         items={menu ? buildMenu(menu.agent) : []}
@@ -213,10 +229,12 @@ export function AgentsList({
 
 function AgentCard({
   agent,
+  workspaceSlug,
   keyOk,
   onContextMenu,
 }: {
   agent: AgentRow;
+  workspaceSlug: string;
   keyOk: boolean;
   onContextMenu: (e: React.MouseEvent) => void;
 }) {
@@ -287,6 +305,7 @@ function AgentCard({
           ⌘ rechts-klik voor menu
         </span>
       </div>
+      <AgentRunsPanel agentId={agent.id} workspaceSlug={workspaceSlug} />
     </div>
   );
 }

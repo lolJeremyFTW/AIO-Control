@@ -18,6 +18,12 @@ export type ScheduleRow = {
   enabled: boolean;
   last_fired_at: string | null;
   created_at: string;
+  title: string | null;
+  description: string | null;
+  instructions: string | null;
+  timezone: string | null;
+  telegram_target_id: string | null;
+  custom_integration_id: string | null;
 };
 
 export async function listSchedulesForBusiness(
@@ -27,7 +33,7 @@ export async function listSchedulesForBusiness(
   const { data, error } = await supabase
     .from("schedules_safe")
     .select(
-      "id, workspace_id, agent_id, business_id, kind, cron_expr, provider_routine_id, enabled, last_fired_at, created_at",
+      "id, workspace_id, agent_id, business_id, kind, cron_expr, provider_routine_id, enabled, last_fired_at, created_at, title, description, instructions, timezone, telegram_target_id, custom_integration_id",
     )
     .eq("business_id", businessId)
     .order("created_at", { ascending: false });

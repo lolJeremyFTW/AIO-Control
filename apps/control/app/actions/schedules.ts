@@ -207,6 +207,61 @@ export async function runAgentNow(input: {
   return { ok: true, data: { run_id: data.id } };
 }
 
+export async function toggleSchedule(input: {
+  workspace_slug: string;
+  schedule_id: string;
+  enabled: boolean;
+}): Promise<ActionResult<null>> {
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase
+    .from("schedules")
+    .update({ enabled: input.enabled })
+    .eq("id", input.schedule_id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath(`/${input.workspace_slug}`);
+  return { ok: true, data: null };
+}
+
+export async function updateSchedule(input: {
+  workspace_slug: string;
+  schedule_id: string;
+  patch: {
+    title?: string | null;
+    description?: string | null;
+    instructions?: string | null;
+    cron_expr?: string;
+    timezone?: string;
+    telegram_target_id?: string | null;
+    custom_integration_id?: string | null;
+    enabled?: boolean;
+  };
+}): Promise<ActionResult<null>> {
+  const patch: Record<string, unknown> = {};
+  if (input.patch.title !== undefined) patch.title = input.patch.title;
+  if (input.patch.description !== undefined)
+    patch.description = input.patch.description;
+  if (input.patch.instructions !== undefined)
+    patch.instructions = input.patch.instructions;
+  if (input.patch.cron_expr !== undefined) patch.cron_expr = input.patch.cron_expr;
+  if (input.patch.timezone !== undefined) patch.timezone = input.patch.timezone;
+  if (input.patch.telegram_target_id !== undefined)
+    patch.telegram_target_id = input.patch.telegram_target_id;
+  if (input.patch.custom_integration_id !== undefined)
+    patch.custom_integration_id = input.patch.custom_integration_id;
+  if (input.patch.enabled !== undefined) patch.enabled = input.patch.enabled;
+
+  if (Object.keys(patch).length === 0) return { ok: true, data: null };
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase
+    .from("schedules")
+    .update(patch)
+    .eq("id", input.schedule_id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath(`/${input.workspace_slug}`);
+  return { ok: true, data: null };
+}
+
 export async function deleteSchedule(input: {
   workspace_slug: string;
   schedule_id: string;
