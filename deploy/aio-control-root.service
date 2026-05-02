@@ -1,5 +1,5 @@
 [Unit]
-Description=AIO Control (subdomain build, no basePath, port 3011)
+Description=AIO Control (subdomain build, no basePath, port 3012)
 After=network.target aio-control.service
 Wants=network.target
 
@@ -11,7 +11,7 @@ Restart=on-failure
 RestartSec=2
 User=jeremy
 Environment=NODE_ENV=production
-Environment=PORT=3011
+Environment=PORT=3012
 Environment=HOSTNAME=127.0.0.1
 EnvironmentFile=/home/jeremy/aio-control/.staged-root/apps/control/.env
 

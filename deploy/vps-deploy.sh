@@ -1,8 +1,8 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 # vps-deploy.sh — pulls latest main, installs deps, then BUILDS TWICE:
 #   1. BASE_PATH=/aio  → staged in .staged-aio/, served by aio-control on :3010
 #                        (used by https://tromptech.life/aio/*)
-#   2. BASE_PATH=""    → staged in .staged-root/, served by aio-control-root on :3011
+#   2. BASE_PATH=""    → staged in .staged-root/, served by aio-control-root on :3012
 #                        (used by https://aio.tromptech.life/*)
 # Both builds share the same .env.production. They're independent Node
 # processes pointing at the same Supabase, so logging in on one URL gives
@@ -74,7 +74,7 @@ echo "▸ Waiting for both health endpoints"
 ok=0
 for i in {1..15}; do
   s1=$(curl -fsS -o /dev/null -w "%{http_code}" "http://127.0.0.1:3010/aio/api/health" || echo 000)
-  s2=$(curl -fsS -o /dev/null -w "%{http_code}" "http://127.0.0.1:3011/api/health" || echo 000)
+  s2=$(curl -fsS -o /dev/null -w "%{http_code}" "http://127.0.0.1:3012/api/health" || echo 000)
   if [[ "$s1" == "200" && "$s2" == "200" ]]; then
     ok=1; break
   fi
@@ -84,7 +84,7 @@ done
 if [[ $ok -ne 1 ]]; then
   echo "✗ One of the services didn't come up:"
   echo "  :3010/aio/api/health = $s1"
-  echo "  :3011/api/health     = $s2"
+  echo "  :3012/api/health     = $s2"
   echo "--- aio-control logs ---"
   sudo journalctl -u aio-control --since "60s ago" --no-pager | tail -20
   echo "--- aio-control-root logs ---"
@@ -92,4 +92,4 @@ if [[ $ok -ne 1 ]]; then
   exit 1
 fi
 
-echo "✓ deploy ${GIT_COMMIT_SHA:0:8} live (path :3010, subdomain :3011)"
+echo "✓ deploy ${GIT_COMMIT_SHA:0:8} live (path :3010, subdomain :3012)"
