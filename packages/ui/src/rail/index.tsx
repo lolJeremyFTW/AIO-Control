@@ -90,6 +90,9 @@ type Props = {
   onReorderTopic?: (sourceId: string, targetId: string) => void;
   /** Same idea for businesses in the top-level rail. */
   onReorderBusiness?: (sourceId: string, targetId: string) => void;
+  /** "+ Topic" / "+ Subtopic" button at the bottom of the topic list
+   *  when drilled in. Optional — when omitted the row hides. */
+  onCreateTopic?: () => void;
 };
 
 export function Rail({
@@ -112,6 +115,7 @@ export function Rail({
   onContextMenuRail,
   onReorderTopic,
   onReorderBusiness,
+  onCreateTopic,
 }: Props) {
   const [hover, setHover] = useState(false);
 
@@ -292,6 +296,17 @@ export function Rail({
                 }
               />
             ))}
+            {/* Visible "+ Topic" button so the user doesn't have to
+                discover the right-click menu. Stays at the bottom of
+                the topic list when drilled in. */}
+            {onCreateTopic && (
+              <ActionRow
+                icon={<PlusIcon size={14} />}
+                label="Nieuw topic"
+                expanded={expanded}
+                onClick={onCreateTopic}
+              />
+            )}
           </>
         )}
       </div>

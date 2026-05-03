@@ -300,7 +300,9 @@ function Card({
           color: "var(--app-fg-3)",
           marginTop: 4,
           display: "flex",
-          gap: 12,
+          gap: 8,
+          flexWrap: "wrap",
+          alignItems: "center",
         }}
       >
         <span>{agent.provider}{agent.model ? ` · ${agent.model}` : ""}</span>
@@ -308,6 +310,23 @@ function Card({
         <span>{agent.kind}</span>
         <span>·</span>
         <span>{agent.install_count} installs</span>
+        {agent.source_url && (
+          <>
+            <span>·</span>
+            <a
+              href={agent.source_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                color: "var(--tt-green)",
+                textDecoration: "none",
+              }}
+              title={agent.source_provider ?? "source"}
+            >
+              source ↗
+            </a>
+          </>
+        )}
       </div>
 
       {!isActive ? (

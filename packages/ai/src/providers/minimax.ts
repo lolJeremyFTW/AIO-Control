@@ -1,26 +1,25 @@
-// MiniMax Coder Plan provider — uses MiniMax's OpenAI-compatible chat
-// completions endpoint. The Coder Plan API key works against:
+// MiniMax provider — direct HTTP path against MiniMax's
+// OpenAI-compatible chat completions endpoint. Multiple bases:
 //
-//   https://api.minimaxi.com/v1/text/chatcompletion_v2
+//   https://api.minimax.io/v1/text/chatcompletion_v2     (Coder Plan,
+//                                                        models like
+//                                                        MiniMax-M2.7-Highspeed)
+//   https://api.minimaxi.com/v1/text/chatcompletion_v2   (international
+//                                                        platform key)
+//   https://api.minimax.chat/v1/text/chatcompletion_v2   (China region)
 //
-// (Singapore region; CN region uses api.minimax.chat). Model defaults to
-// MiniMax-M2.7-Highspeed since that's what the user pays for. Override per
-// agent via config.model or set MINIMAX_BASE_URL / MINIMAX_DEFAULT_MODEL
-// in env.
-//
-// Notes:
-//  • Coder Plan also exposes an MCP server (web_search, understand_image)
-//    for use inside Claude Code / other MCP hosts. We DON'T use MCP here —
-//    that's the phase-4 "MiniMax-via-Claude subprocess" pathway. This file
-//    is the direct HTTP path so users can pick MiniMax as a chat provider
-//    without owning a Claude Code session.
+// Set MINIMAX_BASE_URL in env (or per-agent via config.endpoint) to
+// point at the right base. Default is the Coder Plan endpoint since
+// that's what most users have. Different bases expose different model
+// names — we don't validate against a hard list, just hand the
+// MiniMax error back when it complains.
 
 import { randomUUID } from "node:crypto";
 
 import type { AGUIEvent } from "../ag-ui";
 import type { StreamChatOptions } from "../router";
 
-const DEFAULT_BASE = "https://api.minimaxi.com/v1";
+const DEFAULT_BASE = "https://api.minimax.io/v1";
 const DEFAULT_MODEL = "MiniMax-M2.7-Highspeed";
 
 export async function* streamMinimax(
@@ -41,6 +40,7 @@ export async function* streamMinimax(
     opts.config.endpoint ?? process.env.MINIMAX_BASE_URL ?? DEFAULT_BASE;
   const model =
     opts.config.model ?? process.env.MINIMAX_DEFAULT_MODEL ?? DEFAULT_MODEL;
+
   const messageId = randomUUID();
   yield { type: "message_start", message_id: messageId, role: "assistant" };
 
@@ -95,6 +95,17 @@ export async function* streamMinimax(
       if (j.base_resp?.status_msg) msg = j.base_resp.status_msg;
     } catch {
       /* keep raw body */
+    }
+    // Specific hint for the most common confusion: Coder Plan keys
+    // don't authenticate against the platform chat-completion API.
+    if (
+      /invalid api key|invalid_api_key|login fail|unauthorized|401/i.test(msg)
+    ) {
+      msg +=
+        "\n\nLet op: een MiniMax Coder Plan key werkt NIET voor direct chat. " +
+        "Voor /v1/text/chatcompletion_v2 heb je een aparte platform key nodig " +
+        "van https://platform.minimaxi.com (Group ID + API Key). " +
+        "De Coder Plan key is alleen voor MiniMax MCP via Claude Code.";
     }
     yield {
       type: "error",

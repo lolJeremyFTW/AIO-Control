@@ -22,6 +22,8 @@ export type MarketplaceAgent = {
   official: boolean;
   install_count: number;
   marketplace_kind: MarketplaceKind;
+  source_url: string | null;
+  source_provider: string | null;
 };
 
 export async function listMarketplace(): Promise<MarketplaceAgent[]> {
@@ -29,7 +31,7 @@ export async function listMarketplace(): Promise<MarketplaceAgent[]> {
   const { data, error } = await supabase
     .from("marketplace_agents")
     .select(
-      "id, slug, name, tagline, description, provider, model, kind, config, category, official, install_count, marketplace_kind",
+      "id, slug, name, tagline, description, provider, model, kind, config, category, official, install_count, marketplace_kind, source_url, source_provider",
     )
     .order("official", { ascending: false })
     .order("install_count", { ascending: false });

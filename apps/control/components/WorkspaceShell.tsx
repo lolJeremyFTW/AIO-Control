@@ -580,6 +580,31 @@ export function WorkspaceShell({
           if (res.ok) router.refresh();
           else alert(res.error);
         }}
+        onCreateTopic={
+          drilledBiz
+            ? () => {
+                // Drop the new topic under the deepest currently-active
+                // node — so "+ Topic" while you're inside an existing
+                // topic creates a SUB-topic of it. At the business root
+                // it creates a top-level topic.
+                const parentId =
+                  drilledBiz.navPath.length > 0
+                    ? (drilledBiz.navPath[drilledBiz.navPath.length - 1] ??
+                      null)
+                    : null;
+                const parentName = parentId
+                  ? navNodes.find((n) => n.id === parentId)?.name
+                  : null;
+                setCreatingChildOf({
+                  businessId: drilledBiz.biz.id,
+                  parentId,
+                  title: parentName
+                    ? `Nieuw subtopic in ${parentName}`
+                    : `Nieuw topic in ${drilledBiz.biz.name}`,
+                });
+              }
+            : undefined
+        }
       />
 
       {/* Backdrop only renders below 800px (CSS gates it via display) but we
@@ -666,6 +691,12 @@ export function WorkspaceShell({
                 onClick={() => router.push(`/${workspace.slug}/marketplace`)}
               >
                 Marketplace
+              </button>
+              <button
+                role="menuitem"
+                onClick={() => router.push(`/admin/marketplace`)}
+              >
+                Marketplace admin
               </button>
               <div className="sep" />
               <form action={signOutAction}>
