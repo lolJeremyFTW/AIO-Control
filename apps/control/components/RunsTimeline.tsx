@@ -4,16 +4,55 @@
 
 "use client";
 
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
 import type { AgentRow } from "../lib/queries/agents";
 import type { RunRow } from "../lib/queries/schedules";
+import { getSupabaseBrowserClient } from "../lib/supabase/client";
 import { RunDetailDrawer } from "./RunDetailDrawer";
 
-type Props = { runs: RunRow[]; agents: AgentRow[] };
+type Props = {
+  runs: RunRow[];
+  agents: AgentRow[];
+  /** When set, scope the realtime subscription to this business so we
+   *  don't pay for events from other businesses in the same workspace. */
+  businessId?: string;
+  workspaceId?: string;
+};
 
-export function RunsTimeline({ runs, agents }: Props) {
+export function RunsTimeline({ runs, agents, businessId, workspaceId }: Props) {
+  const router = useRouter();
   const [openRunId, setOpenRunId] = useState<string | null>(null);
+
+  // Live updates: when any runs row in this scope changes (insert /
+  // update / delete), refetch the server component so the timeline
+  // reflects the new status without the user having to refresh. Cheap
+  // because the schedules page is already a small render.
+  useEffect(() => {
+    if (!workspaceId && !businessId) return;
+    let supabase: ReturnType<typeof getSupabaseBrowserClient>;
+    try {
+      supabase = getSupabaseBrowserClient();
+    } catch {
+      return;
+    }
+    const filter = businessId
+      ? `business_id=eq.${businessId}`
+      : `workspace_id=eq.${workspaceId}`;
+    const ch = supabase
+      .channel(`runs-timeline:${businessId ?? workspaceId}`)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .on(
+        "postgres_changes" as any,
+        { event: "*", schema: "aio_control", table: "runs", filter },
+        () => router.refresh(),
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(ch);
+    };
+  }, [businessId, workspaceId, router]);
 
   if (runs.length === 0) {
     return (

@@ -113,7 +113,12 @@ export default async function BusinessSchedulesPage({ params }: Props) {
       >
         Recente runs
       </h2>
-      <RunsTimeline runs={runs} agents={agents} />
+      <RunsTimeline
+        runs={runs}
+        agents={agents}
+        businessId={biz.id}
+        workspaceId={biz.workspace_id}
+      />
     </div>
   );
 }

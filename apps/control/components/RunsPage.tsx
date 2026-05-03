@@ -10,6 +10,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import type { AgentRow } from "../lib/queries/agents";
+import { getSupabaseBrowserClient } from "../lib/supabase/client";
 import { RunDetailDrawer } from "./RunDetailDrawer";
 
 type Run = {
@@ -59,6 +60,9 @@ export function RunsPage({
   const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [openRunId, setOpenRunId] = useState<string | null>(null);
+  // Bumped on realtime events — the fetch effect below depends on this so
+  // we re-run the same query path that pagination uses, no duplication.
+  const [tick, setTick] = useState(0);
 
   // Re-fetch whenever filters change.
   useEffect(() => {
@@ -98,7 +102,35 @@ export function RunsPage({
       })
       .finally(() => setLoading(false));
     return () => ctl.abort();
-  }, [businessId, workspaceId, statusFilter, agentFilter, offset]);
+  }, [businessId, workspaceId, statusFilter, agentFilter, offset, tick]);
+
+  // Live updates: re-fetch the visible page whenever a runs row changes
+  // in this business/workspace scope. Same channel pattern as
+  // NotificationsBell + RunsTimeline; we just bump `tick` to retrigger
+  // the fetch effect above without duplicating its query logic.
+  useEffect(() => {
+    let supabase: ReturnType<typeof getSupabaseBrowserClient>;
+    try {
+      supabase = getSupabaseBrowserClient();
+    } catch {
+      return;
+    }
+    const filter = businessId
+      ? `business_id=eq.${businessId}`
+      : `workspace_id=eq.${workspaceId}`;
+    const ch = supabase
+      .channel(`runs-page:${businessId ?? workspaceId}`)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .on(
+        "postgres_changes" as any,
+        { event: "*", schema: "aio_control", table: "runs", filter },
+        () => setTick((t) => t + 1),
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(ch);
+    };
+  }, [businessId, workspaceId]);
 
   const setFilter = (k: "status" | "agent", v: string | null) => {
     const sp = new URLSearchParams(search.toString());

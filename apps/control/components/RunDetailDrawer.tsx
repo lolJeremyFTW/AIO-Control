@@ -8,6 +8,7 @@
 import { useEffect, useState } from "react";
 
 import type { RunStep } from "../lib/runs/message-history";
+import { getSupabaseBrowserClient } from "../lib/supabase/client";
 
 type RunDetail = {
   id: string;
@@ -39,9 +40,14 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Re-fetch counter — bumped on realtime events so a still-running run
+  // streams its updates into this drawer live (status: running → done,
+  // message_history grows with each tool call).
+  const [tick, setTick] = useState(0);
+
   useEffect(() => {
     const ctl = new AbortController();
-    setLoading(true);
+    setLoading(tick === 0);
     setError(null);
     const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
     fetch(`${base}/api/runs/${runId}`, { signal: ctl.signal })
@@ -57,6 +63,34 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
       })
       .finally(() => setLoading(false));
     return () => ctl.abort();
+  }, [runId, tick]);
+
+  // Subscribe to changes on this specific run row — fires as the
+  // dispatcher promotes queued → running → done and writes message_history.
+  useEffect(() => {
+    let supabase: ReturnType<typeof getSupabaseBrowserClient>;
+    try {
+      supabase = getSupabaseBrowserClient();
+    } catch {
+      return;
+    }
+    const ch = supabase
+      .channel(`run-detail:${runId}`)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .on(
+        "postgres_changes" as any,
+        {
+          event: "UPDATE",
+          schema: "aio_control",
+          table: "runs",
+          filter: `id=eq.${runId}`,
+        },
+        () => setTick((t) => t + 1),
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(ch);
+    };
   }, [runId]);
 
   // ESC closes the drawer.
