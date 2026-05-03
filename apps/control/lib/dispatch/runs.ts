@@ -17,6 +17,10 @@ import {
 import type { ChatMessage } from "@aio/ai/ag-ui";
 
 import { resolveApiKey } from "../api-keys/resolve";
+import {
+  buildAgentSystemPrompt,
+  prependPreamble,
+} from "../agents/business-context";
 import { checkSpendLimit } from "./spend-limit";
 import { getServiceRoleSupabase } from "../supabase/service";
 
@@ -119,6 +123,25 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
 
   const config = (agent.config ?? {}) as AgentConfig;
   if (agent.model && !config.model) config.model = agent.model;
+
+  // Inject the same system-prompt preamble we use for chat — platform
+  // identity, business context, integrations, siblings, budget. This
+  // is the fix for the "agents have no idea what system they're in"
+  // bug: previously cron/webhook/manual dispatchers ran agents blind
+  // because they skipped this step entirely.
+  const preamble = await buildAgentSystemPrompt({
+    id: agent.id,
+    workspace_id: run.workspace_id,
+    business_id: run.business_id,
+    name: agent.name,
+    kind: "worker", // dispatched runs default to worker semantics
+    provider: agent.provider,
+    model: agent.model,
+  });
+  config.systemPrompt = prependPreamble(
+    preamble,
+    config.systemPrompt as string | null | undefined,
+  );
 
   let output = "";
   let cost = 0;

@@ -79,3 +79,32 @@ export async function checkSpendLimit(
 
   return { ok: true };
 }
+
+/** Snapshot used by the system-prompt builder so an agent knows its
+ *  budget context. Returns null when there's no spend state for the
+ *  business (or no limit set). Never throws. */
+export async function getSpendSnapshot(business_id: string): Promise<
+  | {
+      daily_limit_cents: number | null;
+      monthly_limit_cents: number | null;
+      cost_24h_cents: number;
+      cost_30d_cents: number;
+    }
+  | null
+> {
+  const supabase = getServiceRoleSupabase();
+  const { data, error } = await supabase
+    .from("spend_limit_state")
+    .select(
+      "daily_limit_cents, monthly_limit_cents, cost_24h_cents, cost_30d_cents",
+    )
+    .eq("business_id", business_id)
+    .maybeSingle();
+  if (error || !data) return null;
+  return {
+    daily_limit_cents: (data.daily_limit_cents as number | null) ?? null,
+    monthly_limit_cents: (data.monthly_limit_cents as number | null) ?? null,
+    cost_24h_cents: (data.cost_24h_cents as number) ?? 0,
+    cost_30d_cents: (data.cost_30d_cents as number) ?? 0,
+  };
+}

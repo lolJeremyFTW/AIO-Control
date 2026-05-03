@@ -1,84 +1,52 @@
-// Builds the "business context" preamble that gets prepended to
-// every agent's system prompt. Agents read this on every call so they
-// know:
-//   - what business they're working for
-//   - the operating mission (rules of engagement)
-//   - the active targets / KPIs they should be moving the needle on
+// Backwards-compat shim. The real builder is now system-prompt.ts —
+// it covers ALL paths (chat, cron, webhook, manual) AND adds platform
+// context, tools, sibling agents, and budget snapshot in addition to
+// the original business + targets + workspace-rules block.
 //
-// Called from /api/chat/[agent_id] right before streamChat.
+// New callers should import buildAgentSystemPrompt directly. This file
+// stays as a re-export so existing imports keep compiling while we
+// migrate.
 
 import "server-only";
 
-import { createSupabaseServerClient } from "../supabase/server";
+import { getServiceRoleSupabase } from "../supabase/service";
+import { buildAgentSystemPrompt } from "./system-prompt";
 
-type Target = {
-  id?: string;
-  name?: string;
-  target?: string;
-  current?: string;
-  deadline?: string | null;
-  status?: "open" | "done" | "abandoned";
-};
-
+/** @deprecated use {@link buildAgentSystemPrompt} which also covers
+ *  platform / tools / siblings / budget context. This shim only
+ *  fetches the agent and delegates. */
 export async function buildBusinessContextPrefix(
-  businessId: string | null,
+  agentOrBusinessId: string | null,
 ): Promise<string | null> {
-  if (!businessId) return null;
-  const supabase = await createSupabaseServerClient();
-  const { data: biz } = await supabase
-    .from("businesses")
-    .select("name, sub, description, mission, targets")
-    .eq("id", businessId)
+  if (!agentOrBusinessId) return null;
+  // The old signature took a business_id. The new builder needs the
+  // full agent row. We can't ergonomically infer the agent from a
+  // business id, so this shim only works when called from the chat
+  // route which has the agent loaded — see /api/chat/[agent_id]/route.ts
+  // for the new code path that doesn't go through this shim.
+  const admin = getServiceRoleSupabase();
+  const { data: agent } = await admin
+    .from("agents")
+    .select("id, workspace_id, business_id, name, kind, provider, model")
+    .eq("business_id", agentOrBusinessId)
+    .limit(1)
     .maybeSingle();
-  if (!biz) return null;
+  if (!agent) return null;
+  return buildAgentSystemPrompt(
+    agent as Parameters<typeof buildAgentSystemPrompt>[0],
+  );
+}
 
-  const lines: string[] = [];
-  lines.push(`# Business context — you are working for: ${biz.name}`);
-  if (biz.sub) lines.push(`Sub: ${biz.sub}`);
-  if (biz.description) {
-    lines.push("");
-    lines.push("## Description");
-    lines.push(biz.description as string);
-  }
-  if (biz.mission) {
-    lines.push("");
-    lines.push("## Mission / Operating rules");
-    lines.push(biz.mission as string);
-  }
+export { buildAgentSystemPrompt };
 
-  const targets = (biz.targets ?? []) as Target[];
-  const open = targets.filter((t) => (t.status ?? "open") === "open");
-  if (open.length > 0) {
-    lines.push("");
-    lines.push("## Active targets (work toward these)");
-    for (const t of open) {
-      const parts = [`• ${t.name ?? "(unnamed)"}`];
-      if (t.target) parts.push(`→ ${t.target}`);
-      if (t.current) parts.push(`(current: ${t.current})`);
-      if (t.deadline) parts.push(`by ${t.deadline}`);
-      lines.push(parts.join(" "));
-    }
-  }
-  const done = targets.filter((t) => t.status === "done");
-  if (done.length > 0) {
-    lines.push("");
-    lines.push("## Already achieved");
-    for (const t of done) {
-      lines.push(`✓ ${t.name ?? ""} ${t.target ? `(${t.target})` : ""}`);
-    }
-  }
-
-  // Pull workspace-level system-prompt addition if the user set one.
-  const { data: ws } = await supabase
-    .from("workspaces")
-    .select("default_system_prompt")
-    .single();
-  const wsPrompt = (ws?.default_system_prompt as string | null) ?? null;
-  if (wsPrompt) {
-    lines.push("");
-    lines.push("## Workspace-wide rules");
-    lines.push(wsPrompt);
-  }
-
-  return lines.join("\n");
+/** Helper: prepend the preamble to an agent's user-supplied
+ *  systemPrompt, with a clean separator. Returns the combined string
+ *  ready to hand off to the provider. */
+export function prependPreamble(
+  preamble: string,
+  userPrompt: string | null | undefined,
+): string {
+  const u = (userPrompt ?? "").trim();
+  if (!u) return preamble;
+  return `${preamble}\n\n---\n\n${u}`;
 }

@@ -13,7 +13,10 @@ import {
 import type { AGUIEvent, ChatMessage } from "@aio/ai/ag-ui";
 
 import { resolveApiKey } from "../../../../lib/api-keys/resolve";
-import { buildBusinessContextPrefix } from "../../../../lib/agents/business-context";
+import {
+  buildAgentSystemPrompt,
+  prependPreamble,
+} from "../../../../lib/agents/business-context";
 import { checkSpendLimit } from "../../../../lib/dispatch/spend-limit";
 import { dispatchRunEvent } from "../../../../lib/notify/dispatch";
 import { getAgentById } from "../../../../lib/queries/agents";
@@ -111,15 +114,20 @@ export async function POST(
   const config = (agent.config ?? {}) as AgentConfig;
   if (agent.model && !config.model) config.model = agent.model;
 
-  // Prepend the business context (description, mission, active
-  // targets, workspace-wide rules) so the agent always knows what
-  // it's working toward.
-  const bizCtx = await buildBusinessContextPrefix(agent.business_id);
-  if (bizCtx) {
-    config.systemPrompt = config.systemPrompt
-      ? `${bizCtx}\n\n---\n\n${config.systemPrompt}`
-      : bizCtx;
-  }
+  // Build the FULL system-prompt preamble (platform / identity /
+  // tools / siblings / budget / business / workspace-rules) and
+  // prepend it to whatever system prompt the user wrote. One source
+  // of truth across chat + cron + webhook + manual triggers.
+  const preamble = await buildAgentSystemPrompt({
+    id: agent.id,
+    workspace_id: agent.workspace_id,
+    business_id: agent.business_id,
+    name: agent.name,
+    kind: agent.kind,
+    provider: agent.provider,
+    model: agent.model,
+  });
+  config.systemPrompt = prependPreamble(preamble, config.systemPrompt);
 
   // Resolve the per-tenant API key for this agent's provider. Order
   // is navnode → business → workspace → env-var fallback. Set up once
