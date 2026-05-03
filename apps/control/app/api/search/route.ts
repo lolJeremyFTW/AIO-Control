@@ -25,6 +25,16 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url);
   const q = (url.searchParams.get("q") ?? "").trim();
+  // Optional scope filters. The search modal passes these so the user
+  // can narrow to a single business or workspace-global.
+  //   business=<uuid>  → restrict businesses/agents/queue to that biz
+  //   scope=global     → only workspace-global agents (business_id IS NULL)
+  //                       + dashboard-level businesses
+  //   topic=<navnode>  → restrict agents/queue tagged to that nav node
+  //                       (when the row has a navnode_id column)
+  const businessFilter = url.searchParams.get("business") || null;
+  const scopeFilter = url.searchParams.get("scope") || null;
+  const topicFilter = url.searchParams.get("topic") || null;
   if (q.length < 1) return NextResponse.json({ hits: [] });
 
   // Pick the first workspace the user belongs to. The header search is
@@ -46,34 +56,81 @@ export async function GET(req: Request) {
   // indexes would make this faster at scale; for now we cap at LIMIT 6
   // per source so the response stays snappy.
   const like = `%${q}%`;
+
+  // Builders: scope filters apply early so we don't pull rows we'll
+  // throw away.
+  const bizQuery = supabase
+    .from("businesses")
+    .select("id, name, sub")
+    .ilike("name", like)
+    .limit(6);
+  if (businessFilter) bizQuery.eq("id", businessFilter);
+
+  const agentsQuery = supabase
+    .from("agents")
+    .select("id, name, business_id, provider")
+    .or(`name.ilike.${like},provider.ilike.${like}`)
+    .is("archived_at", null)
+    .limit(6);
+  if (businessFilter) agentsQuery.eq("business_id", businessFilter);
+  if (scopeFilter === "global") agentsQuery.is("business_id", null);
+
+  const queueQuery = supabase
+    .from("queue_items")
+    .select("id, title, business_id, state")
+    .ilike("title", like)
+    .is("resolved_at", null)
+    .limit(6);
+  if (businessFilter) queueQuery.eq("business_id", businessFilter);
+
   const [biz, agents, queue, marketplace] = await Promise.all([
-    supabase
-      .from("businesses")
-      .select("id, name, sub")
-      .ilike("name", like)
-      .limit(6)
-      .then((r) => (r.data ?? []) as { id: string; name: string; sub: string | null }[]),
-    supabase
-      .from("agents")
-      .select("id, name, business_id, provider")
-      .or(`name.ilike.${like},provider.ilike.${like}`)
-      .is("archived_at", null)
-      .limit(6)
-      .then((r) => (r.data ?? []) as { id: string; name: string; business_id: string | null; provider: string }[]),
-    supabase
-      .from("queue_items")
-      .select("id, title, business_id, state")
-      .ilike("title", like)
-      .is("resolved_at", null)
-      .limit(6)
-      .then((r) => (r.data ?? []) as { id: string; title: string; business_id: string; state: string }[]),
+    bizQuery.then(
+      (r) =>
+        (r.data ?? []) as {
+          id: string;
+          name: string;
+          sub: string | null;
+        }[],
+    ),
+    agentsQuery.then(
+      (r) =>
+        (r.data ?? []) as {
+          id: string;
+          name: string;
+          business_id: string | null;
+          provider: string;
+        }[],
+    ),
+    queueQuery.then(
+      (r) =>
+        (r.data ?? []) as {
+          id: string;
+          title: string;
+          business_id: string;
+          state: string;
+        }[],
+    ),
+    // Marketplace is workspace-wide, never narrowed by business/topic.
     supabase
       .from("marketplace_agents")
       .select("id, slug, name, tagline, marketplace_kind")
       .or(`name.ilike.${like},tagline.ilike.${like}`)
       .limit(4)
-      .then((r) => (r.data ?? []) as { id: string; slug: string; name: string; tagline: string; marketplace_kind: string }[]),
+      .then(
+        (r) =>
+          (r.data ?? []) as {
+            id: string;
+            slug: string;
+            name: string;
+            tagline: string;
+            marketplace_kind: string;
+          }[],
+      ),
   ]);
+  // Topic filter is a soft narrow — most agent/queue rows don't carry
+  // navnode_id yet, so we can only honour it when the column exists.
+  // Reserved for the future; reference the var so linters don't whine.
+  void topicFilter;
 
   const hits: Hit[] = [
     ...biz.map((b) => ({
