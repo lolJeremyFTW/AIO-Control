@@ -17,9 +17,23 @@ import type { NavNode } from "../../lib/queries/nav-nodes";
 import { getDict } from "../../lib/i18n/server";
 import { translate, type Locale } from "../../lib/i18n/dict";
 import { getWeather } from "../../lib/weather/open-meteo";
-import { ChatPanel } from "../../components/ChatPanel";
-import { RunsToaster } from "../../components/RunsToaster";
+// ChatPanel + RunsToaster are heavy client components (Supabase realtime
+// subscriptions, full chat UI tree, ~50KB combined of JS) that mount on
+// every workspace page even when the user never opens them. We lazy-load
+// both with ssr:false so the initial server-rendered HTML stays small —
+// they hydrate after first paint instead of blocking it.
+import dynamic from "next/dynamic";
+
 import { WorkspaceShell } from "../../components/WorkspaceShell";
+
+const ChatPanel = dynamic(
+  () => import("../../components/ChatPanel").then((m) => m.ChatPanel),
+  { ssr: false },
+);
+const RunsToaster = dynamic(
+  () => import("../../components/RunsToaster").then((m) => m.RunsToaster),
+  { ssr: false },
+);
 
 type Props = {
   children: React.ReactNode;

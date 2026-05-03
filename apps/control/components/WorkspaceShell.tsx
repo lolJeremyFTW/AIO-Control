@@ -4,6 +4,7 @@
 
 "use client";
 
+import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState, useTransition, type ReactNode } from "react";
 
@@ -51,14 +52,33 @@ import {
 import { setLocale } from "../app/actions/locale";
 import { AppContextMenu } from "./AppContextMenu";
 import { ThemeToggle } from "./ThemeToggle";
-import { EditNodeDialog, type EditTarget } from "./EditNodeDialog";
-import { BusinessSetupWizard } from "./BusinessSetupWizard";
-import { NewNavNodeDialog } from "./NewNavNodeDialog";
+import { type EditTarget } from "./EditNodeDialog";
 import { NotificationsBell } from "./NotificationsBell";
-import { SearchModal } from "./SearchModal";
 import { TalkModule, type TalkAgent } from "./TalkModule";
 import { WeatherChip } from "./WeatherChip";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
+
+// Heavy/conditional UIs — lazy-load so they don't bloat the initial
+// JS bundle. The shell renders on every workspace page even when these
+// dialogs / modals are closed, so deferring their JS until interaction
+// is a clean win for first paint.
+const SearchModal = dynamic(
+  () => import("./SearchModal").then((m) => m.SearchModal),
+  { ssr: false },
+);
+const BusinessSetupWizard = dynamic(
+  () =>
+    import("./BusinessSetupWizard").then((m) => m.BusinessSetupWizard),
+  { ssr: false },
+);
+const EditNodeDialog = dynamic(
+  () => import("./EditNodeDialog").then((m) => m.EditNodeDialog),
+  { ssr: false },
+);
+const NewNavNodeDialog = dynamic(
+  () => import("./NewNavNodeDialog").then((m) => m.NewNavNodeDialog),
+  { ssr: false },
+);
 
 type Profile = {
   letter: string;
