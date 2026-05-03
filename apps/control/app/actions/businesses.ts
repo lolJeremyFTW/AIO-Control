@@ -278,18 +278,28 @@ async function autoCreateTelegramTopicForBusiness(opts: {
   icon: string | null;
 }): Promise<void> {
   const admin = getServiceRoleSupabase();
-  // Find the parent group: workspace-scope target with the
-  // auto-create flag. There's at most one.
+  // Find the parent group. Prefer the explicit auto_create_topics flag
+  // when set; fall back to any enabled workspace-scope target so that
+  // users who flip telegram_topology to topic_per_business without
+  // explicitly marking a parent still get topics auto-created. Avoids
+  // the silent skip footgun.
   const { data: parent } = await admin
     .from("telegram_targets")
-    .select("id, chat_id")
+    .select("id, chat_id, auto_create_topics_for_businesses")
     .eq("workspace_id", opts.workspace_id)
     .eq("scope", "workspace")
-    .eq("auto_create_topics_for_businesses", true)
     .eq("enabled", true)
+    .order("auto_create_topics_for_businesses", { ascending: false })
+    .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
-  if (!parent?.chat_id) return;
+  if (!parent?.chat_id) {
+    console.warn(
+      "auto-topic create skipped — no enabled workspace-scope telegram target for workspace",
+      opts.workspace_id,
+    );
+    return;
+  }
 
   const topicName = opts.icon
     ? `${opts.icon} ${opts.business_name}`

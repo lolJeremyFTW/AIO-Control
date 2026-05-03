@@ -91,19 +91,35 @@ async function autoCreateNavNodeTelegramTopic(opts: {
     .select("telegram_topology")
     .eq("id", opts.workspace_id)
     .maybeSingle();
-  if (ws?.telegram_topology !== "topic_per_business_and_node") return;
+  if (ws?.telegram_topology !== "topic_per_business_and_node") {
+    if (ws?.telegram_topology === "topic_per_business") {
+      console.warn(
+        "nav-node auto-topic skipped — workspace topology is topic_per_business; switch to topic_per_business_and_node to enable",
+      );
+    }
+    return;
+  }
 
-  // Find the parent group (workspace-scope target with auto-create on).
+  // Find the parent group. Prefer the explicit auto_create_topics flag,
+  // fall back to any enabled workspace-scope target — same logic as
+  // autoCreateTelegramTopicForBusiness so the two paths stay consistent.
   const { data: parent } = await admin
     .from("telegram_targets")
-    .select("id, chat_id")
+    .select("id, chat_id, auto_create_topics_for_businesses")
     .eq("workspace_id", opts.workspace_id)
     .eq("scope", "workspace")
-    .eq("auto_create_topics_for_businesses", true)
     .eq("enabled", true)
+    .order("auto_create_topics_for_businesses", { ascending: false })
+    .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
-  if (!parent?.chat_id) return;
+  if (!parent?.chat_id) {
+    console.warn(
+      "nav-node auto-topic skipped — no enabled workspace-scope telegram target for workspace",
+      opts.workspace_id,
+    );
+    return;
+  }
 
   // Look up the business name so the topic is "<biz> · <node>".
   const { data: biz } = await admin
