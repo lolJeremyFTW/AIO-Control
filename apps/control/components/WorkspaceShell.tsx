@@ -78,6 +78,10 @@ type Props = {
     /** Optional — when omitted the TalkModule falls back to "—". */
     model?: string | null;
   }>;
+  /** Open queue items + failed runs grouped per business. The rail
+   *  uses these to badge each business row; the bell uses the same
+   *  data via /api/notifications. Missing entries are treated as 0. */
+  notifCounts?: Record<string, number>;
   weather?: { city: string; date: string; temp: string };
   page?: "dashboard" | "settings" | "profile" | "agents";
   /** Active UI locale — translates client-side via the dict module. */
@@ -115,6 +119,7 @@ export function WorkspaceShell({
   businesses,
   navNodes,
   agents = [],
+  notifCounts = {},
   weather,
   page: pageProp = "dashboard",
   locale,
@@ -293,18 +298,25 @@ export function WorkspaceShell({
     });
   }, [agents, businesses]);
 
-  const railBusinesses: RailItem[] = businesses.map((b) => ({
-    id: b.id,
-    name: b.name,
-    sub: b.sub ?? undefined,
-    letter: b.letter,
-    // Resolved via renderNodeIcon: SVG when icon is a known registry
-    // name, legacy emoji span when it isn't, undefined when empty.
-    icon: renderNodeIcon(b.icon, 18),
-    variant: b.variant as RailItem["variant"],
-    colorHex: b.color_hex ?? null,
-    logoUrl: b.logo_url ?? null,
-  }));
+  const railBusinesses: RailItem[] = businesses.map((b) => {
+    const count = notifCounts[b.id] ?? 0;
+    return {
+      id: b.id,
+      name: b.name,
+      sub: b.sub ?? undefined,
+      letter: b.letter,
+      // Resolved via renderNodeIcon: SVG when icon is a known registry
+      // name, legacy emoji span when it isn't, undefined when empty.
+      icon: renderNodeIcon(b.icon, 18),
+      variant: b.variant as RailItem["variant"],
+      colorHex: b.color_hex ?? null,
+      logoUrl: b.logo_url ?? null,
+      // Show open-queue + failed-run count as a numeric badge on the
+      // business avatar — same data the bell groups by, just one
+      // step earlier in the funnel.
+      badge: count > 0 ? count : undefined,
+    };
+  });
 
   const drilledRailItem: RailItem | null = drilledBiz
     ? {
@@ -774,6 +786,13 @@ export function WorkspaceShell({
             <NotificationsBell
               workspaceSlug={workspace.slug}
               workspaceId={workspace.id}
+              businesses={businesses.map((b) => ({
+                id: b.id,
+                name: b.name,
+                letter: b.letter,
+                variant: b.variant ?? "brand",
+                color_hex: b.color_hex ?? null,
+              }))}
             />
           }
           lang={locale.toUpperCase() as "NL" | "EN" | "DE"}

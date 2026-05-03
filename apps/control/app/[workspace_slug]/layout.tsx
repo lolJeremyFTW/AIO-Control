@@ -57,6 +57,35 @@ export default async function WorkspaceLayout({ children, params }: Props) {
     .is("archived_at", null)
     .order("sort_order", { ascending: true });
   const navNodes = (navRows ?? []) as NavNode[];
+
+  // Per-business notification counts → power the small numeric
+  // badges on each business chip in the rail. Same data the bell
+  // groups by; we just bucket it server-side here so the rail
+  // doesn't need its own subscription.
+  const [{ data: openQueue }, { data: failedRuns }] = await Promise.all([
+    supabase
+      .from("queue_items")
+      .select("business_id")
+      .eq("workspace_id", workspace.id)
+      .in("state", ["review", "fail"])
+      .is("resolved_at", null),
+    supabase
+      .from("runs")
+      .select("business_id")
+      .eq("workspace_id", workspace.id)
+      .eq("status", "failed")
+      .order("created_at", { ascending: false })
+      .limit(50),
+  ]);
+  const notifCounts: Record<string, number> = {};
+  for (const r of (openQueue ?? []) as { business_id: string | null }[]) {
+    if (r.business_id)
+      notifCounts[r.business_id] = (notifCounts[r.business_id] ?? 0) + 1;
+  }
+  for (const r of (failedRuns ?? []) as { business_id: string | null }[]) {
+    if (r.business_id)
+      notifCounts[r.business_id] = (notifCounts[r.business_id] ?? 0) + 1;
+  }
   // We pass the locale string (serializable) to the client. The client
   // imports the same dict module and calls translate() locally. Functions
   // can't cross the RSC boundary unless they're Server Actions.
@@ -92,6 +121,7 @@ export default async function WorkspaceLayout({ children, params }: Props) {
         provider: a.provider,
         model: a.model ?? null,
       }))}
+      notifCounts={notifCounts}
       weather={weather}
       locale={locale}
     >
