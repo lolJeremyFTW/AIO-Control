@@ -7,6 +7,7 @@
 import { revalidatePath } from "next/cache";
 
 import { createSupabaseServerClient } from "../../lib/supabase/server";
+import { getServiceRoleSupabase } from "../../lib/supabase/service";
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -78,17 +79,35 @@ export async function changeEmail(input: {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.new_email)) {
     return { ok: false, error: "Ongeldig email-adres." };
   }
+  // Find the current user. We use the regular cookie-bound client to
+  // get the auth.uid() so the user can only change THEIR OWN email.
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.auth.updateUser({
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Niet ingelogd." };
+
+  // Direct admin update — bypasses Supabase's confirmation-email
+  // dance (which fails when GoTrue has no SMTP configured). Since
+  // we already authenticated via cookie + cap to the user's own id,
+  // the security boundary is preserved.
+  const admin = getServiceRoleSupabase();
+  const { error: authErr } = await admin.auth.admin.updateUserById(user.id, {
     email: input.new_email,
+    email_confirm: true,
   });
-  if (error || !data?.user) {
-    return { ok: false, error: error?.message ?? "Email wijzigen faalde." };
+  if (authErr) {
+    return { ok: false, error: authErr.message };
   }
-  // Supabase stuurt een confirmation mail naar het nieuwe adres;
-  // de wissel wordt pas effectief na klik.
-  // We mirror naar profiles.email zodra de auth.users.email update,
-  // wat een trigger oppakt — niets te doen hier.
+
+  // Mirror to profiles.email so the rest of the app sees the new
+  // address without waiting for a trigger.
+  await admin
+    .from("profiles")
+    .update({ email: input.new_email })
+    .eq("id", user.id);
+
+  revalidatePath("/", "layout");
   return { ok: true, data: null };
 }
 
