@@ -13,9 +13,11 @@
 import { useState, useTransition } from "react";
 
 import {
+  CUSTOM_KEY_NAME_RE,
   deleteApiKey,
   setApiKey,
   type ApiKeyMetadata,
+  type ApiKeyKind,
   type ApiKeyScope,
 } from "../app/actions/api-keys";
 import type { BusinessRow } from "../lib/queries/businesses";
@@ -59,7 +61,13 @@ export function ApiKeysPanel({
   const [adding, setAdding] = useState(false);
   const [scope, setScope] = useState<ApiKeyScope>("workspace");
   const [scopeId, setScopeId] = useState(workspaceId);
-  const [provider, setProvider] = useState("anthropic");
+  // The provider <select> uses "__custom__" as a sentinel — selecting
+  // it reveals a free-text input where the operator types the secret
+  // name (AIRTABLE_API_KEY etc.). The actual value sent to the server
+  // is `customName`; `kind` becomes "custom" instead of "provider".
+  const [provider, setProvider] = useState<string>("anthropic");
+  const [customName, setCustomName] = useState("");
+  const isCustom = provider === "__custom__";
   const [value, setValue] = useState("");
   const [label, setLabel] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -67,6 +75,14 @@ export function ApiKeysPanel({
 
   const submit = () => {
     setError(null);
+    const kind: ApiKeyKind = isCustom ? "custom" : "provider";
+    const effectiveProvider = isCustom ? customName.trim() : provider;
+    if (isCustom && !CUSTOM_KEY_NAME_RE.test(effectiveProvider)) {
+      setError(
+        "Custom secret-naam mag alleen UPPERCASE letters, cijfers en underscore bevatten en moet met een letter beginnen (bv. AIRTABLE_API_KEY).",
+      );
+      return;
+    }
     startTransition(async () => {
       const res = await setApiKey({
         workspace_slug: workspaceSlug,
@@ -76,9 +92,10 @@ export function ApiKeysPanel({
           scope === "workspace"
             ? workspaceId
             : scopeId,
-        provider,
+        provider: effectiveProvider,
         value,
         label: label || undefined,
+        kind,
       });
       if (!res.ok) {
         setError(res.error);
@@ -93,7 +110,7 @@ export function ApiKeysPanel({
               k.workspace_id === workspaceId &&
               k.scope === scope &&
               k.scope_id === (scope === "workspace" ? workspaceId : scopeId) &&
-              k.provider === provider
+              k.provider === effectiveProvider
             ),
         ),
         {
@@ -101,16 +118,18 @@ export function ApiKeysPanel({
           workspace_id: workspaceId,
           scope,
           scope_id: scope === "workspace" ? workspaceId : scopeId,
-          provider,
+          provider: effectiveProvider,
           label: label || null,
           has_value: true,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
+          kind,
         },
       ]);
       setAdding(false);
       setValue("");
       setLabel("");
+      setCustomName("");
     });
   };
 
@@ -161,76 +180,13 @@ export function ApiKeysPanel({
           {t("keys.empty")}
         </p>
       ) : (
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 6,
-            border: "1px solid var(--app-border)",
-            borderRadius: 10,
-            overflow: "hidden",
-          }}
-        >
-          {keys.map((k) => (
-            <div
-              key={k.id}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr 80px 80px",
-                gap: 8,
-                alignItems: "center",
-                padding: "10px 12px",
-                borderBottom: "1px solid var(--app-border-2)",
-                background: "var(--app-card-2)",
-              }}
-            >
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 700 }}>
-                  {PROVIDERS.find((p) => p.id === k.provider)?.label ??
-                    k.provider}
-                </div>
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: "var(--app-fg-3)",
-                    marginTop: 2,
-                  }}
-                >
-                  {k.label ?? "—"}
-                </div>
-              </div>
-              <div style={{ fontSize: 12, color: "var(--app-fg-2)" }}>
-                {labelFor(k)}
-              </div>
-              <span
-                style={{
-                  fontSize: 10.5,
-                  fontWeight: 700,
-                  letterSpacing: "0.14em",
-                  textTransform: "uppercase",
-                  color: k.has_value ? "var(--tt-green)" : "var(--rose)",
-                }}
-              >
-                {k.has_value ? t("keys.row.set") : t("keys.row.empty")}
-              </span>
-              <button
-                onClick={() => remove(k.id)}
-                disabled={pending}
-                style={{
-                  padding: "5px 8px",
-                  border: "1px solid var(--app-border)",
-                  background: "transparent",
-                  color: "var(--rose)",
-                  borderRadius: 6,
-                  fontSize: 11,
-                  cursor: "pointer",
-                }}
-              >
-                {t("keys.row.delete")}
-              </button>
-            </div>
-          ))}
-        </div>
+        <KeyList
+          keys={keys}
+          t={t}
+          labelFor={labelFor}
+          onRemove={remove}
+          pending={pending}
+        />
       )}
 
       {!adding && (
@@ -276,6 +232,10 @@ export function ApiKeysPanel({
                     {p.label}
                   </option>
                 ))}
+                <option disabled>──────────</option>
+                <option value="__custom__">
+                  {t("keys.field.customSecret")}
+                </option>
               </select>
             </Field>
             <Field label={t("keys.field.scope")}>
@@ -303,6 +263,33 @@ export function ApiKeysPanel({
               </select>
             </Field>
           </div>
+
+          {isCustom && (
+            <Field label={t("keys.field.customName")}>
+              <input
+                value={customName}
+                onChange={(e) =>
+                  setCustomName(
+                    e.target.value
+                      .toUpperCase()
+                      .replace(/[^A-Z0-9_]/g, "_"),
+                  )
+                }
+                placeholder="AIRTABLE_API_KEY"
+                style={{ ...inp, fontFamily: "ui-monospace, Menlo, monospace" }}
+                autoComplete="off"
+              />
+              <p
+                style={{
+                  fontSize: 11,
+                  color: "var(--app-fg-3)",
+                  margin: "4px 0 0",
+                }}
+              >
+                {t("keys.field.customName.hint")}
+              </p>
+            </Field>
+          )}
 
           {scope === "business" && (
             <Field label={t("keys.field.business")}>
@@ -438,5 +425,165 @@ function Field({
       </span>
       {children}
     </label>
+  );
+}
+
+/** Renders the api_keys list grouped by kind — provider keys first
+ *  (canonical providers like anthropic/openai), then a separate
+ *  "Custom secrets" section for user-defined secrets read by agent
+ *  tools / modules / integrations. */
+function KeyList({
+  keys,
+  t,
+  labelFor,
+  onRemove,
+  pending,
+}: {
+  keys: ApiKeyMetadata[];
+  t: (k: string, vars?: Record<string, string | number>) => string;
+  labelFor: (k: ApiKeyMetadata) => string;
+  onRemove: (id: string) => void;
+  pending: boolean;
+}) {
+  // 'kind' was added in migration 041; rows from before default to
+  // 'provider' on the DB side, but be defensive for any edge case.
+  const providerKeys = keys.filter((k) => (k.kind ?? "provider") === "provider");
+  const customKeys = keys.filter((k) => k.kind === "custom");
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {providerKeys.length > 0 && (
+        <KeyGroup
+          title={t("keys.group.providers")}
+          rows={providerKeys}
+          t={t}
+          labelFor={labelFor}
+          onRemove={onRemove}
+          pending={pending}
+        />
+      )}
+      {customKeys.length > 0 && (
+        <KeyGroup
+          title={t("keys.group.custom")}
+          rows={customKeys}
+          t={t}
+          labelFor={labelFor}
+          onRemove={onRemove}
+          pending={pending}
+        />
+      )}
+    </div>
+  );
+}
+
+function KeyGroup({
+  title,
+  rows,
+  t,
+  labelFor,
+  onRemove,
+  pending,
+}: {
+  title: string;
+  rows: ApiKeyMetadata[];
+  t: (k: string, vars?: Record<string, string | number>) => string;
+  labelFor: (k: ApiKeyMetadata) => string;
+  onRemove: (id: string) => void;
+  pending: boolean;
+}) {
+  return (
+    <div>
+      <div
+        style={{
+          fontSize: 10.5,
+          fontWeight: 700,
+          letterSpacing: 0.5,
+          textTransform: "uppercase",
+          color: "var(--app-fg-3)",
+          margin: "0 4px 6px",
+        }}
+      >
+        {title}
+      </div>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+          border: "1px solid var(--app-border)",
+          borderRadius: 10,
+          overflow: "hidden",
+        }}
+      >
+        {rows.map((k) => (
+          <div
+            key={k.id}
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr 80px 80px",
+              gap: 8,
+              alignItems: "center",
+              padding: "10px 12px",
+              borderBottom: "1px solid var(--app-border-2)",
+              background: "var(--app-card-2)",
+            }}
+          >
+            <div>
+              <div
+                style={{
+                  fontSize: 13,
+                  fontWeight: 700,
+                  fontFamily:
+                    k.kind === "custom"
+                      ? "ui-monospace, Menlo, monospace"
+                      : undefined,
+                }}
+              >
+                {PROVIDERS.find((p) => p.id === k.provider)?.label ??
+                  k.provider}
+              </div>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "var(--app-fg-3)",
+                  marginTop: 2,
+                }}
+              >
+                {k.label ?? "—"}
+              </div>
+            </div>
+            <div style={{ fontSize: 12, color: "var(--app-fg-2)" }}>
+              {labelFor(k)}
+            </div>
+            <span
+              style={{
+                fontSize: 10.5,
+                fontWeight: 700,
+                letterSpacing: "0.14em",
+                textTransform: "uppercase",
+                color: k.has_value ? "var(--tt-green)" : "var(--rose)",
+              }}
+            >
+              {k.has_value ? t("keys.row.set") : t("keys.row.empty")}
+            </span>
+            <button
+              onClick={() => onRemove(k.id)}
+              disabled={pending}
+              style={{
+                padding: "5px 8px",
+                border: "1px solid var(--app-border)",
+                background: "transparent",
+                color: "var(--rose)",
+                borderRadius: 6,
+                fontSize: 11,
+                cursor: "pointer",
+              }}
+            >
+              {t("keys.row.delete")}
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

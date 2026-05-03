@@ -14,6 +14,8 @@ import { createSupabaseServerClient } from "../../lib/supabase/server";
 
 export type ApiKeyScope = "workspace" | "business" | "navnode";
 
+export type ApiKeyKind = "provider" | "custom";
+
 export type ApiKeyMetadata = {
   id: string;
   workspace_id: string;
@@ -24,7 +26,15 @@ export type ApiKeyMetadata = {
   has_value: boolean;
   created_at: string;
   updated_at: string;
+  /** 'provider' = canonical (anthropic/openai/…), 'custom' = user
+   *  secret read by agent tools / modules / integrations. */
+  kind: ApiKeyKind;
 };
+
+/** Validation rule for custom-secret names — uppercase, A-Z 0-9 _.
+ *  Matches conventional env-var naming so secrets can be referenced
+ *  identically from agent tools and Mustache integration templates. */
+export const CUSTOM_KEY_NAME_RE = /^[A-Z][A-Z0-9_]*$/;
 
 type ActionResult<T> =
   | { ok: true; data: T }
@@ -54,9 +64,21 @@ export async function setApiKey(input: {
   provider: string;
   value: string;
   label?: string;
+  /** 'provider' for canonical keys, 'custom' for user-defined secrets.
+   *  Custom keys must use UPPERCASE A-Z0-9_ for the provider name so
+   *  they read like env-var conventions (AIRTABLE_API_KEY etc.). */
+  kind?: ApiKeyKind;
 }): Promise<ActionResult<{ id: string }>> {
   if (!input.value.trim()) {
     return { ok: false, error: "Key mag niet leeg zijn." };
+  }
+  const kind: ApiKeyKind = input.kind ?? "provider";
+  if (kind === "custom" && !CUSTOM_KEY_NAME_RE.test(input.provider)) {
+    return {
+      ok: false,
+      error:
+        "Custom secret-naam mag alleen UPPERCASE letters, cijfers en underscore bevatten en moet met een letter beginnen (bv. AIRTABLE_API_KEY).",
+    };
   }
   const masterKey = process.env.AGENT_SECRET_KEY;
   if (!masterKey) {
@@ -78,8 +100,24 @@ export async function setApiKey(input: {
   });
   if (error) return { ok: false, error: error.message };
 
+  // The set_api_key RPC predates the kind column; stamp it post-hoc on
+  // the row we just upserted. RLS allows editor+ writes.
+  const id = data as string;
+  if (kind === "custom") {
+    const { error: kindErr } = await supabase
+      .from("api_keys")
+      .update({ kind })
+      .eq("id", id);
+    if (kindErr) {
+      // Non-fatal — the key is saved, just lacks the discriminator.
+      // The panel will show it under "Provider keys" until next save.
+      console.error("set kind=custom failed", kindErr);
+    }
+  }
+
   revalidatePath(`/${input.workspace_slug}/settings`);
-  return { ok: true, data: { id: data as string } };
+  revalidatePath(`/${input.workspace_slug}/settings/api-keys`);
+  return { ok: true, data: { id } };
 }
 
 export async function deleteApiKey(input: {

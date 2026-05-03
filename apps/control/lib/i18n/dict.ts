@@ -243,6 +243,12 @@ const nl: Dict = {
   "keys.field.topic": "Topic",
   "keys.field.value": "Key (wordt encrypted opgeslagen)",
   "keys.field.label": "Label (optioneel)",
+  "keys.field.customSecret": "+ Custom secret…",
+  "keys.field.customName": "Secret naam",
+  "keys.field.customName.hint":
+    "Alleen UPPERCASE A-Z, 0-9 en _ — bv. AIRTABLE_API_KEY. Wordt door agents/modules opgevraagd via deze naam.",
+  "keys.group.providers": "Provider keys",
+  "keys.group.custom": "Custom secrets",
 
   "rail.empty": "Geen businesses nog",
   "rail.emptyTopics": "Nog geen subtopics — maak er een aan ↓",
@@ -1026,6 +1032,12 @@ const en: Partial<Dict> = {
   "keys.field.topic": "Topic",
   "keys.field.value": "Key (stored encrypted)",
   "keys.field.label": "Label (optional)",
+  "keys.field.customSecret": "+ Custom secret…",
+  "keys.field.customName": "Secret name",
+  "keys.field.customName.hint":
+    "UPPERCASE A-Z, 0-9 and _ only — e.g. AIRTABLE_API_KEY. Agents/modules read it by this name.",
+  "keys.group.providers": "Provider keys",
+  "keys.group.custom": "Custom secrets",
 
   "settings.sub": "Account · workspace · automations",
   "settings.section.agentDefaults": "Agent defaults",
@@ -1615,6 +1627,12 @@ const de: Partial<Dict> = {
   "keys.field.topic": "Topic",
   "keys.field.value": "Key (verschlüsselt gespeichert)",
   "keys.field.label": "Label (optional)",
+  "keys.field.customSecret": "+ Custom secret…",
+  "keys.field.customName": "Secret-Name",
+  "keys.field.customName.hint":
+    "Nur UPPERCASE A-Z, 0-9 und _ — z.B. AIRTABLE_API_KEY. Agents/Module lesen den Wert via diesen Namen.",
+  "keys.group.providers": "Provider-Keys",
+  "keys.group.custom": "Custom Secrets",
 };
 
 const DICTS: Record<Locale, Partial<Dict>> = { nl, en, de };

@@ -12,6 +12,7 @@
 import "server-only";
 
 import { getServiceRoleSupabase } from "../supabase/service";
+import { resolveApiKey } from "../api-keys/resolve";
 
 export type AioToolContext = {
   workspaceId: string;
@@ -129,6 +130,26 @@ export async function executeAioTool(
           .maybeSingle();
         if (error) return { kind: "error", error: error.message };
         return { kind: "ok", data };
+      }
+
+      case "read_secret": {
+        const name = String(a.name ?? "").trim();
+        if (!name)
+          return {
+            kind: "error",
+            error: "read_secret needs a `name` (e.g. AIRTABLE_API_KEY).",
+          };
+        // Resolve through the same tier-resolver the rest of the app
+        // uses — navnode → business → workspace → env. Custom secrets
+        // live alongside provider keys in api_keys (kind='custom') so
+        // resolveApiKey already finds them.
+        const value = await resolveApiKey(name, {
+          workspaceId: ctx.workspaceId,
+          businessId: ctx.defaultBusinessId,
+        });
+        // Returning value: null is the explicit "not configured" signal
+        // the model can branch on without exception-handling.
+        return { kind: "ok", data: { value: value ?? null } };
       }
 
       // ── META (UI side-effects) ───────────────────────────────────

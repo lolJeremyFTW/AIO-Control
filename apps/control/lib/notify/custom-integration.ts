@@ -4,6 +4,8 @@
 
 import "server-only";
 
+import { resolveApiKey } from "../api-keys/resolve";
+
 export type CustomIntegration = {
   id: string;
   workspace_id: string;
@@ -30,20 +32,48 @@ export type TemplateVars = {
 export async function sendCustom(opts: {
   integration: CustomIntegration;
   vars: TemplateVars;
+  /** Optional business scope so secret resolution honours per-business
+   *  overrides for keys defined at that level. */
+  businessId?: string | null;
 }): Promise<{ ok: boolean; status?: number; error?: string }> {
   if (!opts.integration.enabled)
     return { ok: false, error: "integration_disabled" };
 
-  const url = template(opts.integration.url, opts.vars);
+  // Pre-resolve any {{secret.X}} placeholders referenced in url +
+  // headers + body. We scan all three template strings in one pass,
+  // hit api_keys once per unique name, and stash the values under
+  // vars.secret so the existing sync template() can render them.
+  const sources = [
+    opts.integration.url,
+    ...Object.values(opts.integration.headers ?? {}),
+    opts.integration.body_template ?? "",
+  ];
+  const secretNames = new Set<string>();
+  const SECRET_REF = /\{\{\s*secret\.([A-Z][A-Z0-9_]*)\s*\}\}/g;
+  for (const src of sources) {
+    let m: RegExpExecArray | null;
+    while ((m = SECRET_REF.exec(src)) !== null) secretNames.add(m[1]!);
+  }
+  const secretMap: Record<string, string> = {};
+  for (const name of secretNames) {
+    const value = await resolveApiKey(name, {
+      workspaceId: opts.integration.workspace_id,
+      businessId: opts.businessId ?? null,
+    });
+    if (value) secretMap[name] = value;
+  }
+  const vars: TemplateVars = { ...opts.vars, secret: secretMap };
+
+  const url = template(opts.integration.url, vars);
   const headers = Object.fromEntries(
     Object.entries(opts.integration.headers ?? {}).map(([k, v]) => [
       k,
-      template(v, opts.vars),
+      template(v, vars),
     ]),
   );
   const body =
     opts.integration.body_template != null
-      ? template(opts.integration.body_template, opts.vars)
+      ? template(opts.integration.body_template, vars)
       : undefined;
 
   // If body looks like JSON and Content-Type isn't set, set it.

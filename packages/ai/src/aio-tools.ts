@@ -106,6 +106,24 @@ export const AIO_TOOLS: Record<string, AioToolSpec> = {
       "Workspace-level defaults: default provider/model, default system prompt, telegram topology, etc.",
     parameters: { type: "object", properties: {}, additionalProperties: false },
   },
+  read_secret: {
+    name: "read_secret",
+    category: "read",
+    description:
+      "Read a workspace custom secret by its UPPERCASE name (e.g. AIRTABLE_API_KEY, MIJN_INTERNAL_TOKEN). Operators set these via Settings → API Keys → Custom secrets. Returns { value: string } when set, { value: null } when not configured. Use sparingly — never echo the value back to the chat verbatim.",
+    parameters: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description:
+            "Exact name of the custom secret as configured (e.g. AIRTABLE_API_KEY).",
+        },
+      },
+      required: ["name"],
+      additionalProperties: false,
+    },
+  },
 
   // ── WRITE (require confirm) ──────────────────────────────────────
   create_business: {
