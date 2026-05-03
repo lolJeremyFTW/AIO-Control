@@ -67,9 +67,9 @@ async function runBinary(
     const timer = setTimeout(() => {
       finish({
         ok: false,
-        error: `Timeout (${binary} ${args.join(" ")} reageerde niet binnen 10s).`,
+        error: `Timeout (${binary} ${args.join(" ")} reageerde niet binnen 30s).`,
       });
-    }, 10_000);
+    }, 30_000);
 
     child.stdout?.setEncoding("utf8");
     child.stderr?.setEncoding("utf8");
@@ -469,17 +469,43 @@ export async function verifyRuntimeAgent(input: {
     input.provider === "hermes"
       ? process.env.HERMES_BIN || "hermes"
       : process.env.OPENCLAW_BIN || "openclaw";
+  // openclaw agents list without --json triggers a channel-probe pass
+  // that takes 20+s. With --json it stays under 2s. Hermes' profile
+  // list is fast either way; we just keep the --json flag handy for
+  // future structured parsing.
   const args =
-    input.provider === "hermes" ? ["profile", "list"] : ["agents", "list"];
+    input.provider === "hermes"
+      ? ["profile", "list"]
+      : ["agents", "list", "--json"];
 
   const r = await runBinary(binary, args);
   if (!r.ok) return { ok: false, error: r.error };
 
-  // Both `hermes profile list` and `openclaw agents list` print one
-  // entry per line. We do a generous match (whitespace-or-line-bounded)
-  // because the format isn't formally documented and may evolve.
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const matched = new RegExp(`(^|\\s)${escaped}(\\s|$)`, "m").test(r.stdout);
+  // For OpenClaw the JSON output is an array of agent objects with a
+  // `name` (or sometimes `id`) field per row. For Hermes (text) we
+  // fall back to a generous whitespace-bounded regex on stdout.
+  let matched = false;
+  if (input.provider === "openclaw") {
+    try {
+      const parsed = JSON.parse(r.stdout);
+      const list: unknown[] = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray((parsed as { agents?: unknown[] })?.agents)
+          ? (parsed as { agents: unknown[] }).agents
+          : [];
+      matched = list.some((it) => {
+        if (!it || typeof it !== "object") return false;
+        const o = it as Record<string, unknown>;
+        return o.name === name || o.id === name;
+      });
+    } catch {
+      // Fall through to regex match if JSON wasn't actually emitted.
+    }
+  }
+  if (!matched) {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    matched = new RegExp(`(^|\\s)${escaped}(\\s|$)`, "m").test(r.stdout);
+  }
   if (!matched) {
     return {
       ok: false,
