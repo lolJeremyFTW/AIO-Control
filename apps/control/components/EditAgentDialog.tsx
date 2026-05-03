@@ -10,6 +10,12 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
+import {
+  AIO_TOOLS,
+  defaultToolsForKind,
+  type AioToolSpec,
+} from "@aio/ai/aio-tools";
+
 import { updateAgent } from "../app/actions/agents";
 import type { AgentRow } from "../lib/queries/agents";
 import { WorkflowGraph } from "./WorkflowGraph";
@@ -29,6 +35,9 @@ type Props = {
     next_agent_on_done?: string | null;
     next_agent_on_fail?: string | null;
     notify_email?: string | null;
+    /** Allow-list of AIO Control tool names. null = use defaults for
+     *  agent kind (see @aio/ai/aio-tools defaultToolsForKind). */
+    allowed_tools?: string[] | null;
   };
   telegramTargets?: Target[];
   customIntegrations?: Target[];
@@ -89,6 +98,14 @@ export function EditAgentDialog({
   const [nextOnDone, setNextOnDone] = useState(agent.next_agent_on_done ?? "");
   const [nextOnFail, setNextOnFail] = useState(agent.next_agent_on_fail ?? "");
   const [notifyEmail, setNotifyEmail] = useState(agent.notify_email ?? "");
+  // Tools allow-list. `useDefaults` toggle short-circuits the picker
+  // back to the kind-default set (sent as null on save).
+  const [useToolsDefault, setUseToolsDefault] = useState(
+    agent.allowed_tools == null,
+  );
+  const [allowedTools, setAllowedTools] = useState<string[]>(
+    agent.allowed_tools ?? defaultToolsForKind(agent.kind),
+  );
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -118,6 +135,7 @@ export function EditAgentDialog({
         next_agent_on_done: nextOnDone || null,
         next_agent_on_fail: nextOnFail || null,
         notify_email: notifyEmail || null,
+        allowed_tools: useToolsDefault ? null : allowedTools,
       },
     });
     setPending(false);
@@ -252,6 +270,60 @@ export function EditAgentDialog({
             style={inp}
           />
         </Field>
+
+        <details style={{ marginBottom: 12 }}>
+          <summary
+            style={{
+              cursor: "pointer",
+              fontSize: 12,
+              fontWeight: 700,
+              color: "var(--app-fg-2)",
+              padding: "4px 0",
+            }}
+          >
+            AIO Control tools — wat mag deze agent aanroepen
+          </summary>
+          <p
+            style={{
+              fontSize: 11.5,
+              color: "var(--app-fg-3)",
+              margin: "6px 0 8px",
+              lineHeight: 1.45,
+            }}
+          >
+            Read-tools (list_*, get_*) zijn veilig + nooit destructief.
+            Write-tools (create_*, update_*) vereisen je bevestiging in
+            de chat vóór ze daadwerkelijk uitgevoerd worden. Meta-tools
+            (ask_followup, todo_set, open_ui_at) zijn UI-side-effects.
+          </p>
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              fontSize: 12.5,
+              fontWeight: 600,
+              marginBottom: 8,
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={useToolsDefault}
+              onChange={(e) => setUseToolsDefault(e.target.checked)}
+            />
+            <span>
+              Standaard set voor &quot;{kind}&quot;-agents gebruiken (
+              {defaultToolsForKind(kind).length} tools)
+            </span>
+          </label>
+          {!useToolsDefault && (
+            <ToolsPicker
+              tools={Object.values(AIO_TOOLS)}
+              selected={allowedTools}
+              onChange={setAllowedTools}
+            />
+          )}
+        </details>
 
         {siblingAgents.length > 0 && (
           <div
@@ -438,6 +510,103 @@ const btnPrimary = (pending: boolean): React.CSSProperties => ({
   cursor: pending ? "wait" : "pointer",
   opacity: pending ? 0.8 : 1,
 });
+
+function ToolsPicker({
+  tools,
+  selected,
+  onChange,
+}: {
+  tools: AioToolSpec[];
+  selected: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const sel = new Set(selected);
+  const toggle = (name: string) => {
+    const next = new Set(sel);
+    if (next.has(name)) next.delete(name);
+    else next.add(name);
+    onChange([...next]);
+  };
+  const groups = {
+    read: tools.filter((t) => t.category === "read"),
+    write: tools.filter((t) => t.category === "write"),
+    meta: tools.filter((t) => t.category === "meta"),
+  };
+  const groupColors: Record<string, string> = {
+    read: "var(--app-fg-3)",
+    write: "var(--rose)",
+    meta: "var(--tt-green)",
+  };
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {(["read", "write", "meta"] as const).map((g) => (
+        <div key={g}>
+          <div
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              color: groupColors[g],
+              textTransform: "uppercase",
+              letterSpacing: 0.5,
+              marginBottom: 4,
+            }}
+          >
+            {g}
+          </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 6,
+            }}
+          >
+            {groups[g].map((t) => {
+              const on = sel.has(t.name);
+              return (
+                <button
+                  key={t.name}
+                  type="button"
+                  onClick={() => toggle(t.name)}
+                  title={t.description}
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 6,
+                    padding: "6px 8px",
+                    border: `1.5px solid ${on ? "var(--tt-green)" : "var(--app-border)"}`,
+                    background: on
+                      ? "rgba(57,178,85,0.08)"
+                      : "var(--app-card-2)",
+                    color: "var(--app-fg)",
+                    borderRadius: 8,
+                    cursor: "pointer",
+                    textAlign: "left",
+                    fontFamily: "var(--mono, monospace)",
+                    fontSize: 11.5,
+                  }}
+                >
+                  <span
+                    aria-hidden
+                    style={{
+                      width: 12,
+                      height: 12,
+                      marginTop: 1,
+                      border: `1.5px solid ${on ? "var(--tt-green)" : "var(--app-border)"}`,
+                      background: on ? "var(--tt-green)" : "transparent",
+                      borderRadius: 3,
+                      flexShrink: 0,
+                    }}
+                  />
+                  {t.name}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function Field({
   label,

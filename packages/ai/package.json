@@ -8,7 +8,8 @@
     "./router": "./src/router.ts",
     "./ag-ui": "./src/ag-ui.ts",
     "./pricing": "./src/pricing.ts",
-    "./routines": "./src/routines.ts"
+    "./routines": "./src/routines.ts",
+    "./aio-tools": "./src/aio-tools.ts"
   },
   "scripts": {
     "lint": "eslint . --max-warnings 0",

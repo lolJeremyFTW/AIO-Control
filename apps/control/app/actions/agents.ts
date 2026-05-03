@@ -149,6 +149,8 @@ export async function updateAgent(input: {
     next_agent_on_done?: string | null;
     next_agent_on_fail?: string | null;
     notify_email?: string | null;
+    /** Workstream H. null = use kind defaults; explicit array = allow-list. */
+    allowed_tools?: string[] | null;
   };
 }): Promise<ActionResult<null>> {
   const patch: Record<string, unknown> = {};
@@ -171,6 +173,8 @@ export async function updateAgent(input: {
     patch.next_agent_on_fail = input.patch.next_agent_on_fail ?? null;
   if (input.patch.notify_email !== undefined)
     patch.notify_email = input.patch.notify_email?.toString().trim() || null;
+  if (input.patch.allowed_tools !== undefined)
+    patch.allowed_tools = input.patch.allowed_tools;
 
   // Config fields are merged into the existing jsonb so we don't
   // clobber routing rules or temperature.
