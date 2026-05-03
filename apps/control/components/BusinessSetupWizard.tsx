@@ -21,6 +21,7 @@ import { createAgent, type AgentInput } from "../app/actions/agents";
 import { createNavNode } from "../app/actions/nav-nodes";
 import { listWorkspaceTelegramTargets } from "../app/actions/telegram";
 import { translate, type Locale } from "../lib/i18n/dict";
+import { useLocale } from "../lib/i18n/client";
 import { AppearancePicker, type AppearanceValue } from "./AppearancePicker";
 import { TargetsEditor, type Target } from "./TargetsEditor";
 
@@ -87,9 +88,11 @@ export function BusinessSetupWizard({
   telegramTargets = [],
   defaultProvider,
   defaultModel,
-  locale = "nl",
+  locale: localeProp,
   onClose,
 }: Props) {
+  const cookieLocale = useLocale();
+  const locale: Locale = localeProp ?? cookieLocale;
   const t = (key: string, vars?: Record<string, string | number>) =>
     translate(locale, key, vars);
   const ref = useRef<HTMLDialogElement>(null);

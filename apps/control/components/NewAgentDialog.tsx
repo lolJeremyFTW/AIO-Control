@@ -8,6 +8,8 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { createAgent, type AgentInput } from "../app/actions/agents";
+import { translate, type Locale } from "../lib/i18n/dict";
+import { useLocale } from "../lib/i18n/client";
 import { RoutingRulesEditor } from "./RoutingRulesEditor";
 
 type Provider = AgentInput["provider"];
@@ -29,6 +31,8 @@ type Props = {
     model?: string | null;
     systemPrompt?: string | null;
   };
+  /** Active UI locale — translates labels via the shared dict. */
+  locale?: Locale;
   onClose: () => void;
 };
 
@@ -43,12 +47,12 @@ const PROVIDERS: { id: Provider; label: string; defaultModel?: string }[] = [
   { id: "codex", label: "Codex / OpenAI" },
 ];
 
-const KINDS: { id: Kind; label: string }[] = [
-  { id: "chat", label: "Chat (interactief)" },
-  { id: "worker", label: "Worker (scheduled / event-driven)" },
-  { id: "reviewer", label: "Reviewer (HITL gate)" },
-  { id: "generator", label: "Generator (content)" },
-  { id: "router", label: "Router (smart-select)" },
+const KINDS: { id: Kind; labelKey: string }[] = [
+  { id: "chat", labelKey: "agent.kind.chat" },
+  { id: "worker", labelKey: "agent.kind.worker" },
+  { id: "reviewer", labelKey: "agent.kind.reviewer" },
+  { id: "generator", labelKey: "agent.kind.generator" },
+  { id: "router", labelKey: "agent.kind.router" },
 ];
 
 export function NewAgentDialog({
@@ -58,8 +62,13 @@ export function NewAgentDialog({
   telegramTargets = [],
   customIntegrations = [],
   defaults,
+  locale: localeProp,
   onClose,
 }: Props) {
+  const cookieLocale = useLocale();
+  const locale: Locale = localeProp ?? cookieLocale;
+  const t = (key: string, vars?: Record<string, string | number>) =>
+    translate(locale, key, vars);
   const ref = useRef<HTMLDialogElement>(null);
   const [name, setName] = useState("");
   const [kind, setKind] = useState<Kind>("chat");
@@ -152,7 +161,7 @@ export function NewAgentDialog({
             letterSpacing: "-0.3px",
           }}
         >
-          Nieuwe agent
+          {t("agent.dialog.title")}
         </h2>
         <p
           style={{
@@ -161,19 +170,12 @@ export function NewAgentDialog({
             margin: "0 0 16px",
           }}
         >
-          {businessId === null ? (
-            <>
-              <strong>Workspace-global agent</strong> — niet aan een
-              specifieke business gekoppeld. Beschikbaar vanuit de chat
-              en als hop in agent-chains over de hele workspace.
-            </>
-          ) : (
-            <>Een agent verbindt een provider (Claude, MiniMax, …) aan
-            deze business.</>
-          )}
+          {businessId === null
+            ? t("agent.dialog.workspaceGlobal")
+            : t("agent.dialog.businessScoped")}
         </p>
 
-        <Field label="Naam">
+        <Field label={t("agent.field.name")}>
           <input
             autoFocus
             value={name}
@@ -185,7 +187,7 @@ export function NewAgentDialog({
         </Field>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <Field label="Soort">
+          <Field label={t("agent.field.kind")}>
             <select
               value={kind}
               onChange={(e) => setKind(e.target.value as Kind)}
@@ -193,12 +195,12 @@ export function NewAgentDialog({
             >
               {KINDS.map((k) => (
                 <option key={k.id} value={k.id}>
-                  {k.label}
+                  {t(k.labelKey)}
                 </option>
               ))}
             </select>
           </Field>
-          <Field label="Provider">
+          <Field label={t("agent.field.provider")}>
             <select
               value={provider}
               onChange={(e) => {
@@ -217,7 +219,15 @@ export function NewAgentDialog({
           </Field>
         </div>
 
-        <Field label={`Model${providerSpec.defaultModel ? ` (default: ${providerSpec.defaultModel})` : ""}`}>
+        <Field
+          label={
+            providerSpec.defaultModel
+              ? t("agent.field.modelDefault", {
+                  model: providerSpec.defaultModel,
+                })
+              : t("agent.field.model")
+          }
+        >
           <input
             value={model}
             onChange={(e) => setModel(e.target.value)}
@@ -251,7 +261,7 @@ export function NewAgentDialog({
         )}
 
         {(provider === "claude" || provider === "claude_cli") && (
-          <Field label="Credentials">
+          <Field label={t("agent.field.credentials")}>
             <div
               style={{
                 display: "grid",
@@ -261,20 +271,20 @@ export function NewAgentDialog({
             >
               <KeySourceRadio
                 checked={keySource === "subscription"}
-                label="Claude Pro/Max/Team subscription"
-                desc="Cron-runs draaien als Claude Routines op Claude's eigen infra. Geen API key nodig. Quotum: 5/15/25 routine runs per dag."
+                label={t("agent.creds.subscription")}
+                desc={t("agent.creds.subscription.desc")}
                 onSelect={() => setKeySource("subscription")}
               />
               <KeySourceRadio
                 checked={keySource === "api_key"}
-                label="Anthropic API key (per token)"
-                desc="Cron-runs draaien lokaal via onze scheduler. Vereist een ANTHROPIC_API_KEY in je workspace api-keys. Betaalt per token, geen routine quotum."
+                label={t("agent.creds.apiKey")}
+                desc={t("agent.creds.apiKey.desc")}
                 onSelect={() => setKeySource("api_key")}
               />
               <KeySourceRadio
                 checked={keySource === "env"}
-                label="Env var fallback"
-                desc="Pakt ANTHROPIC_API_KEY uit de process env als fallback. Handig voor solo dev — niet aanbevolen voor multi-tenant."
+                label={t("agent.creds.env")}
+                desc={t("agent.creds.env.desc")}
                 onSelect={() => setKeySource("env")}
               />
             </div>
@@ -298,7 +308,7 @@ export function NewAgentDialog({
           </Hint>
         )}
 
-        <Field label="System prompt (optioneel)">
+        <Field label={t("agent.field.systemPrompt")}>
           <textarea
             value={systemPrompt}
             onChange={(e) => setSystemPrompt(e.target.value)}
@@ -317,29 +327,29 @@ export function NewAgentDialog({
             }}
           >
             {telegramTargets.length > 0 && (
-              <Field label="Telegram channel (optioneel)">
+              <Field label={t("agent.field.telegramTarget")}>
                 <select
                   value={telegramTargetId}
                   onChange={(e) => setTelegramTargetId(e.target.value)}
                   style={inputStyle}
                 >
-                  <option value="">— Workspace default —</option>
-                  {telegramTargets.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
+                  <option value="">{t("agent.field.workspaceDefault")}</option>
+                  {telegramTargets.map((tgt) => (
+                    <option key={tgt.id} value={tgt.id}>
+                      {tgt.name}
                     </option>
                   ))}
                 </select>
               </Field>
             )}
             {customIntegrations.length > 0 && (
-              <Field label="Custom integration (optioneel)">
+              <Field label={t("agent.field.customIntegration")}>
                 <select
                   value={customIntegrationId}
                   onChange={(e) => setCustomIntegrationId(e.target.value)}
                   style={inputStyle}
                 >
-                  <option value="">— Workspace default —</option>
+                  <option value="">{t("agent.field.workspaceDefault")}</option>
                   {customIntegrations.map((i) => (
                     <option key={i.id} value={i.id}>
                       {i.name}
@@ -361,7 +371,7 @@ export function NewAgentDialog({
               padding: "4px 0",
             }}
           >
-            Smart routing rules (advanced)
+            {t("agent.routing.title")}
           </summary>
           <p
             style={{
@@ -371,9 +381,7 @@ export function NewAgentDialog({
               lineHeight: 1.45,
             }}
           >
-            Voeg regels toe die op runtime de provider+model kiezen op basis
-            van de input. Eerste matching regel wint. Voorbeeld: korte inputs
-            naar Haiku, lange naar Opus.
+            {t("agent.routing.desc")}
           </p>
           <RoutingRulesEditor
             value={routingRulesJson}
@@ -411,10 +419,10 @@ export function NewAgentDialog({
             onClick={onClose}
             style={btnSecondary}
           >
-            Annuleer
+            {t("common.cancel")}
           </button>
           <button type="submit" disabled={pending} style={btnPrimary(pending)}>
-            {pending ? "Bezig…" : "Aanmaken"}
+            {pending ? t("common.busy") : t("agent.cta.create")}
           </button>
         </div>
       </form>

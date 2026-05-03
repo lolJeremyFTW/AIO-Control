@@ -18,6 +18,8 @@ import {
 
 import { updateAgent } from "../app/actions/agents";
 import type { AgentRow } from "../lib/queries/agents";
+import { translate } from "../lib/i18n/dict";
+import { useLocale } from "../lib/i18n/client";
 import { WorkflowGraph } from "./WorkflowGraph";
 
 type Provider = AgentRow["provider"];
@@ -58,12 +60,12 @@ const PROVIDERS: { id: Provider; label: string; defaultModel?: string }[] = [
   { id: "codex", label: "Codex / OpenAI" },
 ];
 
-const KINDS: { id: Kind; label: string }[] = [
-  { id: "chat", label: "Chat (interactief)" },
-  { id: "worker", label: "Worker (scheduled / event-driven)" },
-  { id: "reviewer", label: "Reviewer (HITL gate)" },
-  { id: "generator", label: "Generator (content)" },
-  { id: "router", label: "Router (smart-select)" },
+const KINDS: { id: Kind; labelKey: string }[] = [
+  { id: "chat", labelKey: "agent.kind.chat" },
+  { id: "worker", labelKey: "agent.kind.worker" },
+  { id: "reviewer", labelKey: "agent.kind.reviewer" },
+  { id: "generator", labelKey: "agent.kind.generator" },
+  { id: "router", labelKey: "agent.kind.router" },
 ];
 
 export function EditAgentDialog({
@@ -77,6 +79,9 @@ export function EditAgentDialog({
 }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
   const router = useRouter();
+  const locale = useLocale();
+  const t = (key: string, vars?: Record<string, string | number>) =>
+    translate(locale, key, vars);
 
   const cfg = (agent.config ?? {}) as {
     systemPrompt?: string | null;
@@ -179,7 +184,7 @@ export function EditAgentDialog({
             letterSpacing: "-0.3px",
           }}
         >
-          Agent bewerken
+          {t("agent.edit.title")}
         </h2>
         <p
           style={{
@@ -188,10 +193,10 @@ export function EditAgentDialog({
             margin: "0 0 16px",
           }}
         >
-          Pas naam, provider, system prompt en reporting targets aan.
+          {t("agent.edit.sub")}
         </p>
 
-        <Field label="Naam">
+        <Field label={t("agent.field.name")}>
           <input
             autoFocus
             value={name}
@@ -202,7 +207,7 @@ export function EditAgentDialog({
         </Field>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <Field label="Soort">
+          <Field label={t("agent.field.kind")}>
             <select
               value={kind}
               onChange={(e) => setKind(e.target.value as Kind)}
@@ -210,12 +215,12 @@ export function EditAgentDialog({
             >
               {KINDS.map((k) => (
                 <option key={k.id} value={k.id}>
-                  {k.label}
+                  {t(k.labelKey)}
                 </option>
               ))}
             </select>
           </Field>
-          <Field label="Provider">
+          <Field label={t("agent.field.provider")}>
             <select
               value={provider}
               onChange={(e) => setProvider(e.target.value as Provider)}
@@ -231,7 +236,13 @@ export function EditAgentDialog({
         </div>
 
         <Field
-          label={`Model${providerSpec.defaultModel ? ` (default: ${providerSpec.defaultModel})` : ""}`}
+          label={
+            providerSpec.defaultModel
+              ? t("agent.field.modelDefault", {
+                  model: providerSpec.defaultModel,
+                })
+              : t("agent.field.model")
+          }
         >
           <input
             value={model}
@@ -242,7 +253,7 @@ export function EditAgentDialog({
         </Field>
 
         {needsEndpoint && (
-          <Field label="Endpoint URL">
+          <Field label={t("agent.field.endpoint")}>
             <input
               value={endpoint}
               onChange={(e) => setEndpoint(e.target.value)}
@@ -253,7 +264,7 @@ export function EditAgentDialog({
           </Field>
         )}
 
-        <Field label="System prompt">
+        <Field label={t("agent.field.systemPrompt")}>
           <textarea
             value={systemPrompt}
             onChange={(e) => setSystemPrompt(e.target.value)}
@@ -262,7 +273,7 @@ export function EditAgentDialog({
           />
         </Field>
 
-        <Field label="Email (override workspace default)">
+        <Field label={t("agent.field.notifyEmail")}>
           <input
             value={notifyEmail}
             onChange={(e) => setNotifyEmail(e.target.value)}
@@ -281,7 +292,7 @@ export function EditAgentDialog({
               padding: "4px 0",
             }}
           >
-            AIO Control tools — wat mag deze agent aanroepen
+            {t("agent.tools.title")}
           </summary>
           <p
             style={{
@@ -291,10 +302,7 @@ export function EditAgentDialog({
               lineHeight: 1.45,
             }}
           >
-            Read-tools (list_*, get_*) zijn veilig + nooit destructief.
-            Write-tools (create_*, update_*) vereisen je bevestiging in
-            de chat vóór ze daadwerkelijk uitgevoerd worden. Meta-tools
-            (ask_followup, todo_set, open_ui_at) zijn UI-side-effects.
+            {t("agent.tools.desc")}
           </p>
           <label
             style={{
@@ -312,8 +320,10 @@ export function EditAgentDialog({
               onChange={(e) => setUseToolsDefault(e.target.checked)}
             />
             <span>
-              Standaard set voor &quot;{kind}&quot;-agents gebruiken (
-              {defaultToolsForKind(kind).length} tools)
+              {t("agent.tools.useDefault", {
+                kind,
+                count: defaultToolsForKind(kind).length,
+              })}
             </span>
           </label>
           {!useToolsDefault && (
@@ -343,16 +353,16 @@ export function EditAgentDialog({
                 marginBottom: 8,
               }}
             >
-              Chain — wat draait er na deze agent?
+              {t("agent.chain.title")}
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <Field label="Bij DONE → run agent">
+              <Field label={t("agent.chain.onDone")}>
                 <select
                   value={nextOnDone}
                   onChange={(e) => setNextOnDone(e.target.value)}
                   style={inp}
                 >
-                  <option value="">— Geen chain —</option>
+                  <option value="">{t("agent.chain.noChain")}</option>
                   {siblingAgents
                     .filter((a) => a.id !== agent.id)
                     .map((a) => (
@@ -362,13 +372,13 @@ export function EditAgentDialog({
                     ))}
                 </select>
               </Field>
-              <Field label="Bij FAIL → run agent (triage)">
+              <Field label={t("agent.chain.onFail")}>
                 <select
                   value={nextOnFail}
                   onChange={(e) => setNextOnFail(e.target.value)}
                   style={inp}
                 >
-                  <option value="">— Geen triage —</option>
+                  <option value="">{t("agent.chain.noTriage")}</option>
                   {siblingAgents
                     .filter((a) => a.id !== agent.id)
                     .map((a) => (
@@ -380,8 +390,7 @@ export function EditAgentDialog({
               </Field>
             </div>
             <p style={{ fontSize: 11, color: "var(--app-fg-3)", margin: "8px 0 8px" }}>
-              De volgende agent ontvangt deze run&apos;s output als input
-              prompt — perfect voor extract → translate → publish chains.
+              {t("agent.chain.note")}
             </p>
             <WorkflowGraph
               focused={{
@@ -406,29 +415,29 @@ export function EditAgentDialog({
         {(telegramTargets.length > 0 || customIntegrations.length > 0) && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             {telegramTargets.length > 0 && (
-              <Field label="Telegram channel">
+              <Field label={t("agent.field.telegramTarget")}>
                 <select
                   value={telegramTargetId}
                   onChange={(e) => setTelegramTargetId(e.target.value)}
                   style={inp}
                 >
-                  <option value="">— Workspace default —</option>
-                  {telegramTargets.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
+                  <option value="">{t("agent.field.workspaceDefault")}</option>
+                  {telegramTargets.map((tgt) => (
+                    <option key={tgt.id} value={tgt.id}>
+                      {tgt.name}
                     </option>
                   ))}
                 </select>
               </Field>
             )}
             {customIntegrations.length > 0 && (
-              <Field label="Custom integration">
+              <Field label={t("agent.field.customIntegration")}>
                 <select
                   value={customIntegrationId}
                   onChange={(e) => setCustomIntegrationId(e.target.value)}
                   style={inp}
                 >
-                  <option value="">— Workspace default —</option>
+                  <option value="">{t("agent.field.workspaceDefault")}</option>
                   {customIntegrations.map((i) => (
                     <option key={i.id} value={i.id}>
                       {i.name}
@@ -466,10 +475,10 @@ export function EditAgentDialog({
           }}
         >
           <button type="button" onClick={onClose} style={btnSecondary}>
-            Annuleer
+            {t("common.cancel")}
           </button>
           <button type="submit" disabled={pending} style={btnPrimary(pending)}>
-            {pending ? "Opslaan…" : "Opslaan"}
+            {pending ? t("common.busy") : t("agent.cta.save")}
           </button>
         </div>
       </form>

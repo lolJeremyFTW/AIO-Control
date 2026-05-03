@@ -128,6 +128,58 @@ const nl: Dict = {
   "wizard.cta.back": "← Terug",
   "wizard.cta.create": "Business aanmaken",
 
+  "agent.dialog.title": "Nieuwe agent",
+  "agent.dialog.workspaceGlobal":
+    "Workspace-global agent — niet aan een specifieke business gekoppeld. Beschikbaar vanuit de chat en als hop in agent-chains over de hele workspace.",
+  "agent.dialog.businessScoped":
+    "Een agent verbindt een provider (Claude, MiniMax, …) aan deze business.",
+  "agent.field.name": "Naam",
+  "agent.field.kind": "Soort",
+  "agent.field.provider": "Provider",
+  "agent.field.model": "Model",
+  "agent.field.modelDefault": "Model (default: {model})",
+  "agent.field.endpoint": "Endpoint URL (optioneel — env default als leeg)",
+  "agent.field.systemPrompt": "System prompt (optioneel)",
+  "agent.field.telegramTarget": "Telegram channel (optioneel)",
+  "agent.field.customIntegration": "Custom integration (optioneel)",
+  "agent.field.workspaceDefault": "— Workspace default —",
+  "agent.field.credentials": "Credentials",
+  "agent.kind.chat": "Chat (interactief)",
+  "agent.kind.worker": "Worker (scheduled / event-driven)",
+  "agent.kind.reviewer": "Reviewer (HITL gate)",
+  "agent.kind.generator": "Generator (content)",
+  "agent.kind.router": "Router (smart-select)",
+  "agent.creds.subscription": "Claude Pro/Max/Team subscription",
+  "agent.creds.subscription.desc":
+    "Cron-runs draaien als Claude Routines op Claude's eigen infra. Geen API key nodig. Quotum: 5/15/25 routine runs per dag.",
+  "agent.creds.apiKey": "Anthropic API key (per token)",
+  "agent.creds.apiKey.desc":
+    "Cron-runs draaien lokaal via onze scheduler. Vereist een ANTHROPIC_API_KEY in je workspace api-keys. Betaalt per token, geen routine quotum.",
+  "agent.creds.env": "Env var fallback",
+  "agent.creds.env.desc":
+    "Pakt ANTHROPIC_API_KEY uit de process env als fallback. Handig voor solo dev — niet aanbevolen voor multi-tenant.",
+  "agent.routing.title": "Smart routing rules (advanced)",
+  "agent.routing.desc":
+    "Voeg regels toe die op runtime de provider+model kiezen op basis van de input. Eerste matching regel wint. Voorbeeld: korte inputs naar Haiku, lange naar Opus.",
+  "agent.cta.create": "Aanmaken",
+  "agent.cta.save": "Opslaan",
+
+  "agent.edit.title": "Agent bewerken",
+  "agent.edit.sub": "Pas naam, provider, system prompt en reporting targets aan.",
+  "agent.field.notifyEmail": "Email (override workspace default)",
+  "agent.tools.title": "AIO Control tools — wat mag deze agent aanroepen",
+  "agent.tools.desc":
+    "Read-tools (list_*, get_*) zijn veilig + nooit destructief. Write-tools (create_*, update_*) vereisen je bevestiging in de chat vóór ze daadwerkelijk uitgevoerd worden. Meta-tools (ask_followup, todo_set, open_ui_at) zijn UI-side-effects.",
+  "agent.tools.useDefault":
+    "Standaard set voor \"{kind}\"-agents gebruiken ({count} tools)",
+  "agent.chain.title": "Chain — wat draait er na deze agent?",
+  "agent.chain.onDone": "Bij DONE → run agent",
+  "agent.chain.onFail": "Bij FAIL → run agent (triage)",
+  "agent.chain.noChain": "— Geen chain —",
+  "agent.chain.noTriage": "— Geen triage —",
+  "agent.chain.note":
+    "De volgende agent ontvangt deze run's output als input prompt — perfect voor extract → translate → publish chains.",
+
   "rail.empty": "Geen businesses nog",
   "rail.emptyTopics": "Nog geen subtopics — maak er een aan ↓",
 
@@ -479,6 +531,58 @@ const en: Partial<Dict> = {
   "wizard.cta.back": "← Back",
   "wizard.cta.create": "Create business",
 
+  "agent.dialog.title": "New agent",
+  "agent.dialog.workspaceGlobal":
+    "Workspace-global agent — not tied to a specific business. Available from chat and as a hop in agent chains across the whole workspace.",
+  "agent.dialog.businessScoped":
+    "An agent wires a provider (Claude, MiniMax, …) into this business.",
+  "agent.field.name": "Name",
+  "agent.field.kind": "Kind",
+  "agent.field.provider": "Provider",
+  "agent.field.model": "Model",
+  "agent.field.modelDefault": "Model (default: {model})",
+  "agent.field.endpoint": "Endpoint URL (optional — env default when empty)",
+  "agent.field.systemPrompt": "System prompt (optional)",
+  "agent.field.telegramTarget": "Telegram channel (optional)",
+  "agent.field.customIntegration": "Custom integration (optional)",
+  "agent.field.workspaceDefault": "— Workspace default —",
+  "agent.field.credentials": "Credentials",
+  "agent.kind.chat": "Chat (interactive)",
+  "agent.kind.worker": "Worker (scheduled / event-driven)",
+  "agent.kind.reviewer": "Reviewer (HITL gate)",
+  "agent.kind.generator": "Generator (content)",
+  "agent.kind.router": "Router (smart-select)",
+  "agent.creds.subscription": "Claude Pro/Max/Team subscription",
+  "agent.creds.subscription.desc":
+    "Cron runs go through Claude Routines on Claude's own infra. No API key. Quota: 5/15/25 routine runs per day.",
+  "agent.creds.apiKey": "Anthropic API key (per-token)",
+  "agent.creds.apiKey.desc":
+    "Cron runs go through our local scheduler. Requires an ANTHROPIC_API_KEY in your workspace api-keys. Pay-per-token, no routine quota.",
+  "agent.creds.env": "Env var fallback",
+  "agent.creds.env.desc":
+    "Reads ANTHROPIC_API_KEY from the process env as a fallback. Handy for solo dev — not recommended for multi-tenant.",
+  "agent.routing.title": "Smart routing rules (advanced)",
+  "agent.routing.desc":
+    "Add rules that pick provider+model at runtime based on the input. First match wins. Example: short inputs → Haiku, long → Opus.",
+  "agent.cta.create": "Create",
+  "agent.cta.save": "Save",
+
+  "agent.edit.title": "Edit agent",
+  "agent.edit.sub": "Adjust name, provider, system prompt and reporting targets.",
+  "agent.field.notifyEmail": "Email (override workspace default)",
+  "agent.tools.title": "AIO Control tools — what is this agent allowed to call",
+  "agent.tools.desc":
+    "Read tools (list_*, get_*) are safe + never destructive. Write tools (create_*, update_*) require your confirmation in the chat before they execute. Meta tools (ask_followup, todo_set, open_ui_at) are UI side-effects.",
+  "agent.tools.useDefault":
+    "Use the standard set for \"{kind}\" agents ({count} tools)",
+  "agent.chain.title": "Chain — what runs after this agent?",
+  "agent.chain.onDone": "On DONE → run agent",
+  "agent.chain.onFail": "On FAIL → run agent (triage)",
+  "agent.chain.noChain": "— No chain —",
+  "agent.chain.noTriage": "— No triage —",
+  "agent.chain.note":
+    "The next agent receives this run's output as its input prompt — ideal for extract → translate → publish chains.",
+
   "settings.sub": "Account · workspace · automations",
   "settings.section.agentDefaults": "Agent defaults",
   "settings.section.agentDefaults.desc":
@@ -791,6 +895,60 @@ const de: Partial<Dict> = {
   "wizard.cta.next": "Weiter →",
   "wizard.cta.back": "← Zurück",
   "wizard.cta.create": "Business erstellen",
+
+  "agent.dialog.title": "Neuer Agent",
+  "agent.dialog.workspaceGlobal":
+    "Workspace-globaler Agent — nicht an ein Business gebunden. Aus dem Chat und als Schritt in Agent-Chains workspace-weit verfügbar.",
+  "agent.dialog.businessScoped":
+    "Ein Agent verbindet einen Provider (Claude, MiniMax, …) mit diesem Business.",
+  "agent.field.name": "Name",
+  "agent.field.kind": "Typ",
+  "agent.field.provider": "Provider",
+  "agent.field.model": "Modell",
+  "agent.field.modelDefault": "Modell (Default: {model})",
+  "agent.field.endpoint": "Endpoint-URL (optional — env-Default wenn leer)",
+  "agent.field.systemPrompt": "System-Prompt (optional)",
+  "agent.field.telegramTarget": "Telegram-Channel (optional)",
+  "agent.field.customIntegration": "Eigene Integration (optional)",
+  "agent.field.workspaceDefault": "— Workspace-Default —",
+  "agent.field.credentials": "Credentials",
+  "agent.kind.chat": "Chat (interaktiv)",
+  "agent.kind.worker": "Worker (Scheduled / Event-driven)",
+  "agent.kind.reviewer": "Reviewer (HITL-Gate)",
+  "agent.kind.generator": "Generator (Content)",
+  "agent.kind.router": "Router (Smart-Select)",
+  "agent.creds.subscription": "Claude Pro/Max/Team Abo",
+  "agent.creds.subscription.desc":
+    "Cron-Runs laufen als Claude Routines auf Claude's eigener Infra. Kein API-Key. Quota: 5/15/25 Routine-Runs pro Tag.",
+  "agent.creds.apiKey": "Anthropic API-Key (pro Token)",
+  "agent.creds.apiKey.desc":
+    "Cron-Runs laufen lokal via unseren Scheduler. Erfordert ANTHROPIC_API_KEY in den Workspace-API-Keys. Pay-per-Token.",
+  "agent.creds.env": "Env-Var Fallback",
+  "agent.creds.env.desc":
+    "Liest ANTHROPIC_API_KEY aus der Process-Env als Fallback. OK für Solo-Dev, nicht für Multi-Tenant.",
+  "agent.routing.title": "Smart-Routing-Regeln (advanced)",
+  "agent.routing.desc":
+    "Regeln, die Provider+Modell zur Laufzeit basierend auf der Eingabe wählen. Erste passende Regel gewinnt.",
+  "agent.cta.create": "Erstellen",
+  "agent.cta.save": "Speichern",
+
+  "agent.edit.title": "Agent bearbeiten",
+  "agent.edit.sub":
+    "Name, Provider, System-Prompt und Reporting-Ziele anpassen.",
+  "agent.field.notifyEmail": "E-Mail (überschreibt Workspace-Default)",
+  "agent.tools.title":
+    "AIO-Control-Tools — was darf dieser Agent aufrufen",
+  "agent.tools.desc":
+    "Read-Tools (list_*, get_*) sind sicher + nie destruktiv. Write-Tools (create_*, update_*) erfordern deine Bestätigung im Chat vor der Ausführung.",
+  "agent.tools.useDefault":
+    "Standard-Set für \"{kind}\"-Agents verwenden ({count} Tools)",
+  "agent.chain.title": "Chain — was läuft nach diesem Agent?",
+  "agent.chain.onDone": "Bei DONE → Agent starten",
+  "agent.chain.onFail": "Bei FAIL → Agent starten (Triage)",
+  "agent.chain.noChain": "— Keine Chain —",
+  "agent.chain.noTriage": "— Keine Triage —",
+  "agent.chain.note":
+    "Der nächste Agent erhält den Output dieses Runs als Eingabe-Prompt — ideal für Extract → Translate → Publish Chains.",
 };
 
 const DICTS: Record<Locale, Partial<Dict>> = { nl, en, de };
