@@ -20,6 +20,8 @@ import {
 } from "../app/actions/api-keys";
 import type { BusinessRow } from "../lib/queries/businesses";
 import type { NavNode } from "../lib/queries/nav-nodes";
+import { translate } from "../lib/i18n/dict";
+import { useLocale } from "../lib/i18n/client";
 
 const PROVIDERS = [
   { id: "anthropic", label: "Anthropic / Claude" },
@@ -50,6 +52,9 @@ export function ApiKeysPanel({
   businesses,
   navNodes,
 }: Props) {
+  const locale = useLocale();
+  const t = (key: string, vars?: Record<string, string | number>) =>
+    translate(locale, key, vars);
   const [keys, setKeys] = useState<ApiKeyMetadata[]>(initialKeys);
   const [adding, setAdding] = useState(false);
   const [scope, setScope] = useState<ApiKeyScope>("workspace");
@@ -116,13 +121,17 @@ export function ApiKeysPanel({
     });
 
   const labelFor = (k: ApiKeyMetadata) => {
-    if (k.scope === "workspace") return "Workspace default";
+    if (k.scope === "workspace") return t("keys.scope.workspace");
     if (k.scope === "business") {
       const b = businesses.find((bb) => bb.id === k.scope_id);
-      return `Business · ${b?.name ?? "(verwijderd)"}`;
+      return t("keys.scope.business", {
+        name: b?.name ?? t("keys.scope.businessDeleted"),
+      });
     }
     const n = navNodes.find((nn) => nn.id === k.scope_id);
-    return `Topic · ${n?.name ?? "(verwijderd)"}`;
+    return t("keys.scope.topic", {
+      name: n?.name ?? t("keys.scope.businessDeleted"),
+    });
   };
 
   return (
@@ -135,9 +144,7 @@ export function ApiKeysPanel({
           lineHeight: 1.5,
         }}
       >
-        Stel API keys in op workspace-niveau (default voor alle agents) of
-        overschrijf per business of per topic. Resolution: topic → business →
-        workspace → env-var fallback.
+        {t("keys.intro")}
       </p>
 
       {keys.length === 0 ? (
@@ -151,8 +158,7 @@ export function ApiKeysPanel({
             margin: 0,
           }}
         >
-          Nog geen keys ingesteld. Klik &quot;+ Key toevoegen&quot; om te
-          starten.
+          {t("keys.empty")}
         </p>
       ) : (
         <div
@@ -205,7 +211,7 @@ export function ApiKeysPanel({
                   color: k.has_value ? "var(--tt-green)" : "var(--rose)",
                 }}
               >
-                {k.has_value ? "set" : "leeg"}
+                {k.has_value ? t("keys.row.set") : t("keys.row.empty")}
               </span>
               <button
                 onClick={() => remove(k.id)}
@@ -220,7 +226,7 @@ export function ApiKeysPanel({
                   cursor: "pointer",
                 }}
               >
-                Verwijder
+                {t("keys.row.delete")}
               </button>
             </div>
           ))}
@@ -242,7 +248,7 @@ export function ApiKeysPanel({
             alignSelf: "flex-start",
           }}
         >
-          + Key toevoegen
+          {t("keys.add")}
         </button>
       )}
 
@@ -259,7 +265,7 @@ export function ApiKeysPanel({
           }}
         >
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <Field label="Provider">
+            <Field label={t("keys.field.provider")}>
               <select
                 value={provider}
                 onChange={(e) => setProvider(e.target.value)}
@@ -272,7 +278,7 @@ export function ApiKeysPanel({
                 ))}
               </select>
             </Field>
-            <Field label="Scope">
+            <Field label={t("keys.field.scope")}>
               <select
                 value={scope}
                 onChange={(e) => {
@@ -285,19 +291,21 @@ export function ApiKeysPanel({
                 }}
                 style={inp}
               >
-                <option value="workspace">Workspace default</option>
+                <option value="workspace">{t("keys.scope.workspace")}</option>
                 <option value="business" disabled={businesses.length === 0}>
-                  Business override {businesses.length === 0 ? "(geen)" : ""}
+                  {t("keys.scope.businessOverride")}{" "}
+                  {businesses.length === 0 ? t("keys.scope.none") : ""}
                 </option>
                 <option value="navnode" disabled={navNodes.length === 0}>
-                  Topic override {navNodes.length === 0 ? "(geen)" : ""}
+                  {t("keys.scope.topicOverride")}{" "}
+                  {navNodes.length === 0 ? t("keys.scope.none") : ""}
                 </option>
               </select>
             </Field>
           </div>
 
           {scope === "business" && (
-            <Field label="Business">
+            <Field label={t("keys.field.business")}>
               <select
                 value={scopeId}
                 onChange={(e) => setScopeId(e.target.value)}
@@ -313,7 +321,7 @@ export function ApiKeysPanel({
           )}
 
           {scope === "navnode" && (
-            <Field label="Topic">
+            <Field label={t("keys.field.topic")}>
               <select
                 value={scopeId}
                 onChange={(e) => setScopeId(e.target.value)}
@@ -328,22 +336,22 @@ export function ApiKeysPanel({
             </Field>
           )}
 
-          <Field label="Key (wordt encrypted opgeslagen)">
+          <Field label={t("keys.field.value")}>
             <input
               type="password"
               value={value}
               onChange={(e) => setValue(e.target.value)}
-              placeholder="sk-… of vergelijkbaar"
+              placeholder="sk-…"
               autoComplete="off"
               style={inp}
             />
           </Field>
 
-          <Field label="Label (optioneel)">
+          <Field label={t("keys.field.label")}>
             <input
               value={label}
               onChange={(e) => setLabel(e.target.value)}
-              placeholder="Bijv. Anthropic prod"
+              placeholder="Anthropic prod"
               style={inp}
             />
           </Field>
@@ -360,14 +368,14 @@ export function ApiKeysPanel({
               style={btnSecondary}
               disabled={pending}
             >
-              Annuleer
+              {t("common.cancel")}
             </button>
             <button
               onClick={submit}
               disabled={pending || !value.trim()}
               style={btnPrimary(pending)}
             >
-              {pending ? "Opslaan…" : "Opslaan"}
+              {pending ? t("common.busy") : t("common.save")}
             </button>
           </div>
         </div>

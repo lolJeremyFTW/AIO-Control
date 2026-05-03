@@ -180,6 +180,59 @@ const nl: Dict = {
   "agent.chain.note":
     "De volgende agent ontvangt deze run's output als input prompt — perfect voor extract → translate → publish chains.",
 
+  "tg.intro": "Bot-token zet je in Settings → API Keys als provider \"Telegram\". Hier definieer je waar reports heen gaan: chat_id + optioneel topic_id voor forum-style groepen.",
+  "tg.topology.title": "Topology — hoe wil je Telegram structureren?",
+  "tg.topology.manual": "Manueel",
+  "tg.topology.manual.desc":
+    "Jij zet voor elke business / topic zelf welke chat_id + topic_id de reports moeten hebben.",
+  "tg.topology.perBiz": "Auto-topic per business",
+  "tg.topology.perBiz.desc":
+    "Eén supergroup met topics. Iedere nieuwe business krijgt zijn eigen forum topic.",
+  "tg.topology.perBizAndNode": "Auto-topic per business + per nav-node",
+  "tg.topology.perBizAndNode.desc":
+    "Zelfde supergroup; nieuwe businesses + nieuwe topics in onze rail krijgen elk een forum topic.",
+  "tg.empty": "Geen Telegram-channels nog. Klik \"+ Channel toevoegen\".",
+  "tg.add": "+ Channel toevoegen",
+  "tg.row.test": "Test",
+  "tg.row.delete": "Verwijder",
+  "tg.row.on": "aan",
+  "tg.row.off": "uit",
+  "tg.row.autoTopics": "AUTO-TOPICS",
+  "tg.row.autoCreateLabel":
+    "Auto-create forum topic per nieuwe business",
+  "tg.field.name": "Naam",
+  "tg.field.scope": "Scope",
+  "tg.field.scope.workspace": "Workspace default",
+  "tg.field.scope.business": "Business",
+  "tg.field.scope.navnode": "Topic",
+  "tg.field.chatId": "Chat ID (start met -100… voor groups)",
+  "tg.field.topicId": "Topic ID (optioneel — alleen voor forum-groups)",
+  "tg.field.allowlist":
+    "Allowlist (komma-gescheiden usernames, optioneel)",
+  "tg.field.denylist":
+    "Denylist (komma-gescheiden usernames, optioneel)",
+
+  "keys.intro":
+    "Stel API keys in op workspace-niveau (default voor alle agents) of overschrijf per business of per topic. Resolution: topic → business → workspace → env-var fallback.",
+  "keys.empty": "Nog geen keys ingesteld. Klik \"+ Key toevoegen\" om te starten.",
+  "keys.add": "+ Key toevoegen",
+  "keys.row.set": "set",
+  "keys.row.empty": "leeg",
+  "keys.row.delete": "Verwijder",
+  "keys.scope.workspace": "Workspace default",
+  "keys.scope.business": "Business · {name}",
+  "keys.scope.businessDeleted": "(verwijderd)",
+  "keys.scope.topic": "Topic · {name}",
+  "keys.scope.businessOverride": "Business override",
+  "keys.scope.topicOverride": "Topic override",
+  "keys.scope.none": "(geen)",
+  "keys.field.provider": "Provider",
+  "keys.field.scope": "Scope",
+  "keys.field.business": "Business",
+  "keys.field.topic": "Topic",
+  "keys.field.value": "Key (wordt encrypted opgeslagen)",
+  "keys.field.label": "Label (optioneel)",
+
   "rail.empty": "Geen businesses nog",
   "rail.emptyTopics": "Nog geen subtopics — maak er een aan ↓",
 
@@ -583,6 +636,59 @@ const en: Partial<Dict> = {
   "agent.chain.note":
     "The next agent receives this run's output as its input prompt — ideal for extract → translate → publish chains.",
 
+  "tg.intro": "Set the bot token in Settings → API Keys as provider \"Telegram\". Here you configure where reports go: chat_id + optional topic_id for forum-style groups.",
+  "tg.topology.title": "Topology — how do you want Telegram structured?",
+  "tg.topology.manual": "Manual",
+  "tg.topology.manual.desc":
+    "You set chat_id + topic_id per business / topic yourself.",
+  "tg.topology.perBiz": "Auto-topic per business",
+  "tg.topology.perBiz.desc":
+    "One supergroup with topics. Every new business gets its own forum topic.",
+  "tg.topology.perBizAndNode": "Auto-topic per business + per nav-node",
+  "tg.topology.perBizAndNode.desc":
+    "Same supergroup; new businesses + new topics in the rail each get a forum topic.",
+  "tg.empty": "No Telegram channels yet. Click \"+ Add channel\".",
+  "tg.add": "+ Add channel",
+  "tg.row.test": "Test",
+  "tg.row.delete": "Delete",
+  "tg.row.on": "on",
+  "tg.row.off": "off",
+  "tg.row.autoTopics": "AUTO-TOPICS",
+  "tg.row.autoCreateLabel":
+    "Auto-create forum topic per new business",
+  "tg.field.name": "Name",
+  "tg.field.scope": "Scope",
+  "tg.field.scope.workspace": "Workspace default",
+  "tg.field.scope.business": "Business",
+  "tg.field.scope.navnode": "Topic",
+  "tg.field.chatId": "Chat ID (starts with -100… for groups)",
+  "tg.field.topicId": "Topic ID (optional — for forum-groups)",
+  "tg.field.allowlist":
+    "Allowlist (comma-separated usernames, optional)",
+  "tg.field.denylist":
+    "Denylist (comma-separated usernames, optional)",
+
+  "keys.intro":
+    "Set API keys at workspace level (default for all agents) or override per business or topic. Resolution: topic → business → workspace → env-var fallback.",
+  "keys.empty": "No keys yet. Click \"+ Add key\" to get started.",
+  "keys.add": "+ Add key",
+  "keys.row.set": "set",
+  "keys.row.empty": "empty",
+  "keys.row.delete": "Delete",
+  "keys.scope.workspace": "Workspace default",
+  "keys.scope.business": "Business · {name}",
+  "keys.scope.businessDeleted": "(deleted)",
+  "keys.scope.topic": "Topic · {name}",
+  "keys.scope.businessOverride": "Business override",
+  "keys.scope.topicOverride": "Topic override",
+  "keys.scope.none": "(none)",
+  "keys.field.provider": "Provider",
+  "keys.field.scope": "Scope",
+  "keys.field.business": "Business",
+  "keys.field.topic": "Topic",
+  "keys.field.value": "Key (stored encrypted)",
+  "keys.field.label": "Label (optional)",
+
   "settings.sub": "Account · workspace · automations",
   "settings.section.agentDefaults": "Agent defaults",
   "settings.section.agentDefaults.desc":
@@ -949,6 +1055,59 @@ const de: Partial<Dict> = {
   "agent.chain.noTriage": "— Keine Triage —",
   "agent.chain.note":
     "Der nächste Agent erhält den Output dieses Runs als Eingabe-Prompt — ideal für Extract → Translate → Publish Chains.",
+
+  "tg.intro": "Bot-Token setzt du in Settings → API Keys als Provider \"Telegram\". Hier konfigurierst du, wohin Reports gehen.",
+  "tg.topology.title": "Topology — wie soll Telegram strukturiert sein?",
+  "tg.topology.manual": "Manuell",
+  "tg.topology.manual.desc":
+    "chat_id + topic_id pro Business / Topic selbst setzen.",
+  "tg.topology.perBiz": "Auto-Topic pro Business",
+  "tg.topology.perBiz.desc":
+    "Eine Supergroup mit Topics. Jedes neue Business bekommt sein eigenes Forum-Topic.",
+  "tg.topology.perBizAndNode": "Auto-Topic pro Business + pro Nav-Node",
+  "tg.topology.perBizAndNode.desc":
+    "Gleiche Supergroup; neue Businesses + neue Topics in der Rail bekommen jeweils ein Forum-Topic.",
+  "tg.empty": "Noch keine Telegram-Channels. Klick \"+ Channel hinzufügen\".",
+  "tg.add": "+ Channel hinzufügen",
+  "tg.row.test": "Test",
+  "tg.row.delete": "Löschen",
+  "tg.row.on": "an",
+  "tg.row.off": "aus",
+  "tg.row.autoTopics": "AUTO-TOPICS",
+  "tg.row.autoCreateLabel":
+    "Auto-Create Forum-Topic pro neuem Business",
+  "tg.field.name": "Name",
+  "tg.field.scope": "Scope",
+  "tg.field.scope.workspace": "Workspace-Default",
+  "tg.field.scope.business": "Business",
+  "tg.field.scope.navnode": "Topic",
+  "tg.field.chatId": "Chat-ID (beginnt mit -100… für Gruppen)",
+  "tg.field.topicId": "Topic-ID (optional — nur für Forum-Gruppen)",
+  "tg.field.allowlist":
+    "Allowlist (komma-getrennte Usernames, optional)",
+  "tg.field.denylist":
+    "Denylist (komma-getrennte Usernames, optional)",
+
+  "keys.intro":
+    "API-Keys auf Workspace-Ebene setzen (Default für alle Agents) oder pro Business / Topic überschreiben. Resolution: Topic → Business → Workspace → env-Var Fallback.",
+  "keys.empty": "Noch keine Keys. Klick \"+ Key hinzufügen\".",
+  "keys.add": "+ Key hinzufügen",
+  "keys.row.set": "gesetzt",
+  "keys.row.empty": "leer",
+  "keys.row.delete": "Löschen",
+  "keys.scope.workspace": "Workspace-Default",
+  "keys.scope.business": "Business · {name}",
+  "keys.scope.businessDeleted": "(gelöscht)",
+  "keys.scope.topic": "Topic · {name}",
+  "keys.scope.businessOverride": "Business-Override",
+  "keys.scope.topicOverride": "Topic-Override",
+  "keys.scope.none": "(keiner)",
+  "keys.field.provider": "Provider",
+  "keys.field.scope": "Scope",
+  "keys.field.business": "Business",
+  "keys.field.topic": "Topic",
+  "keys.field.value": "Key (verschlüsselt gespeichert)",
+  "keys.field.label": "Label (optional)",
 };
 
 const DICTS: Record<Locale, Partial<Dict>> = { nl, en, de };

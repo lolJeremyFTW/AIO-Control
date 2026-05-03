@@ -174,10 +174,12 @@ function HermesCard({
       docsHref="https://github.com/NousResearch/hermes-agent"
       status={
         tested
-          ? { kind: "ready", label: "HTTP wrapper getest ✓" }
+          ? endpoint.trim()
+            ? { kind: "ready", label: "HTTP wrapper getest ✓" }
+            : { kind: "ready", label: "CLI getest ✓" }
           : endpoint.trim()
             ? { kind: "partial", label: "URL ingevuld, nog niet getest" }
-            : { kind: "missing", label: "CLI default — geen URL nodig" }
+            : { kind: "partial", label: "CLI niet getest — klik Test" }
       }
       lastTestedAt={tested}
       steps={[
@@ -250,10 +252,12 @@ function OpenClawCard({
       docsHref="https://github.com/tromptech/openclaw"
       status={
         tested
-          ? { kind: "ready", label: "HTTP wrapper getest ✓" }
+          ? endpoint.trim()
+            ? { kind: "ready", label: "HTTP wrapper getest ✓" }
+            : { kind: "ready", label: "CLI getest ✓" }
           : endpoint.trim()
             ? { kind: "partial", label: "URL ingevuld, nog niet getest" }
-            : { kind: "missing", label: "CLI default — geen URL nodig" }
+            : { kind: "partial", label: "CLI niet getest — klik Test" }
       }
       lastTestedAt={tested}
       steps={[

@@ -18,6 +18,8 @@ import {
 import { updateTelegramTopology } from "../app/actions/workspace-settings";
 import type { BusinessRow } from "../lib/queries/businesses";
 import type { NavNode } from "../lib/queries/nav-nodes";
+import { translate } from "../lib/i18n/dict";
+import { useLocale } from "../lib/i18n/client";
 
 export type TelegramTargetRow = {
   id: string;
@@ -57,6 +59,9 @@ export function TelegramPanel({
   navNodes,
   initialTopology,
 }: Props) {
+  const locale = useLocale();
+  const tt = (key: string, vars?: Record<string, string | number>) =>
+    translate(locale, key, vars);
   const [topology, setTopology] = useState<TelegramTopology>(initialTopology);
   const [targets, setTargets] = useState(initialTargets);
   const [adding, setAdding] = useState(false);
@@ -221,9 +226,7 @@ export function TelegramPanel({
           lineHeight: 1.5,
         }}
       >
-        Bot-token zet je in <strong>Settings → API Keys</strong> als provider
-        &quot;Telegram&quot;. Hier definieer je waar reports heen gaan: chat_id +
-        optioneel topic_id voor forum-style groepen.
+        {tt("tg.intro")}
       </p>
 
       <fieldset
@@ -243,24 +246,24 @@ export function TelegramPanel({
             padding: "0 6px",
           }}
         >
-          Topology — hoe wil je Telegram structureren?
+          {tt("tg.topology.title")}
         </legend>
         {(
           [
             {
               id: "manual" as const,
-              label: "Manueel",
-              desc: "Jij zet voor elke business / topic zelf welke chat_id + topic_id de reports moeten hebben.",
+              label: tt("tg.topology.manual"),
+              desc: tt("tg.topology.manual.desc"),
             },
             {
               id: "topic_per_business" as const,
-              label: "Auto-topic per business",
-              desc: "Eén supergroup met topics. Iedere nieuwe business krijgt zijn eigen forum topic.",
+              label: tt("tg.topology.perBiz"),
+              desc: tt("tg.topology.perBiz.desc"),
             },
             {
               id: "topic_per_business_and_node" as const,
-              label: "Auto-topic per business + per nav-node",
-              desc: "Zelfde supergroup; nieuwe businesses + nieuwe topics in onze rail krijgen elk een forum topic.",
+              label: tt("tg.topology.perBizAndNode"),
+              desc: tt("tg.topology.perBizAndNode.desc"),
             },
           ] as const
         ).map((opt) => (
@@ -364,7 +367,7 @@ export function TelegramPanel({
             margin: 0,
           }}
         >
-          Geen Telegram-channels nog. Klik &quot;+ Channel toevoegen&quot;.
+          {tt("tg.empty")}
         </p>
       ) : (
         <div
@@ -412,7 +415,7 @@ export function TelegramPanel({
                         background: "rgba(57,178,85,0.10)",
                       }}
                     >
-                      AUTO-TOPICS
+                      {tt("tg.row.autoTopics")}
                     </span>
                   )}
                 </div>
@@ -448,7 +451,7 @@ export function TelegramPanel({
                       }
                       style={{ accentColor: "var(--tt-green)" }}
                     />
-                    Auto-create forum topic per nieuwe business
+                    {tt("tg.row.autoCreateLabel")}
                   </label>
                 )}
               </div>
@@ -464,21 +467,21 @@ export function TelegramPanel({
                   color: t.enabled ? "var(--tt-green)" : "var(--rose)",
                 }}
               >
-                {t.enabled ? "aan" : "uit"}
+                {t.enabled ? tt("tg.row.on") : tt("tg.row.off")}
               </span>
               <button
                 onClick={() => test(t.id)}
                 disabled={pending}
                 style={btnTertiary}
               >
-                Test
+                {tt("tg.row.test")}
               </button>
               <button
                 onClick={() => remove(t.id)}
                 disabled={pending}
                 style={btnDanger}
               >
-                Verwijder
+                {tt("tg.row.delete")}
               </button>
             </div>
           ))}
@@ -498,7 +501,7 @@ export function TelegramPanel({
 
       {!adding && (
         <button onClick={() => setAdding(true)} style={btnAdd}>
-          + Channel toevoegen
+          {tt("tg.add")}
         </button>
       )}
 
@@ -515,7 +518,7 @@ export function TelegramPanel({
           }}
         >
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <Field label="Naam">
+            <Field label={tt("tg.field.name")}>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -523,7 +526,7 @@ export function TelegramPanel({
                 style={inp}
               />
             </Field>
-            <Field label="Scope">
+            <Field label={tt("tg.field.scope")}>
               <select
                 value={scope}
                 onChange={(e) => {
@@ -539,19 +542,19 @@ export function TelegramPanel({
                 }}
                 style={inp}
               >
-                <option value="workspace">Workspace default</option>
+                <option value="workspace">{tt("tg.field.scope.workspace")}</option>
                 <option value="business" disabled={businesses.length === 0}>
-                  Business
+                  {tt("tg.field.scope.business")}
                 </option>
                 <option value="navnode" disabled={navNodes.length === 0}>
-                  Topic
+                  {tt("tg.field.scope.navnode")}
                 </option>
               </select>
             </Field>
           </div>
 
           {scope === "business" && (
-            <Field label="Business">
+            <Field label={tt("tg.field.scope.business")}>
               <select
                 value={scopeId}
                 onChange={(e) => setScopeId(e.target.value)}
@@ -566,7 +569,7 @@ export function TelegramPanel({
             </Field>
           )}
           {scope === "navnode" && (
-            <Field label="Topic">
+            <Field label={tt("tg.field.scope.navnode")}>
               <select
                 value={scopeId}
                 onChange={(e) => setScopeId(e.target.value)}
@@ -582,7 +585,7 @@ export function TelegramPanel({
           )}
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <Field label="Chat ID (start met -100… voor groups)">
+            <Field label={tt("tg.field.chatId")}>
               <input
                 value={chatId}
                 onChange={(e) => setChatId(e.target.value)}
@@ -590,7 +593,7 @@ export function TelegramPanel({
                 style={inp}
               />
             </Field>
-            <Field label="Topic ID (optioneel — alleen voor forum-groups)">
+            <Field label={tt("tg.field.topicId")}>
               <input
                 value={topicId}
                 onChange={(e) => setTopicId(e.target.value)}
@@ -601,7 +604,7 @@ export function TelegramPanel({
             </Field>
           </div>
 
-          <Field label="Allowlist (komma-gescheiden usernames, optioneel)">
+          <Field label={tt("tg.field.allowlist")}>
             <input
               value={allowlist}
               onChange={(e) => setAllowlist(e.target.value)}
@@ -610,7 +613,7 @@ export function TelegramPanel({
             />
           </Field>
 
-          <Field label="Denylist (komma-gescheiden usernames, optioneel)">
+          <Field label={tt("tg.field.denylist")}>
             <input
               value={denylist}
               onChange={(e) => setDenylist(e.target.value)}
@@ -632,14 +635,14 @@ export function TelegramPanel({
               style={btnSecondary}
               disabled={pending}
             >
-              Annuleer
+              {tt("common.cancel")}
             </button>
             <button
               onClick={submit}
               disabled={pending || !name.trim() || !chatId.trim()}
               style={btnPrimary(pending)}
             >
-              {pending ? "Bezig…" : "Opslaan"}
+              {pending ? tt("common.busy") : tt("common.save")}
             </button>
           </div>
         </div>
