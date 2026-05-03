@@ -44,6 +44,9 @@ export type AgentInput = {
    *  'subscription' is meaningful for Claude — drives whether cron
    *  schedules go through Anthropic Routines or our local scheduler. */
   key_source?: AgentKeySource;
+  /** Pin the agent to a topic (nav_node) at creation time. NULL =
+   *  belongs to the business as a whole (current behaviour). */
+  nav_node_id?: string | null;
 };
 
 export type ActionResult<T> =
@@ -115,6 +118,7 @@ export async function createAgent(
       next_agent_on_done: input.next_agent_on_done ?? null,
       next_agent_on_fail: input.next_agent_on_fail ?? null,
       key_source: keySource,
+      nav_node_id: input.nav_node_id ?? null,
     })
     .select("id")
     .single();
@@ -151,6 +155,10 @@ export async function updateAgent(input: {
     notify_email?: string | null;
     /** Workstream H. null = use kind defaults; explicit array = allow-list. */
     allowed_tools?: string[] | null;
+    /** Pin to a topic (nav_node). null = unpin (belongs to the
+     *  business as a whole). Powers the per-topic dashboards via
+     *  migration 043. */
+    nav_node_id?: string | null;
   };
 }): Promise<ActionResult<null>> {
   const patch: Record<string, unknown> = {};
@@ -175,6 +183,8 @@ export async function updateAgent(input: {
     patch.notify_email = input.patch.notify_email?.toString().trim() || null;
   if (input.patch.allowed_tools !== undefined)
     patch.allowed_tools = input.patch.allowed_tools;
+  if (input.patch.nav_node_id !== undefined)
+    patch.nav_node_id = input.patch.nav_node_id ?? null;
 
   // Config fields are merged into the existing jsonb so we don't
   // clobber routing rules or temperature.

@@ -152,7 +152,7 @@ async function runByName(ctx: InboundCtx, name: string): Promise<string> {
   const supabase = getServiceRoleSupabase();
   const { data: agents } = await supabase
     .from("agents")
-    .select("id, name, business_id")
+    .select("id, name, business_id, nav_node_id")
     .eq("workspace_id", ctx.workspace_id)
     .is("archived_at", null)
     .ilike("name", `%${name}%`)
@@ -167,7 +167,12 @@ async function runByName(ctx: InboundCtx, name: string): Promise<string> {
       .join("\n");
     return `Meerdere matches:\n${list}\n\nWees specifieker.`;
   }
-  const agent = agents[0] as { id: string; name: string; business_id: string | null };
+  const agent = agents[0] as {
+    id: string;
+    name: string;
+    business_id: string | null;
+    nav_node_id: string | null;
+  };
 
   // Insert a queued run row, then fire the dispatcher in the background.
   const { data: run, error } = await supabase
@@ -176,6 +181,7 @@ async function runByName(ctx: InboundCtx, name: string): Promise<string> {
       workspace_id: ctx.workspace_id,
       agent_id: agent.id,
       business_id: agent.business_id,
+      nav_node_id: agent.nav_node_id ?? null,
       triggered_by: "telegram",
       status: "queued",
       input: {

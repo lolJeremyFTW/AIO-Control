@@ -376,7 +376,7 @@ async function maybeQueueChain(
   // Verify the next agent still exists and isn't archived.
   const { data: nextAgent } = await supabase
     .from("agents")
-    .select("id, workspace_id, business_id, archived_at")
+    .select("id, workspace_id, business_id, archived_at, nav_node_id")
     .eq("id", nextId)
     .maybeSingle();
   if (!nextAgent || nextAgent.archived_at) return;
@@ -390,6 +390,7 @@ async function maybeQueueChain(
       workspace_id: nextAgent.workspace_id,
       agent_id: nextAgent.id,
       business_id: nextAgent.business_id ?? business?.id ?? null,
+      nav_node_id: nextAgent.nav_node_id ?? null,
       triggered_by: "chain",
       status: "queued",
       input: { prompt: promptText, source: "chain", from_agent: agent.id },

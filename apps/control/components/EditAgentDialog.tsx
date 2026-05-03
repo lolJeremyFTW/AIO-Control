@@ -46,6 +46,11 @@ type Props = {
   /** Other agents in the same workspace — used as options for the
    *  "next agent on done / fail" chain dropdowns. */
   siblingAgents?: { id: string; name: string }[];
+  /** Flattened nav_nodes tree for this business — pin the agent to a
+   *  topic so it shows on the per-topic dashboard. depth drives the
+   *  indent in the dropdown. Empty/undefined = hide the picker
+   *  (workspace-global agents have no topics to pin to). */
+  navOptions?: { id: string; name: string; depth: number }[];
   onClose: () => void;
 };
 
@@ -75,6 +80,7 @@ export function EditAgentDialog({
   telegramTargets = [],
   customIntegrations = [],
   siblingAgents = [],
+  navOptions = [],
   onClose,
 }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -103,6 +109,7 @@ export function EditAgentDialog({
   const [nextOnDone, setNextOnDone] = useState(agent.next_agent_on_done ?? "");
   const [nextOnFail, setNextOnFail] = useState(agent.next_agent_on_fail ?? "");
   const [notifyEmail, setNotifyEmail] = useState(agent.notify_email ?? "");
+  const [navNodeId, setNavNodeId] = useState(agent.nav_node_id ?? "");
   // Tools allow-list. `useDefaults` toggle short-circuits the picker
   // back to the kind-default set (sent as null on save).
   const [useToolsDefault, setUseToolsDefault] = useState(
@@ -141,6 +148,7 @@ export function EditAgentDialog({
         next_agent_on_fail: nextOnFail || null,
         notify_email: notifyEmail || null,
         allowed_tools: useToolsDefault ? null : allowedTools,
+        nav_node_id: navNodeId || null,
       },
     });
     setPending(false);
@@ -284,6 +292,23 @@ export function EditAgentDialog({
             style={inp}
           />
         </Field>
+
+        {navOptions.length > 0 && (
+          <Field label={t("agent.field.topic")}>
+            <select
+              value={navNodeId}
+              onChange={(e) => setNavNodeId(e.target.value)}
+              style={inp}
+            >
+              <option value="">{t("agent.field.topic.business")}</option>
+              {navOptions.map((n) => (
+                <option key={n.id} value={n.id}>
+                  {"— ".repeat(n.depth) + n.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
 
         <details style={{ marginBottom: 12 }}>
           <summary

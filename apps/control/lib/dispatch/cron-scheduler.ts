@@ -72,7 +72,7 @@ async function tick(): Promise<void> {
   const { data, error } = await admin
     .from("schedules")
     .select(
-      "id, workspace_id, agent_id, business_id, cron_expr, instructions, last_fired_at, agents!inner(key_source, archived_at)",
+      "id, workspace_id, agent_id, business_id, nav_node_id, cron_expr, instructions, last_fired_at, agents!inner(key_source, archived_at, nav_node_id)",
     )
     .eq("kind", "cron")
     .eq("enabled", true);
@@ -87,10 +87,15 @@ async function tick(): Promise<void> {
     workspace_id: string;
     agent_id: string;
     business_id: string | null;
+    nav_node_id: string | null;
     cron_expr: string | null;
     instructions: string | null;
     last_fired_at: string | null;
-    agents: { key_source: string; archived_at: string | null };
+    agents: {
+      key_source: string;
+      archived_at: string | null;
+      nav_node_id: string | null;
+    };
   };
 
   const now = new Date();
@@ -112,6 +117,9 @@ async function tick(): Promise<void> {
           workspace_id: sched.workspace_id,
           agent_id: sched.agent_id,
           business_id: sched.business_id,
+          // Schedule's own pin wins over agent's pin (operator may park
+          // the schedule under a sub-topic of the agent's home topic).
+          nav_node_id: sched.nav_node_id ?? sched.agents.nav_node_id ?? null,
           schedule_id: sched.id,
           triggered_by: "cron",
           status: "queued",

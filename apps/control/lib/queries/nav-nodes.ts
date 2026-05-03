@@ -70,6 +70,50 @@ export async function resolveNavPath(
   return ids.map((id) => byId.get(id)).filter((n): n is NavNode => !!n);
 }
 
+/** Flattens the entire nav_nodes tree for a business into a single
+ *  ordered list with `depth` precomputed — feeds the topic-pin select
+ *  in the agent edit dialog. Cheap: businesses rarely have more than
+ *  a few dozen topics so we just fetch all and walk client-side. */
+export async function listFlatNavNodes(
+  businessId: string,
+): Promise<{ id: string; name: string; depth: number }[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("nav_nodes")
+    .select("id, parent_id, name, sort_order")
+    .eq("business_id", businessId)
+    .is("archived_at", null)
+    .order("sort_order", { ascending: true });
+  if (error || !data) {
+    if (error) console.error("listFlatNavNodes failed", error);
+    return [];
+  }
+  type Row = {
+    id: string;
+    parent_id: string | null;
+    name: string;
+    sort_order: number;
+  };
+  const rows = data as Row[];
+  const byParent = new Map<string | null, Row[]>();
+  for (const r of rows) {
+    const k = r.parent_id ?? null;
+    const list = byParent.get(k) ?? [];
+    list.push(r);
+    byParent.set(k, list);
+  }
+  const out: { id: string; name: string; depth: number }[] = [];
+  const walk = (parent: string | null, depth: number) => {
+    const kids = byParent.get(parent) ?? [];
+    for (const k of kids) {
+      out.push({ id: k.id, name: k.name, depth });
+      walk(k.id, depth + 1);
+    }
+  };
+  walk(null, 0);
+  return out;
+}
+
 /** Returns the rootId + every descendant nav_node id under it, via
  *  the SECURITY INVOKER `descendant_nav_node_ids` SQL function from
  *  migration 043. Used by topic-scoped dashboards / schedules / runs

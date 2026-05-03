@@ -123,6 +123,7 @@ export async function POST(
       workspace_id: agent.workspace_id,
       agent_id: agent.id,
       business_id: agent.business_id,
+      nav_node_id: agent.nav_node_id ?? null,
       triggered_by: "chat",
       status: "running",
       started_at: new Date(startedAtMs).toISOString(),

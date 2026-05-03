@@ -11,6 +11,7 @@ import { resolveApiKey } from "../../../../../lib/api-keys/resolve";
 import { getDict } from "../../../../../lib/i18n/server";
 import { listAgentsForWorkspace } from "../../../../../lib/queries/agents";
 import { listBusinesses } from "../../../../../lib/queries/businesses";
+import { listFlatNavNodes } from "../../../../../lib/queries/nav-nodes";
 import { AgentsList } from "../../../../../components/AgentsList";
 import { createSupabaseServerClient } from "../../../../../lib/supabase/server";
 
@@ -30,12 +31,14 @@ export default async function BusinessAgentsPage({ params }: Props) {
   const [
     businesses,
     allAgents,
+    navOptions,
     { data: telegramRows },
     { data: customRows },
     { data: wsDefaults },
   ] = await Promise.all([
     listBusinesses(workspace.id),
     listAgentsForWorkspace(workspace.id),
+    listFlatNavNodes(bizId),
     supabase
       .from("telegram_targets")
       .select("id, name")
@@ -95,6 +98,7 @@ export default async function BusinessAgentsPage({ params }: Props) {
           systemPrompt:
             (wsDefaults?.default_system_prompt as string | null) ?? null,
         }}
+        navOptions={navOptions}
       />
     </div>
   );

@@ -129,7 +129,7 @@ async function runAgain(
   const supabase = getServiceRoleSupabase();
   const { data: agent } = await supabase
     .from("agents")
-    .select("id, business_id, archived_at")
+    .select("id, business_id, nav_node_id, archived_at")
     .eq("id", agentId)
     .eq("workspace_id", workspaceId)
     .maybeSingle();
@@ -142,6 +142,7 @@ async function runAgain(
       workspace_id: workspaceId,
       agent_id: agent.id,
       business_id: agent.business_id,
+      nav_node_id: agent.nav_node_id ?? null,
       triggered_by: "telegram",
       status: "queued",
       input: { source: "telegram_callback" },

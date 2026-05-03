@@ -42,6 +42,10 @@ type Props = {
     model?: string | null;
     systemPrompt?: string | null;
   };
+  /** Flattened nav_nodes tree — populates the topic-pin select in
+   *  the edit dialog. Empty = no topics defined yet (or workspace-
+   *  global agents page) so the picker stays hidden. */
+  navOptions?: { id: string; name: string; depth: number }[];
 };
 
 export function AgentsList({
@@ -53,6 +57,7 @@ export function AgentsList({
   telegramTargets = [],
   customIntegrations = [],
   workspaceDefaults,
+  navOptions = [],
 }: Props) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<AgentRow | null>(null);
@@ -228,6 +233,7 @@ export function AgentsList({
           telegramTargets={telegramTargets}
           customIntegrations={customIntegrations}
           siblingAgents={agents.map((a) => ({ id: a.id, name: a.name }))}
+          navOptions={navOptions}
           onClose={() => setEditing(null)}
         />
       )}

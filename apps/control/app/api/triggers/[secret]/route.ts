@@ -34,7 +34,9 @@ export async function POST(
 
   const { data: schedules, error } = await supabase
     .from("schedules")
-    .select("id, workspace_id, agent_id, business_id, enabled, webhook_secret_hash, kind")
+    .select(
+      "id, workspace_id, agent_id, business_id, nav_node_id, enabled, webhook_secret_hash, kind, agents!inner(nav_node_id)",
+    )
     .eq("kind", "webhook")
     .eq("webhook_secret_hash", hash)
     .limit(1);
@@ -54,12 +56,22 @@ export async function POST(
 
   const payload = await req.json().catch(() => ({}));
 
+  // Schedule's pin wins; fall back to the agent's home topic. Supabase
+  // returns the joined agents row as either a single row or an array
+  // depending on cardinality detection — normalise either way.
+  const agentJoin = Array.isArray(schedule.agents)
+    ? schedule.agents[0]
+    : schedule.agents;
+  const navNodeId =
+    schedule.nav_node_id ?? (agentJoin?.nav_node_id as string | null) ?? null;
+
   const { data: run, error: runErr } = await supabase
     .from("runs")
     .insert({
       workspace_id: schedule.workspace_id,
       agent_id: schedule.agent_id,
       business_id: schedule.business_id,
+      nav_node_id: navNodeId,
       schedule_id: schedule.id,
       triggered_by: "webhook",
       status: "queued",

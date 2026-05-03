@@ -256,12 +256,20 @@ export async function runAgentNow(input: {
   // ChatPanel and (later) a worker dispatcher pick up queued rows and
   // execute. This keeps the action fast + auditable; long-running calls
   // belong on the chat SSE route, not a server action.
+  // Inherit the agent's topic pin so the run shows up on the right
+  // per-topic dashboard. Cheap extra round-trip; agent rows are tiny.
+  const { data: agentRow } = await supabase
+    .from("agents")
+    .select("nav_node_id")
+    .eq("id", input.agent_id)
+    .maybeSingle();
   const { data, error } = await supabase
     .from("runs")
     .insert({
       workspace_id: input.workspace_id,
       agent_id: input.agent_id,
       business_id: input.business_id ?? null,
+      nav_node_id: agentRow?.nav_node_id ?? null,
       triggered_by: "manual",
       status: "queued",
       input: input.prompt ? { prompt: input.prompt } : null,
