@@ -140,16 +140,17 @@ async function fireTelegram(
     ]);
   }
 
-  // Row 2 / 3: deep-link buttons (URL)
+  // Row 2 / 3: deep-link buttons (URL). Plain labels — the design
+  // language doesn't use emojis, including in outbound Telegram cards.
   if (origin && slug) {
     const links: { text: string; url: string }[] = [];
     if (run.business_id) {
       links.push({
-        text: "📊 Business",
+        text: "Open business",
         url: `${origin}/${slug}/business/${run.business_id}`,
       });
     }
-    links.push({ text: "📜 Runs", url: `${origin}/${slug}/runs` });
+    links.push({ text: "All runs", url: `${origin}/${slug}/runs` });
     buttons.push(links);
   }
 

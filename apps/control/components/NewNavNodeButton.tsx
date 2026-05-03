@@ -7,6 +7,11 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
+import {
+  APP_ICON_PICKER_NAMES,
+  getAppIcon,
+  isAppIconName,
+} from "@aio/ui/icon";
 import { ALL_VARIANTS } from "@aio/ui/rail/Node";
 
 import { createNavNode } from "../app/actions/nav-nodes";
@@ -20,21 +25,6 @@ type Props = {
    *  business root, "Nieuwe module" inside a topic, etc. */
   label?: string;
 };
-
-const QUICK_EMOJIS = [
-  "📁",
-  "📺",
-  "📈",
-  "🤖",
-  "🛠️",
-  "📚",
-  "🎬",
-  "🛍️",
-  "💬",
-  "🔍",
-  "🧠",
-  "📦",
-];
 
 export function NewNavNodeButton({
   workspaceSlug,
@@ -154,43 +144,59 @@ export function NewNavNodeButton({
             />
           </Field>
 
-          <Field label="Icon (emoji of letter)">
-            <input
-              value={icon}
-              onChange={(e) => setIcon(e.target.value.slice(0, 4))}
-              placeholder="📁"
-              style={input}
-            />
+          <Field label="Icoon (optioneel)">
             <div
               style={{
-                display: "flex",
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(34px, 1fr))",
                 gap: 6,
-                marginTop: 6,
-                flexWrap: "wrap",
               }}
             >
-              {QUICK_EMOJIS.map((e) => (
-                <button
-                  key={e}
-                  type="button"
-                  onClick={() => setIcon(e)}
-                  style={{
-                    width: 30,
-                    height: 30,
-                    border: `1.5px solid ${
-                      icon === e ? "var(--tt-green)" : "var(--app-border)"
-                    }`,
-                    background: "var(--app-card-2)",
-                    borderRadius: 8,
-                    cursor: "pointer",
-                    fontSize: 16,
-                    lineHeight: 1,
-                  }}
-                >
-                  {e}
-                </button>
-              ))}
+              {APP_ICON_PICKER_NAMES.map((n) => {
+                const active = icon === n;
+                return (
+                  <button
+                    key={n}
+                    type="button"
+                    aria-label={n}
+                    aria-pressed={active}
+                    onClick={() => setIcon(active ? "" : n)}
+                    style={{
+                      width: 34,
+                      height: 34,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      border: `1.5px solid ${
+                        active ? "var(--tt-green)" : "var(--app-border)"
+                      }`,
+                      background: active
+                        ? "rgba(57,178,85,0.10)"
+                        : "var(--app-card-2)",
+                      color: "var(--app-fg)",
+                      borderRadius: 8,
+                      cursor: "pointer",
+                      padding: 0,
+                      lineHeight: 0,
+                    }}
+                  >
+                    {getAppIcon(n, 16)}
+                  </button>
+                );
+              })}
             </div>
+            {icon && !isAppIconName(icon) && (
+              <p
+                style={{
+                  fontSize: 11,
+                  color: "var(--app-fg-3)",
+                  marginTop: 6,
+                }}
+              >
+                Bestaande waarde &quot;{icon}&quot; (oude emoji) — kies hierboven
+                een SVG om te vervangen.
+              </p>
+            )}
           </Field>
 
           <Field label="Kleur">
@@ -212,7 +218,8 @@ export function NewNavNodeButton({
                     ["--size" as string]: "28px",
                   }}
                 >
-                  {icon || (name || "T").slice(0, 1).toUpperCase()}
+                  {getAppIcon(icon, 14) ??
+                    (icon || (name || "T").slice(0, 1).toUpperCase())}
                 </button>
               ))}
             </div>

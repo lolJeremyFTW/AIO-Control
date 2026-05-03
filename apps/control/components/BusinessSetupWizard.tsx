@@ -34,11 +34,13 @@ const STEPS = [
   { id: 5, label: "Bevestig" },
 ];
 
+// Topic preset bundles. Plain names — the user picks an SVG icon for
+// each topic later in the topic-edit dialog. NEVER use emojis here.
 const TOPIC_PRESETS = [
-  ["📝 Content", "📈 Marketing", "💼 Sales", "📊 Analytics"],
-  ["🎬 Video", "🖼️ Thumbnails", "✏️ Scripts", "📤 Publishing"],
-  ["🛒 Listings", "💬 Customer service", "📦 Fulfillment"],
-  ["🤖 Agents", "📅 Schedules", "🔌 Integrations"],
+  ["Content", "Marketing", "Sales", "Analytics"],
+  ["Video", "Thumbnails", "Scripts", "Publishing"],
+  ["Listings", "Customer service", "Fulfillment"],
+  ["Agents", "Schedules", "Integrations"],
 ];
 
 export function BusinessSetupWizard({

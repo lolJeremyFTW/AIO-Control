@@ -10,6 +10,8 @@
 
 import { useEffect, useState } from "react";
 
+import { MoonIcon, SunIcon } from "@aio/ui/icon";
+
 export function ThemeToggle() {
   const [theme, setTheme] = useState<"dark" | "light">("dark");
 
@@ -54,7 +56,10 @@ export function ThemeToggle() {
       title={theme === "dark" ? "Switch to light" : "Switch to dark"}
       aria-label={theme === "dark" ? "Switch to light" : "Switch to dark"}
     >
-      {theme === "dark" ? "🌙" : "☀️"}
+      {/* Show the destination icon (sun when in dark = "click to go
+          light", moon when in light = "click to go dark") so the
+          glyph telegraphs the action, not the current state. */}
+      {theme === "dark" ? <SunIcon size={15} /> : <MoonIcon size={15} />}
     </button>
   );
 }

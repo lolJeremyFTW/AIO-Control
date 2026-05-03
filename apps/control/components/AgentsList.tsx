@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { ContextMenu, type ContextMenuItem } from "@aio/ui/context-menu";
-import { PlusIcon } from "@aio/ui/icon";
+import { ChatIcon, EditPenIcon, PlusIcon } from "@aio/ui/icon";
 
 import {
   archiveAgent,
@@ -77,7 +77,8 @@ export function AgentsList({
         }),
     },
     {
-      label: "💬 Open chat",
+      label: "Open chat",
+      icon: <ChatIcon size={14} />,
       onClick: () => {
         const evt = new CustomEvent("aio:open-chat", {
           detail: { agentId: agent.id },
@@ -87,7 +88,8 @@ export function AgentsList({
     },
     { kind: "separator" },
     {
-      label: "✎ Bewerken…",
+      label: "Bewerken…",
+      icon: <EditPenIcon size={14} />,
       onClick: () => setEditing(agent),
     },
     {

@@ -477,7 +477,7 @@ export function SchedulesPanel({
                       onClick={() => setEditingSchedule(s)}
                       style={btnSecondary(pending)}
                     >
-                      ✎ Bewerken
+                      Bewerken
                     </button>
                     {s.kind === "webhook" && (
                       <button
