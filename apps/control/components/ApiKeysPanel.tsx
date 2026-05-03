@@ -12,14 +12,13 @@
 
 import { useState, useTransition } from "react";
 
+import { deleteApiKey, setApiKey } from "../app/actions/api-keys";
 import {
   CUSTOM_KEY_NAME_RE,
-  deleteApiKey,
-  setApiKey,
-  type ApiKeyMetadata,
   type ApiKeyKind,
+  type ApiKeyMetadata,
   type ApiKeyScope,
-} from "../app/actions/api-keys";
+} from "../lib/api-keys/consts";
 import type { BusinessRow } from "../lib/queries/businesses";
 import type { NavNode } from "../lib/queries/nav-nodes";
 import { translate } from "../lib/i18n/dict";

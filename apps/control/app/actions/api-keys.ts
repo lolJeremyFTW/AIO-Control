@@ -11,30 +11,17 @@
 import { revalidatePath } from "next/cache";
 
 import { createSupabaseServerClient } from "../../lib/supabase/server";
+import {
+  CUSTOM_KEY_NAME_RE,
+  type ApiKeyKind,
+  type ApiKeyMetadata,
+  type ApiKeyScope,
+} from "../../lib/api-keys/consts";
 
-export type ApiKeyScope = "workspace" | "business" | "navnode";
-
-export type ApiKeyKind = "provider" | "custom";
-
-export type ApiKeyMetadata = {
-  id: string;
-  workspace_id: string;
-  scope: ApiKeyScope;
-  scope_id: string;
-  provider: string;
-  label: string | null;
-  has_value: boolean;
-  created_at: string;
-  updated_at: string;
-  /** 'provider' = canonical (anthropic/openai/…), 'custom' = user
-   *  secret read by agent tools / modules / integrations. */
-  kind: ApiKeyKind;
-};
-
-/** Validation rule for custom-secret names — uppercase, A-Z 0-9 _.
- *  Matches conventional env-var naming so secrets can be referenced
- *  identically from agent tools and Mustache integration templates. */
-export const CUSTOM_KEY_NAME_RE = /^[A-Z][A-Z0-9_]*$/;
+// Note: types and constants live in lib/api-keys/consts.ts. Next's
+// "use server" boundary forbids non-async-function exports, including
+// `export type` re-exports — so call-sites must import types directly
+// from "../lib/api-keys/consts".
 
 type ActionResult<T> =
   | { ok: true; data: T }
