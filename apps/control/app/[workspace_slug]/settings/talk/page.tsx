@@ -92,7 +92,7 @@ export default async function TalkSettingsPage({ params }: Props) {
   const { t } = await getDict();
 
   return (
-    <div className="content">
+    <>
       <div className="page-title-row">
         <h1>{t("page.talk")}</h1>
         <span className="sub">{t("page.talk.sub")}</span>
@@ -104,6 +104,6 @@ export default async function TalkSettingsPage({ params }: Props) {
         ollamaModels={ollamaModels}
         log={log}
       />
-    </div>
+    </>
   );
 }

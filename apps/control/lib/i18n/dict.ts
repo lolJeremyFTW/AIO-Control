@@ -165,6 +165,13 @@ const nl: Dict = {
   "settings.title": "Instellingen",
   "settings.sub": "Account · workspace · automations",
   "settings.section.general": "Algemeen",
+  "settings.section.general.desc":
+    "Workspace-naam, e-mail, tijdzone en uitloggen.",
+  "settings.section.providers": "Providers",
+  "settings.section.providers.desc":
+    "Stap-voor-stap onboarding voor self-hosted providers (Hermes-agent, OpenClaw, Ollama). Geen handmatig prutsen meer.",
+  "settings.section.subscription.desc":
+    "Plan, betaalmethode, facturen.",
   "settings.section.notifications": "Notificaties",
   "settings.section.team": "Team & rollen",
   "settings.section.danger": "Gevarenzone",
@@ -346,6 +353,13 @@ const en: Partial<Dict> = {
 
   "settings.title": "Settings",
   "settings.section.general": "General",
+  "settings.section.general.desc":
+    "Workspace name, email, timezone and sign-out.",
+  "settings.section.providers": "Providers",
+  "settings.section.providers.desc":
+    "Step-by-step onboarding for self-hosted providers (Hermes-agent, OpenClaw, Ollama). No more manual fiddling.",
+  "settings.section.subscription.desc":
+    "Plan, payment method, invoices.",
   "settings.section.notifications": "Notifications",
   "settings.section.team": "Team & roles",
   "settings.section.danger": "Danger zone",
@@ -583,6 +597,13 @@ const de: Partial<Dict> = {
 
   "settings.title": "Einstellungen",
   "settings.section.general": "Allgemein",
+  "settings.section.general.desc":
+    "Workspace-Name, E-Mail, Zeitzone und Abmelden.",
+  "settings.section.providers": "Providers",
+  "settings.section.providers.desc":
+    "Schritt-für-Schritt Onboarding für self-hosted Providers (Hermes-agent, OpenClaw, Ollama).",
+  "settings.section.subscription.desc":
+    "Plan, Zahlungsmethode, Rechnungen.",
   "settings.section.notifications": "Benachrichtigungen",
   "settings.section.team": "Team & Rollen",
   "settings.section.danger": "Gefahrenzone",

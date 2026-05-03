@@ -31,7 +31,7 @@ export default async function SubscriptionPage({ params }: Props) {
   const { t } = await getDict();
 
   return (
-    <div className="content">
+    <>
       <div className="page-title-row">
         <h1>{t("page.subscription")}</h1>
         <span className="sub">
@@ -42,6 +42,6 @@ export default async function SubscriptionPage({ params }: Props) {
         currentTier={currentTier}
         stripeCustomerId={stripeCustomerId}
       />
-    </div>
+    </>
   );
 }
