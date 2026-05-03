@@ -6,6 +6,10 @@
 
 import { revalidatePath } from "next/cache";
 
+import {
+  getRecentLoginEvents,
+  type LoginEventRow,
+} from "../../lib/auth/login-events";
 import { createSupabaseServerClient } from "../../lib/supabase/server";
 import { getServiceRoleSupabase } from "../../lib/supabase/service";
 
@@ -17,6 +21,17 @@ export async function updateProfile(input: {
   avatar_variant?: string;
   avatar_url?: string | null;
   timezone?: string;
+  // Contact + invoicing block (migration 032). Strings only,
+  // explicit null means "clear the field".
+  phone?: string | null;
+  address_line1?: string | null;
+  address_line2?: string | null;
+  postal_code?: string | null;
+  city?: string | null;
+  country?: string | null;
+  company_name?: string | null;
+  business_number?: string | null;
+  tax_id?: string | null;
 }): Promise<Result<null>> {
   const supabase = await createSupabaseServerClient();
   const {
@@ -44,6 +59,28 @@ export async function updateProfile(input: {
     patch.avatar_url = input.avatar_url?.trim() || null;
   if (input.timezone !== undefined)
     patch.timezone = input.timezone.trim() || "Europe/Amsterdam";
+
+  // Pass-through for the contact/invoicing block. Empty string is
+  // normalised to null so the column stays clean.
+  const norm = (v: string | null | undefined) => {
+    if (v === undefined) return undefined;
+    if (v === null) return null;
+    const t = String(v).trim();
+    return t.length === 0 ? null : t;
+  };
+  const setIf = (col: string, v: string | null | undefined) => {
+    const n = norm(v);
+    if (n !== undefined) patch[col] = n;
+  };
+  setIf("phone", input.phone);
+  setIf("address_line1", input.address_line1);
+  setIf("address_line2", input.address_line2);
+  setIf("postal_code", input.postal_code);
+  setIf("city", input.city);
+  setIf("country", input.country);
+  setIf("company_name", input.company_name);
+  setIf("business_number", input.business_number);
+  setIf("tax_id", input.tax_id);
 
   if (Object.keys(patch).length === 0) return { ok: true, data: null };
 
@@ -116,4 +153,20 @@ export async function signOutEverywhere(): Promise<Result<null>> {
   const { error } = await supabase.auth.signOut({ scope: "global" });
   if (error) return { ok: false, error: error.message };
   return { ok: true, data: null };
+}
+
+// ─── Login history ───────────────────────────────────────────────────
+// Server action wrapper around the login-events repo so the client
+// component can refresh the list without an extra round trip through
+// the API layer. Always scoped to the calling user.
+export async function listMyLoginEvents(): Promise<
+  Result<LoginEventRow[]>
+> {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Niet ingelogd." };
+  const rows = await getRecentLoginEvents(user.id, 25);
+  return { ok: true, data: rows };
 }

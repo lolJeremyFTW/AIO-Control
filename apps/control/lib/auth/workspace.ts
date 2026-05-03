@@ -71,13 +71,19 @@ export async function getWorkspaceBySlug(slug: string) {
   return data;
 }
 
+// Columns from migrations 001 + 026 + 032. The address/phone/company
+// block is GDPR + invoicing data set on the profile page; everything
+// is nullable. NB: Supabase's parser typing only kicks in on a single
+// string literal — string concatenation collapses it to GenericString-
+// Error and we lose the typed columns. Keep this on one line.
+const PROFILE_COLUMNS =
+  "id, display_name, email, avatar_letter, avatar_variant, avatar_url, timezone, is_admin, phone, address_line1, address_line2, postal_code, city, country, company_name, business_number, tax_id";
+
 export async function getProfile(userId: string) {
   const supabase = await createSupabaseServerClient();
   const { data } = await supabase
     .from("profiles")
-    .select(
-      "id, display_name, email, avatar_letter, avatar_variant, avatar_url, timezone, is_admin",
-    )
+    .select(PROFILE_COLUMNS)
     .eq("id", userId)
     .maybeSingle();
   return data;

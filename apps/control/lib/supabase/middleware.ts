@@ -5,6 +5,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { maybeRecordLogin } from "../auth/login-events";
+
 const PUBLIC_PATHS = new Set<string>([
   "/login",
   "/signup",
@@ -76,6 +78,14 @@ export async function updateSession(request: NextRequest) {
     loginUrl.pathname = "/login";
     loginUrl.searchParams.set("next", path);
     return NextResponse.redirect(loginUrl);
+  }
+
+  // Record an audit row the first time we see this user in the
+  // current rolling window (cookie-debounced inside the helper).
+  // Only when the request actually carries a user — we don't want
+  // to log every static asset hit.
+  if (user) {
+    await maybeRecordLogin({ userId: user.id, request, response });
   }
 
   return response;

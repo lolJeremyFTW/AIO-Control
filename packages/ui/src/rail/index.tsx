@@ -93,6 +93,17 @@ type Props = {
   /** "+ Topic" / "+ Subtopic" button at the bottom of the topic list
    *  when drilled in. Optional — when omitted the row hides. */
   onCreateTopic?: () => void;
+  /** Localised labels — fall back to the NL/EN defaults baked in here.
+   *  The shell passes the result of t() so the rail follows the user's
+   *  language preference without the rail itself depending on the
+   *  i18n module. */
+  labels?: {
+    allBusinesses?: string;
+    emptyBusinesses?: string;
+    newTopic?: string;
+    newBusiness?: string;
+    settings?: string;
+  };
 };
 
 export function Rail({
@@ -116,7 +127,15 @@ export function Rail({
   onReorderTopic,
   onReorderBusiness,
   onCreateTopic,
+  labels,
 }: Props) {
+  const L = {
+    allBusinesses: labels?.allBusinesses ?? "All businesses",
+    emptyBusinesses: labels?.emptyBusinesses ?? "Geen businesses nog",
+    newTopic: labels?.newTopic ?? "Nieuw topic",
+    newBusiness: labels?.newBusiness ?? "New business",
+    settings: labels?.settings ?? "Settings",
+  };
   const [hover, setHover] = useState(false);
 
   // "Pin" toggle — when locked, the rail ignores hover so it stays
@@ -222,7 +241,7 @@ export function Rail({
           />
         ) : (
           <BackRow
-            label="All businesses"
+            label={L.allBusinesses}
             expanded={expanded}
             onClick={onBack}
           />
@@ -233,7 +252,7 @@ export function Rail({
         {topMode ? (
           businesses.length === 0 ? (
             <div style={{ padding: "8px 4px", opacity: 0.6, fontSize: 11 }}>
-              {expanded ? "Geen businesses nog" : null}
+              {expanded ? L.emptyBusinesses : null}
             </div>
           ) : (
             businesses.map((b) => (
@@ -302,7 +321,7 @@ export function Rail({
             {onCreateTopic && (
               <ActionRow
                 icon={<PlusIcon size={14} />}
-                label="Nieuw topic"
+                label={L.newTopic}
                 expanded={expanded}
                 onClick={onCreateTopic}
               />
@@ -314,13 +333,13 @@ export function Rail({
       <div className="rail-bottom">
         <ActionRow
           icon={<PlusIcon />}
-          label="New business"
+          label={L.newBusiness}
           expanded={expanded}
           onClick={onCreateBusiness}
         />
         <ActionRow
           icon={<SettingsIcon size={16} />}
-          label="Settings"
+          label={L.settings}
           expanded={expanded}
           selected={page === "settings"}
           onClick={onOpenSettings}

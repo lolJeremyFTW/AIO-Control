@@ -57,6 +57,7 @@ const nl: Dict = {
   "nav.settings": "Settings",
   "nav.signOut": "Sign out",
   "nav.newBusiness": "New business",
+  "nav.newTopic": "Nieuw topic",
   "nav.allBusinesses": "All businesses",
 
   "rail.empty": "Geen businesses nog",
@@ -116,6 +117,34 @@ const nl: Dict = {
   "integrations.title": "{business} — integraties",
   "integrations.section.new": "Nieuwe integratie",
   "integrations.section.connected": "Verbonden services",
+
+  "profile.title": "Profile",
+  "profile.sub": "Account · voorkeuren · sessions",
+  "profile.section.identity": "Identiteit",
+  "profile.section.identity.desc": "Naam en avatar zoals anderen je zien.",
+  "profile.section.account": "Account",
+  "profile.section.account.desc": "Email + wachtwoord van je login.",
+  "profile.section.contact": "Contact + facturatie",
+  "profile.section.contact.desc":
+    "Adres, telefoon, KvK-nummer en BTW-ID. Wordt gebruikt voor facturen en GDPR-correspondentie. Allemaal optioneel.",
+  "profile.section.prefs": "Voorkeuren",
+  "profile.section.prefs.desc": "Tijdzone + interface taal.",
+  "profile.section.history": "Login history",
+  "profile.section.history.desc":
+    "Recente logins op je account. Zie je iets verdachts? Wijzig je wachtwoord en log overal uit.",
+  "profile.section.security": "Sessions / security",
+  "profile.section.security.desc":
+    "Logt overal uit (alle apparaten + browsers). Handig na een verloren laptop.",
+  "profile.history.empty":
+    "Nog geen logins gelogd. (Het audit-systeem is net live — volgende login verschijnt hier.)",
+  "profile.history.col.when": "Wanneer",
+  "profile.history.col.device": "Apparaat",
+  "profile.history.col.ip": "IP",
+  "profile.history.col.method": "Methode",
+  "profile.history.refresh": "Verversen",
+  "profile.security.signOutAll": "Sign out everywhere",
+  "profile.security.signOutAll.confirm":
+    "Logt uit op ALLE apparaten + browsers waar je nu bent ingelogd. Doorgaan?",
 };
 
 const en: Partial<Dict> = {
@@ -204,6 +233,39 @@ const en: Partial<Dict> = {
   "integrations.section.connected": "Connected services",
 
   "nav.allBusinesses": "All businesses",
+  "nav.profile": "Profile",
+  "nav.settings": "Settings",
+  "nav.signOut": "Sign out",
+  "nav.newBusiness": "New business",
+  "nav.newTopic": "New topic",
+
+  "profile.title": "Profile",
+  "profile.sub": "Account · preferences · sessions",
+  "profile.section.identity": "Identity",
+  "profile.section.identity.desc": "Name and avatar — how others see you.",
+  "profile.section.account": "Account",
+  "profile.section.account.desc": "Login email + password.",
+  "profile.section.contact": "Contact + invoicing",
+  "profile.section.contact.desc":
+    "Address, phone, business number and Tax-ID. Used for invoices and GDPR correspondence. All optional.",
+  "profile.section.prefs": "Preferences",
+  "profile.section.prefs.desc": "Timezone + interface language.",
+  "profile.section.history": "Login history",
+  "profile.section.history.desc":
+    "Recent logins to your account. See anything suspicious? Change your password and sign out everywhere.",
+  "profile.section.security": "Sessions / security",
+  "profile.section.security.desc":
+    "Signs you out on ALL devices + browsers. Handy after a lost laptop.",
+  "profile.history.empty":
+    "No logins recorded yet. (The audit system just went live — your next login will show up here.)",
+  "profile.history.col.when": "When",
+  "profile.history.col.device": "Device",
+  "profile.history.col.ip": "IP",
+  "profile.history.col.method": "Method",
+  "profile.history.refresh": "Refresh",
+  "profile.security.signOutAll": "Sign out everywhere",
+  "profile.security.signOutAll.confirm":
+    "Signs you out on ALL devices + browsers where you're currently signed in. Continue?",
 };
 
 const de: Partial<Dict> = {
@@ -294,6 +356,39 @@ const de: Partial<Dict> = {
   "integrations.section.connected": "Verbundene Dienste",
 
   "nav.allBusinesses": "Alle Businesses",
+  "nav.profile": "Profil",
+  "nav.settings": "Einstellungen",
+  "nav.signOut": "Abmelden",
+  "nav.newBusiness": "Neues Business",
+  "nav.newTopic": "Neues Topic",
+
+  "profile.title": "Profil",
+  "profile.sub": "Konto · Einstellungen · Sitzungen",
+  "profile.section.identity": "Identität",
+  "profile.section.identity.desc": "Name und Avatar — wie andere dich sehen.",
+  "profile.section.account": "Konto",
+  "profile.section.account.desc": "Login E-Mail + Passwort.",
+  "profile.section.contact": "Kontakt + Rechnung",
+  "profile.section.contact.desc":
+    "Adresse, Telefon, Handelsregister-Nr. und USt-ID. Für Rechnungen und DSGVO-Korrespondenz. Alles optional.",
+  "profile.section.prefs": "Einstellungen",
+  "profile.section.prefs.desc": "Zeitzone + Oberflächensprache.",
+  "profile.section.history": "Login-Verlauf",
+  "profile.section.history.desc":
+    "Letzte Logins in deinem Konto. Etwas Verdächtiges? Passwort ändern und überall abmelden.",
+  "profile.section.security": "Sitzungen / Sicherheit",
+  "profile.section.security.desc":
+    "Meldet dich auf ALLEN Geräten + Browsern ab. Praktisch nach einem verlorenen Laptop.",
+  "profile.history.empty":
+    "Noch keine Logins erfasst. (Das Audit-System ist gerade live — der nächste Login erscheint hier.)",
+  "profile.history.col.when": "Wann",
+  "profile.history.col.device": "Gerät",
+  "profile.history.col.ip": "IP",
+  "profile.history.col.method": "Methode",
+  "profile.history.refresh": "Aktualisieren",
+  "profile.security.signOutAll": "Überall abmelden",
+  "profile.security.signOutAll.confirm":
+    "Meldet dich auf ALLEN Geräten + Browsern ab, wo du gerade angemeldet bist. Fortfahren?",
 };
 
 const DICTS: Record<Locale, Partial<Dict>> = { nl, en, de };

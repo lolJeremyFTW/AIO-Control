@@ -72,18 +72,11 @@ type Props = {
   children: ReactNode;
 };
 
-function makeTopics(t: T): Topic[] {
-  return [
-    { id: "queue", label: t("topic.queue"), path: "" },
-    { id: "agents", label: t("topic.agents"), path: "/agents" },
-    { id: "schedules", label: t("topic.schedules"), path: "/schedules" },
-    {
-      id: "integrations",
-      label: t("topic.integrations"),
-      path: "/integrations",
-    },
-  ];
-}
+// (Note: the built-in topic palette — queue/agents/schedules/integrations
+// — used to be auto-injected when a business had no nav nodes. We
+// removed that fallback so the rail shows only what the user explicitly
+// created. The translation keys are kept around for the right-click
+// "Agents" / "Schedules" menu items elsewhere in the app.)
 
 export function WorkspaceShell({
   profile,
@@ -122,7 +115,6 @@ export function WorkspaceShell({
     () => (key, vars) => translate(locale, key, vars),
     [locale],
   );
-  const TOPICS = useMemo(() => makeTopics(t), [t]);
 
   // Derive drilled state from the URL. Two flavours:
   //  /[ws]/business/<id>            → drilled into a business, no node path
@@ -163,13 +155,16 @@ export function WorkspaceShell({
     return { chain, children: childrenOfParent };
   }, [drilledBiz, navNodes]);
 
-  // The Topic[] the Rail renders in drilled mode is now the user-created
-  // children of the deepest active node, falling back to the built-in
-  // tabs (Wachtrij / Agents / Schedules / Integrations) only when the
-  // user hasn't created any nav nodes yet for this business.
+  // The Topic[] the Rail renders in drilled mode is the user-created
+  // children of the deepest active node. We INTENTIONALLY do NOT fall
+  // back to the built-in Wachtrij/Agents/Schedules/Integrations chips
+  // anymore — Jeremy wants the rail to reflect only what the user
+  // explicitly created during the business-setup flow. Clean slate
+  // when no topics exist; the "+ Nieuw topic" affordance handles
+  // discovery.
   const railTopics: Topic[] = useMemo(() => {
     if (!drilledBiz) return [];
-    const userTopics: Topic[] = (navContext?.children ?? []).map((n) => ({
+    return (navContext?.children ?? []).map((n) => ({
       id: n.id,
       // Drop the emoji from the label — we render it as the node icon
       // separately so the row-text doesn't double up.
@@ -182,11 +177,7 @@ export function WorkspaceShell({
       colorHex: n.color_hex ?? null,
       logoUrl: n.logo_url ?? null,
     }));
-    if (userTopics.length > 0) return userTopics;
-    // Fall back to the built-in tabs as a starter set so empty
-    // businesses still feel navigable.
-    return TOPICS;
-  }, [drilledBiz, navContext, TOPICS]);
+  }, [drilledBiz, navContext]);
 
   const selectedTopicId = useMemo(() => {
     if (!drilledBiz) return null;
@@ -524,6 +515,13 @@ export function WorkspaceShell({
         drilledInto={drilledRailItem}
         topics={drilledBiz ? railTopics : []}
         selectedTopicId={selectedTopicId}
+        labels={{
+          allBusinesses: t("nav.allBusinesses"),
+          emptyBusinesses: t("rail.empty"),
+          newTopic: t("nav.newTopic"),
+          newBusiness: t("nav.newBusiness"),
+          settings: t("nav.settings"),
+        }}
         onBack={() => {
           if (!drilledBiz) return;
           closeRail();

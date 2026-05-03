@@ -1,26 +1,29 @@
 // Full profile-settings editor. Renders on /[ws]/profile. Sections:
 //   1. Identity   — display name + avatar (variant + uploaded image)
 //   2. Account    — email + password change
-//   3. Preferences — timezone + language (cookie)
-//   4. Security   — sign out everywhere
+//   3. Contact + invoicing — phone, address, company, KvK, BTW-ID
+//   4. Preferences — timezone + language (cookie)
+//   5. Security   — login history + sign out everywhere
 //
 // All mutations go through server actions; optimistic refresh after.
 
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 
 import { ALL_VARIANTS, Node } from "@aio/ui/rail/Node";
 
 import {
   changeEmail,
   changePassword,
+  listMyLoginEvents,
   signOutEverywhere,
   updateProfile,
 } from "../app/actions/profile";
 import { setLocale } from "../app/actions/locale";
 import { getSupabaseBrowserClient } from "../lib/supabase/client";
+import { translate, type Locale } from "../lib/i18n/dict";
 
 type Profile = {
   id: string;
@@ -31,6 +34,15 @@ type Profile = {
   avatar_url: string | null;
   timezone: string | null;
   is_admin: boolean | null;
+  phone: string | null;
+  address_line1: string | null;
+  address_line2: string | null;
+  postal_code: string | null;
+  city: string | null;
+  country: string | null;
+  company_name: string | null;
+  business_number: string | null;
+  tax_id: string | null;
 };
 
 type Props = {
@@ -48,6 +60,12 @@ export function ProfileEditor({
   currentLocale,
 }: Props) {
   const router = useRouter();
+
+  // Tiny in-component translator. We follow the same pattern as the
+  // WorkspaceShell so we don't need a global provider — the parent
+  // page hands us the active locale and we look up keys directly.
+  const t = (key: string, vars?: Record<string, string | number>) =>
+    translate(currentLocale as Locale, key, vars);
 
   // ── Identity state ──────────────────────────────────────
   const [name, setName] = useState(profile.display_name ?? "");
@@ -103,6 +121,43 @@ export function ProfileEditor({
   const [locale, setLocaleState] = useState(currentLocale);
   const [prefError, setPrefError] = useState<string | null>(null);
   const [prefInfo, setPrefInfo] = useState<string | null>(null);
+
+  // ── Contact + invoicing state ───────────────────────────
+  const [phone, setPhone] = useState(profile.phone ?? "");
+  const [addr1, setAddr1] = useState(profile.address_line1 ?? "");
+  const [addr2, setAddr2] = useState(profile.address_line2 ?? "");
+  const [postal, setPostal] = useState(profile.postal_code ?? "");
+  const [city, setCity] = useState(profile.city ?? "");
+  const [country, setCountry] = useState(profile.country ?? "");
+  const [company, setCompany] = useState(profile.company_name ?? "");
+  const [bizNumber, setBizNumber] = useState(profile.business_number ?? "");
+  const [taxId, setTaxId] = useState(profile.tax_id ?? "");
+  const [contactError, setContactError] = useState<string | null>(null);
+  const [contactInfo, setContactInfo] = useState<string | null>(null);
+
+  // ── Login history state ─────────────────────────────────
+  type LoginRow = {
+    id: string;
+    ip_address: string | null;
+    user_agent: string | null;
+    device_label: string | null;
+    method: string;
+    created_at: string;
+  };
+  const [loginRows, setLoginRows] = useState<LoginRow[]>([]);
+  const [loginLoading, setLoginLoading] = useState(true);
+  const refreshLoginEvents = () => {
+    setLoginLoading(true);
+    listMyLoginEvents()
+      .then((res) => {
+        if (res.ok) setLoginRows(res.data as LoginRow[]);
+      })
+      .finally(() => setLoginLoading(false));
+  };
+  useEffect(() => {
+    refreshLoginEvents();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [pending, startTransition] = useTransition();
 
@@ -161,14 +216,31 @@ export function ProfileEditor({
       }
     });
 
+  const saveContact = () =>
+    startTransition(async () => {
+      setContactError(null);
+      setContactInfo(null);
+      const res = await updateProfile({
+        phone,
+        address_line1: addr1,
+        address_line2: addr2,
+        postal_code: postal,
+        city,
+        country,
+        company_name: company,
+        business_number: bizNumber,
+        tax_id: taxId,
+      });
+      if (!res.ok) setContactError(res.error);
+      else {
+        setContactInfo("Contactgegevens opgeslagen.");
+        router.refresh();
+      }
+    });
+
   const signOutAll = () =>
     startTransition(async () => {
-      if (
-        !confirm(
-          "Logt uit op ALLE apparaten + browsers waar je nu bent ingelogd. Doorgaan?",
-        )
-      )
-        return;
+      if (!confirm(t("profile.security.signOutAll.confirm"))) return;
       await signOutEverywhere();
       router.push("/login");
     });
@@ -176,7 +248,10 @@ export function ProfileEditor({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       {/* ── Identity ─────────────────────────────────────────── */}
-      <Section title="Identiteit" desc="Naam en avatar zoals anderen je zien.">
+      <Section
+        title={t("profile.section.identity")}
+        desc={t("profile.section.identity.desc")}
+      >
         <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 22, alignItems: "center" }}>
           <div>
             <Node
@@ -272,7 +347,10 @@ export function ProfileEditor({
       </Section>
 
       {/* ── Account ──────────────────────────────────────────── */}
-      <Section title="Account" desc="Email + wachtwoord van je login.">
+      <Section
+        title={t("profile.section.account")}
+        desc={t("profile.section.account.desc")}
+      >
         <Field label="Huidig email">
           <input value={profile.email ?? ""} disabled style={{ ...inp, opacity: 0.6 }} />
         </Field>
@@ -317,8 +395,114 @@ export function ProfileEditor({
         {accountInfo && <Info>{accountInfo}</Info>}
       </Section>
 
+      {/* ── Contact + invoicing ──────────────────────────────── */}
+      <Section
+        title={t("profile.section.contact")}
+        desc={t("profile.section.contact.desc")}
+      >
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <Field label="Telefoon">
+            <input
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="+31 6 1234 5678"
+              style={inp}
+              autoComplete="tel"
+            />
+          </Field>
+          <Field label="Bedrijfsnaam">
+            <input
+              value={company}
+              onChange={(e) => setCompany(e.target.value)}
+              placeholder="TrompTech"
+              style={inp}
+              autoComplete="organization"
+            />
+          </Field>
+        </div>
+        <Field label="Adres regel 1">
+          <input
+            value={addr1}
+            onChange={(e) => setAddr1(e.target.value)}
+            placeholder="Straat + huisnr"
+            style={inp}
+            autoComplete="address-line1"
+          />
+        </Field>
+        <Field label="Adres regel 2 (optioneel)">
+          <input
+            value={addr2}
+            onChange={(e) => setAddr2(e.target.value)}
+            placeholder="Toevoeging / unit"
+            style={inp}
+            autoComplete="address-line2"
+          />
+        </Field>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr 1fr", gap: 12 }}>
+          <Field label="Postcode">
+            <input
+              value={postal}
+              onChange={(e) => setPostal(e.target.value)}
+              placeholder="4811 AA"
+              style={inp}
+              autoComplete="postal-code"
+            />
+          </Field>
+          <Field label="Stad">
+            <input
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+              placeholder="Breda"
+              style={inp}
+              autoComplete="address-level2"
+            />
+          </Field>
+          <Field label="Land">
+            <input
+              value={country}
+              onChange={(e) => setCountry(e.target.value)}
+              placeholder="NL"
+              style={inp}
+              autoComplete="country"
+            />
+          </Field>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <Field label="KvK / Business number">
+            <input
+              value={bizNumber}
+              onChange={(e) => setBizNumber(e.target.value)}
+              placeholder="12345678"
+              style={inp}
+            />
+          </Field>
+          <Field label="BTW-ID / Tax-ID">
+            <input
+              value={taxId}
+              onChange={(e) => setTaxId(e.target.value)}
+              placeholder="NL000099998B57"
+              style={inp}
+            />
+          </Field>
+        </div>
+        {contactError && <Err>{contactError}</Err>}
+        {contactInfo && <Info>{contactInfo}</Info>}
+        <div style={{ marginTop: 10 }}>
+          <button
+            onClick={saveContact}
+            disabled={pending}
+            style={btnPrimary(pending)}
+          >
+            {pending ? "Opslaan…" : "Opslaan"}
+          </button>
+        </div>
+      </Section>
+
       {/* ── Preferences ──────────────────────────────────────── */}
-      <Section title="Voorkeuren" desc="Tijdzone + interface taal.">
+      <Section
+        title={t("profile.section.prefs")}
+        desc={t("profile.section.prefs.desc")}
+      >
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <Field label="Tijdzone (IANA)">
             <input
@@ -361,10 +545,109 @@ export function ProfileEditor({
         </div>
       </Section>
 
+      {/* ── Login history ────────────────────────────────────── */}
+      <Section
+        title={t("profile.section.history")}
+        desc={t("profile.section.history.desc")}
+      >
+        {loginLoading ? (
+          <p style={{ fontSize: 12.5, color: "var(--app-fg-3)" }}>
+            {t("common.loading")}
+          </p>
+        ) : loginRows.length === 0 ? (
+          <p style={{ fontSize: 12.5, color: "var(--app-fg-3)" }}>
+            {t("profile.history.empty")}
+          </p>
+        ) : (
+          <div
+            style={{
+              border: "1px solid var(--app-border-2)",
+              borderRadius: 10,
+              overflow: "hidden",
+            }}
+          >
+            <table
+              style={{
+                width: "100%",
+                borderCollapse: "collapse",
+                fontSize: 12.5,
+              }}
+            >
+              <thead>
+                <tr style={{ background: "var(--app-card-2)" }}>
+                  <Th>{t("profile.history.col.when")}</Th>
+                  <Th>{t("profile.history.col.device")}</Th>
+                  <Th>{t("profile.history.col.ip")}</Th>
+                  <Th>{t("profile.history.col.method")}</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {loginRows.map((row) => (
+                  <tr
+                    key={row.id}
+                    style={{
+                      borderTop: "1px solid var(--app-border-2)",
+                    }}
+                  >
+                    <Td>
+                      <span title={row.created_at}>
+                        {formatTimestamp(row.created_at)}
+                      </span>
+                    </Td>
+                    <Td>
+                      {row.device_label ?? (
+                        <span style={{ color: "var(--app-fg-3)" }}>
+                          onbekend
+                        </span>
+                      )}
+                    </Td>
+                    <Td>
+                      <code
+                        style={{
+                          fontSize: 11.5,
+                          fontFamily: "var(--mono, monospace)",
+                          color: "var(--app-fg-2)",
+                        }}
+                      >
+                        {row.ip_address ?? "—"}
+                      </code>
+                    </Td>
+                    <Td>
+                      <span
+                        style={{
+                          fontSize: 11,
+                          padding: "2px 7px",
+                          borderRadius: 6,
+                          background: "var(--app-card-2)",
+                          border: "1px solid var(--app-border-2)",
+                        }}
+                      >
+                        {row.method}
+                      </span>
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <div style={{ marginTop: 10 }}>
+          <button
+            onClick={refreshLoginEvents}
+            disabled={loginLoading}
+            style={btnSec}
+          >
+            {loginLoading
+              ? `${t("profile.history.refresh")}…`
+              : t("profile.history.refresh")}
+          </button>
+        </div>
+      </Section>
+
       {/* ── Security ─────────────────────────────────────────── */}
       <Section
-        title="Sessions / security"
-        desc="Logt overal uit (alle apparaten + browsers). Handig na een verloren laptop."
+        title={t("profile.section.security")}
+        desc={t("profile.section.security.desc")}
       >
         <button
           onClick={signOutAll}
@@ -380,7 +663,7 @@ export function ProfileEditor({
             cursor: pending ? "wait" : "pointer",
           }}
         >
-          {pending ? "Bezig…" : "Sign out everywhere"}
+          {pending ? t("common.busy") : t("profile.security.signOutAll")}
         </button>
       </Section>
     </div>
@@ -505,6 +788,42 @@ function Err({ children }: { children: React.ReactNode }) {
       {children}
     </p>
   );
+}
+function Th({ children }: { children: React.ReactNode }) {
+  return (
+    <th
+      style={{
+        textAlign: "left",
+        padding: "8px 12px",
+        fontWeight: 700,
+        fontSize: 11,
+        color: "var(--app-fg-3)",
+        textTransform: "uppercase",
+        letterSpacing: 0.4,
+      }}
+    >
+      {children}
+    </th>
+  );
+}
+function Td({ children }: { children: React.ReactNode }) {
+  return (
+    <td style={{ padding: "8px 12px", verticalAlign: "middle" }}>{children}</td>
+  );
+}
+function formatTimestamp(iso: string): string {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
 }
 function Info({ children }: { children: React.ReactNode }) {
   return (
