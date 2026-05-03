@@ -19,7 +19,14 @@ import {
   buildAgentSystemPrompt,
   prependPreamble,
 } from "../../../../lib/agents/business-context";
-import { executeAioTool } from "../../../../lib/agents/tool-execution";
+import {
+  putPendingApproval,
+  takePendingApproval,
+} from "../../../../lib/agents/pending-approvals";
+import {
+  executeAioTool,
+  executeAioWriteTool,
+} from "../../../../lib/agents/tool-execution";
 import { checkSpendLimit } from "../../../../lib/dispatch/spend-limit";
 import { dispatchRunEvent } from "../../../../lib/notify/dispatch";
 import { getAgentById } from "../../../../lib/queries/agents";
@@ -34,6 +41,15 @@ export const dynamic = "force-dynamic";
 type Body = {
   messages: ChatMessage[];
   thread_id?: string;
+  /** Sent by the panel when the user clicks Approve / Cancel on a
+   *  confirm_required card. The server looks up the pending state
+   *  by tool_call_id (in lib/agents/pending-approvals), executes the
+   *  underlying write-tool (or a "user cancelled" tool_result), and
+   *  continues the multi-turn loop with the model. */
+  approve_tool?: {
+    tool_call_id: string;
+    decision: "approve" | "cancel";
+  };
 };
 
 export async function POST(
@@ -179,6 +195,92 @@ export async function POST(
       const messages: ChatMessage[] = [...body.messages];
       let deferred = false;
 
+      // ── approve_tool short-circuit ─────────────────────────────────
+      // When the panel sends approve_tool, we don't go to Claude
+      // first — we look up the stashed pending state, execute the
+      // write-tool (or skip it on cancel), inject the
+      // assistant→tool_use + user→tool_result turns into messages,
+      // and let the normal loop continue Claude from there.
+      if (body.approve_tool) {
+        const pending = takePendingApproval(body.approve_tool.tool_call_id);
+        if (!pending) {
+          send({
+            type: "error",
+            code: "approval_expired",
+            message:
+              "Deze bevestiging is verlopen of al verwerkt. Vraag het opnieuw aan de agent.",
+          });
+        } else {
+          // Replay the conversation up to where confirm_required was
+          // emitted. The stashed messages already include the user
+          // turn that triggered the tool call.
+          messages.length = 0;
+          messages.push(...(pending.messages as ChatMessage[]));
+
+          let toolResultJson: string;
+          if (body.approve_tool.decision === "approve") {
+            const res = await executeAioWriteTool(
+              pending.name,
+              pending.args,
+              {
+                workspaceId: pending.workspace_id,
+                defaultBusinessId: pending.business_id,
+              },
+            );
+            if (res.kind === "ok") {
+              toolResultJson = JSON.stringify(res.data);
+            } else if (res.kind === "error") {
+              toolResultJson = JSON.stringify({ error: res.error });
+            } else {
+              // executeAioWriteTool shouldn't normally defer (the
+              // confirm gate already happened); fall back so the
+              // model sees a clear error rather than nothing.
+              toolResultJson = JSON.stringify({
+                error: "Unexpected defer from write-tool execution.",
+              });
+            }
+          } else {
+            toolResultJson = JSON.stringify({
+              cancelled_by_user: true,
+              reason: "User declined the proposed action.",
+            });
+          }
+
+          // Replay assistant turn (text + tool_use) and user turn
+          // (tool_result) so Claude can continue.
+          const assistantBlocks: unknown[] = [];
+          if (pending.assistant_text) {
+            assistantBlocks.push({
+              type: "text",
+              text: pending.assistant_text,
+            });
+          }
+          assistantBlocks.push({
+            type: "tool_use",
+            id: pending.tool_call_id,
+            name: pending.name,
+            input: pending.args,
+          });
+          messages.push({
+            role: "assistant",
+            content: JSON.stringify(assistantBlocks),
+          });
+          messages.push({
+            role: "user",
+            content: JSON.stringify([
+              {
+                type: "tool_result",
+                tool_use_id: pending.tool_call_id,
+                content: toolResultJson,
+              },
+            ]),
+          });
+          // assistantText accumulates again from the next streamChat
+          // call, so reset it here.
+          assistantText = "";
+        }
+      }
+
       try {
         for (let hop = 0; hop < HOPS_MAX && !deferred; hop++) {
           const toolUses: Array<{
@@ -240,11 +342,26 @@ export async function POST(
                   options: ev.options,
                 });
               } else if (ev.type === "confirm_required") {
+                // Stash the pending state server-side so the panel's
+                // approve_tool round-trip can look it up without
+                // having to carry args / messages back over the wire.
+                putPendingApproval({
+                  tool_call_id: tu.id,
+                  name: ev.pending.name,
+                  args: ev.pending.args,
+                  assistant_text: assistantText,
+                  messages: [...messages],
+                  workspace_id: agent.workspace_id,
+                  business_id: agent.business_id,
+                  agent_id: agent.id,
+                });
                 send({
                   type: "confirm_required",
                   tool_call_id: tu.id,
                   summary: ev.summary,
                   kind: ev.kind,
+                  pending: ev.pending,
+                  assistant_text: assistantText,
                 });
               } else if (ev.type === "open_ui_at") {
                 send({

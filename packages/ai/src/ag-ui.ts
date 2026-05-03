@@ -65,6 +65,16 @@ export type AGUIEvent =
       /** Short danger label like "create_agent" or "set_api_key" so
        *  the panel can colour the confirm button. */
       kind: string;
+      /** Original tool name + args so the panel can echo them back
+       *  when the user clicks Approve. The chat-route's approve_tool
+       *  handler executes against THIS payload (not the panel's
+       *  client-side reconstruction) so the user can't tamper with
+       *  the args between confirm and execute. */
+      pending: { name: string; args: unknown };
+      /** Text the assistant streamed in the same turn — needed so
+       *  the approve request can include the original tool_use turn
+       *  in messages[] for Claude to continue from. */
+      assistant_text?: string;
     };
 
 export type ChatMessage = {

@@ -43,8 +43,16 @@ type UIMessage = {
   };
   /** Inline tool-call chips so the user sees what the agent is doing. */
   toolCalls?: Array<{ id: string; name: string; argsPreview: string }>;
-  /** When the model wants to confirm a destructive action. */
-  confirm?: { kind: string; summary: string };
+  /** When the model wants to confirm a destructive action. The
+   *  approve flow round-trips via the chat-route's approve_tool
+   *  body field — `tool_call_id` is what the server uses to look
+   *  the pending state back up. */
+  confirm?: {
+    kind: string;
+    summary: string;
+    tool_call_id: string;
+    decided?: "approve" | "cancel";
+  };
   /** Optional clickable navigation hint emitted by open_ui_at. */
   navHint?: { path: string; label?: string };
 };
@@ -99,11 +107,21 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
     if (open) listRef.current?.scrollTo({ top: 99999 });
   }, [messages, open]);
 
-  const send = useCallback(async () => {
-    const text = input.trim();
-    if (!text || !agentId || sending) return;
+  const send = useCallback(
+    async (
+      opts?: {
+        /** When set, skip the normal user-text turn and instead
+         *  POST an approve_tool request that resumes a paused
+         *  write-tool flow on the server. */
+        approveTool?: { tool_call_id: string; decision: "approve" | "cancel" };
+      },
+    ) => {
+    const isApproval = !!opts?.approveTool;
+    const text = isApproval ? "" : input.trim();
+    if (!isApproval && (!text || sending)) return;
+    if (!agentId || sending) return;
     setSending(true);
-    setInput("");
+    if (!isApproval) setInput("");
 
     const userId = crypto.randomUUID();
     const assistantId = crypto.randomUUID();
@@ -113,13 +131,35 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
         role: m.role === "assistant" ? "assistant" : "user",
         content: m.text,
       }));
-    history.push({ role: "user", content: text });
+    if (!isApproval) history.push({ role: "user", content: text });
 
-    setMessages((m) => [
-      ...m,
-      { id: userId, role: "user", text },
-      { id: assistantId, role: "assistant", text: "", pending: true },
-    ]);
+    setMessages((m) => {
+      // For approval requests we don't add a user bubble; we just
+      // append a fresh assistant placeholder for the continuation.
+      const next = isApproval
+        ? [...m, { id: assistantId, role: "assistant" as const, text: "", pending: true }]
+        : [
+            ...m,
+            { id: userId, role: "user" as const, text },
+            { id: assistantId, role: "assistant" as const, text: "", pending: true },
+          ];
+      // Mark the original confirm bubble as decided so its buttons
+      // disable + the card swaps to a status pill.
+      if (isApproval) {
+        return next.map((mm) =>
+          mm.confirm?.tool_call_id === opts!.approveTool!.tool_call_id
+            ? {
+                ...mm,
+                confirm: {
+                  ...mm.confirm,
+                  decided: opts!.approveTool!.decision,
+                },
+              }
+            : mm,
+        );
+      }
+      return next;
+    });
 
     try {
       const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
@@ -129,6 +169,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
         body: JSON.stringify({
           messages: history,
           thread_id: activeThreadId,
+          approve_tool: opts?.approveTool,
         }),
       });
       // Capture the server-issued thread id so subsequent turns reuse it.
@@ -246,6 +287,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
                           confirm: {
                             kind: event.kind,
                             summary: event.summary,
+                            tool_call_id: event.tool_call_id,
                           },
                         }
                       : mm,
@@ -284,7 +326,9 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
         void listThreads(agentId).then(setThreads);
       }
     }
-  }, [agentId, input, messages, sending, activeThreadId]);
+    },
+    [agentId, input, messages, sending, activeThreadId],
+  );
 
   if (agents.length === 0) {
     // No agents yet — clicking the bubble routes the user straight to the
@@ -722,17 +766,80 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
                     >
                       {m.confirm.summary}
                     </pre>
-                    <p
-                      style={{
-                        fontSize: 11,
-                        color: "var(--app-fg-3)",
-                        margin: "8px 0 0",
-                      }}
-                    >
-                      Write-tool execution komt in een follow-up commit.
-                      Type voor nu &quot;ja, voer uit&quot; of voer de
-                      actie zelf uit via de UI.
-                    </p>
+                    {m.confirm.decided ? (
+                      <p
+                        style={{
+                          fontSize: 11,
+                          color:
+                            m.confirm.decided === "approve"
+                              ? "var(--tt-green)"
+                              : "var(--app-fg-3)",
+                          fontWeight: 700,
+                          margin: "8px 0 0",
+                        }}
+                      >
+                        {m.confirm.decided === "approve"
+                          ? "✓ Goedgekeurd — uitgevoerd."
+                          : "✕ Geannuleerd."}
+                      </p>
+                    ) : (
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 8,
+                          marginTop: 10,
+                        }}
+                      >
+                        <button
+                          type="button"
+                          disabled={sending}
+                          onClick={() =>
+                            void send({
+                              approveTool: {
+                                tool_call_id: m.confirm!.tool_call_id,
+                                decision: "approve",
+                              },
+                            })
+                          }
+                          style={{
+                            padding: "6px 12px",
+                            fontSize: 12,
+                            fontWeight: 700,
+                            border: "1.5px solid var(--tt-green)",
+                            background: "var(--tt-green)",
+                            color: "#fff",
+                            borderRadius: 8,
+                            cursor: sending ? "wait" : "pointer",
+                          }}
+                        >
+                          ✓ Goedkeuren
+                        </button>
+                        <button
+                          type="button"
+                          disabled={sending}
+                          onClick={() =>
+                            void send({
+                              approveTool: {
+                                tool_call_id: m.confirm!.tool_call_id,
+                                decision: "cancel",
+                              },
+                            })
+                          }
+                          style={{
+                            padding: "6px 12px",
+                            fontSize: 12,
+                            fontWeight: 700,
+                            border: "1.5px solid var(--app-border)",
+                            background: "var(--app-card-2)",
+                            color: "var(--app-fg)",
+                            borderRadius: 8,
+                            cursor: sending ? "wait" : "pointer",
+                          }}
+                        >
+                          ✕ Annuleren
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
 

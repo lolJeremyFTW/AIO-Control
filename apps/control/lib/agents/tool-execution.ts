@@ -182,21 +182,18 @@ export async function executeAioTool(
       }
 
       // ── WRITE — gated behind user confirm in the chat panel ──────
+      // First-pass: defer with confirm_required. The chat-route's
+      // approve_tool path re-enters via executeAioWriteTool below
+      // when the user clicks Approve.
       case "create_business":
       case "create_agent":
       case "update_agent":
       case "create_schedule": {
-        // Don't execute yet — emit confirm_required and stop the
-        // loop. The panel renders an Approve/Cancel chip; on approve
-        // the panel re-invokes with a special "confirmed:true"
-        // tool_result, then the next chat-route iteration calls a
-        // separate executeWriteAioTool path. That second-pass handler
-        // ships in a follow-up commit so we don't half-build it.
         return {
           kind: "defer",
           event: {
             type: "confirm_required",
-            summary: `Voer ${name} uit met argumenten: ${JSON.stringify(a, null, 2)}`,
+            summary: humanizeWriteSummary(name, a),
             kind: name,
             pending: { name, args: a },
           },
@@ -212,4 +209,178 @@ export async function executeAioTool(
       error: err instanceof Error ? err.message : String(err),
     };
   }
+}
+
+/**
+ * Second-pass execution for write tools, called by the chat-route
+ * AFTER the user clicks Approve on a confirm_required card. Bypasses
+ * the defer path and actually runs the underlying server action.
+ */
+export async function executeAioWriteTool(
+  name: string,
+  args: unknown,
+  ctx: AioToolContext,
+): Promise<AioToolResult> {
+  const a = (args ?? {}) as Record<string, unknown>;
+
+  // Lazy-import the server actions so the AI package can stay free of
+  // app-layer deps. Same module-graph trick the dispatcher uses.
+  try {
+    switch (name) {
+      case "create_business": {
+        const { createBusiness } = await import(
+          "../../app/actions/businesses"
+        );
+        const slugRow = await getServiceRoleSupabase()
+          .from("workspaces")
+          .select("slug")
+          .eq("id", ctx.workspaceId)
+          .maybeSingle();
+        const slug = slugRow.data?.slug as string | undefined;
+        if (!slug)
+          return { kind: "error", error: "Workspace slug niet gevonden." };
+        const res = await createBusiness({
+          workspace_slug: slug,
+          workspace_id: ctx.workspaceId,
+          name: String(a.name ?? "").trim(),
+          sub: typeof a.sub === "string" ? a.sub : undefined,
+          variant: typeof a.variant === "string" ? a.variant : undefined,
+          icon: typeof a.icon === "string" ? a.icon : undefined,
+          description:
+            typeof a.description === "string" ? a.description : undefined,
+          mission: typeof a.mission === "string" ? a.mission : undefined,
+        });
+        if (!res.ok) return { kind: "error", error: res.error };
+        return { kind: "ok", data: res.data };
+      }
+
+      case "create_agent": {
+        const { createAgent } = await import("../../app/actions/agents");
+        const slugRow = await getServiceRoleSupabase()
+          .from("workspaces")
+          .select("slug")
+          .eq("id", ctx.workspaceId)
+          .maybeSingle();
+        const slug = slugRow.data?.slug as string | undefined;
+        if (!slug)
+          return { kind: "error", error: "Workspace slug niet gevonden." };
+        const res = await createAgent({
+          workspace_slug: slug,
+          workspace_id: ctx.workspaceId,
+          business_id:
+            (a.business_id as string | null | undefined) ??
+            ctx.defaultBusinessId,
+          name: String(a.name ?? "").trim(),
+          provider: a.provider as Parameters<typeof createAgent>[0]["provider"],
+          kind: a.kind as Parameters<typeof createAgent>[0]["kind"],
+          model: typeof a.model === "string" ? a.model : undefined,
+          systemPrompt:
+            typeof a.systemPrompt === "string" ? a.systemPrompt : undefined,
+          key_source: a.key_source as
+            | "subscription"
+            | "api_key"
+            | "env"
+            | undefined,
+        });
+        if (!res.ok) return { kind: "error", error: res.error };
+        return { kind: "ok", data: res.data };
+      }
+
+      case "update_agent": {
+        const { updateAgent } = await import("../../app/actions/agents");
+        const slugRow = await getServiceRoleSupabase()
+          .from("workspaces")
+          .select("slug")
+          .eq("id", ctx.workspaceId)
+          .maybeSingle();
+        const slug = slugRow.data?.slug as string | undefined;
+        if (!slug)
+          return { kind: "error", error: "Workspace slug niet gevonden." };
+        const patch = (a.patch ?? {}) as Record<string, unknown>;
+        const res = await updateAgent({
+          workspace_slug: slug,
+          business_id: ctx.defaultBusinessId,
+          id: String(a.agent_id ?? ""),
+          patch: {
+            name: typeof patch.name === "string" ? patch.name : undefined,
+            model: typeof patch.model === "string" ? patch.model : undefined,
+            systemPrompt:
+              typeof patch.systemPrompt === "string"
+                ? patch.systemPrompt
+                : undefined,
+            kind: patch.kind as Parameters<
+              typeof updateAgent
+            >[0]["patch"]["kind"],
+          },
+        });
+        if (!res.ok) return { kind: "error", error: res.error };
+        return { kind: "ok", data: res.data };
+      }
+
+      case "create_schedule": {
+        const { createCronSchedule, createWebhookSchedule, createManualSchedule } =
+          await import("../../app/actions/schedules");
+        const slugRow = await getServiceRoleSupabase()
+          .from("workspaces")
+          .select("slug")
+          .eq("id", ctx.workspaceId)
+          .maybeSingle();
+        const slug = slugRow.data?.slug as string | undefined;
+        if (!slug)
+          return { kind: "error", error: "Workspace slug niet gevonden." };
+        const kind = (a.kind as string) ?? "manual";
+        if (kind === "cron") {
+          const res = await createCronSchedule({
+            workspace_slug: slug,
+            workspace_id: ctx.workspaceId,
+            agent_id: String(a.agent_id ?? ""),
+            business_id: ctx.defaultBusinessId,
+            cron_expr: String(a.cron_expr ?? ""),
+            prompt: String(a.prompt ?? ""),
+            title: typeof a.title === "string" ? a.title : null,
+          });
+          if (!res.ok) return { kind: "error", error: res.error };
+          return { kind: "ok", data: res.data };
+        }
+        if (kind === "webhook") {
+          const res = await createWebhookSchedule({
+            workspace_slug: slug,
+            workspace_id: ctx.workspaceId,
+            agent_id: String(a.agent_id ?? ""),
+            business_id: ctx.defaultBusinessId,
+          });
+          if (!res.ok) return { kind: "error", error: res.error };
+          return { kind: "ok", data: res.data };
+        }
+        const res = await createManualSchedule({
+          workspace_slug: slug,
+          workspace_id: ctx.workspaceId,
+          agent_id: String(a.agent_id ?? ""),
+          business_id: ctx.defaultBusinessId,
+        });
+        if (!res.ok) return { kind: "error", error: res.error };
+        return { kind: "ok", data: res.data };
+      }
+
+      default:
+        return { kind: "error", error: `Onbekend write-tool: ${name}` };
+    }
+  } catch (err) {
+    return {
+      kind: "error",
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+/** Pretty-print the args block for the confirm card. JSON works but
+ *  is dense; pull the most relevant fields out for human readers. */
+function humanizeWriteSummary(name: string, a: Record<string, unknown>): string {
+  const lines: string[] = [`Tool: ${name}`];
+  for (const [k, v] of Object.entries(a)) {
+    if (typeof v === "string" && v.length < 120) lines.push(`  ${k}: ${v}`);
+    else if (v == null) lines.push(`  ${k}: —`);
+    else lines.push(`  ${k}: ${JSON.stringify(v)}`);
+  }
+  return lines.join("\n");
 }
