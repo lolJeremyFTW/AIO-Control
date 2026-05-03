@@ -229,25 +229,34 @@ export function TelegramPanel({
         {tt("tg.intro")}
       </p>
 
-      <fieldset
+      {/* Switched from <fieldset>/<legend> to a plain card-+-heading
+          because the browser's default legend layout punches it
+          half-out of the border in dark mode, leaving the title
+          sitting on top of the line instead of inside the card. */}
+      <div
+        role="group"
+        aria-labelledby="tg-topology-heading"
         style={{
           border: "1.5px solid var(--app-border-2)",
           borderRadius: 10,
-          padding: "10px 14px 12px",
+          padding: "12px 14px",
           margin: 0,
           background: "var(--app-card-2)",
         }}
       >
-        <legend
+        <div
+          id="tg-topology-heading"
           style={{
             fontSize: 11,
             fontWeight: 700,
-            color: "var(--app-fg-2)",
-            padding: "0 6px",
+            letterSpacing: 0.4,
+            textTransform: "uppercase",
+            color: "var(--app-fg-3)",
+            marginBottom: 8,
           }}
         >
           {tt("tg.topology.title")}
-        </legend>
+        </div>
         {(
           [
             {
@@ -294,7 +303,7 @@ export function TelegramPanel({
             </div>
           </label>
         ))}
-      </fieldset>
+      </div>
 
       <details
         style={{

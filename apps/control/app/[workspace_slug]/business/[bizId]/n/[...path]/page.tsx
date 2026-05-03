@@ -75,17 +75,20 @@ export default async function NavNodePage({ params }: Props) {
             style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
           >
             {i > 0 && <span>›</span>}
+            {/* b.icon holds a registry key (e.g. "chat") — never
+                an emoji glyph. Rendering it as text leaks "chat
+                Outreach" into the breadcrumb. We only render the
+                name; the SVG icon already lives next to the same
+                node in the rail. */}
             {i < breadcrumb.length - 1 ? (
               <Link
                 href={b.href}
                 style={{ color: "var(--app-fg-2)", fontWeight: 600 }}
               >
-                {b.icon ? `${b.icon} ` : ""}
                 {b.name}
               </Link>
             ) : (
               <span style={{ color: "var(--app-fg)", fontWeight: 700 }}>
-                {b.icon ? `${b.icon} ` : ""}
                 {b.name}
               </span>
             )}

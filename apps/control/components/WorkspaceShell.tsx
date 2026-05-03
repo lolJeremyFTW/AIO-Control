@@ -666,9 +666,12 @@ export function WorkspaceShell({
         },
         ...moveTargets.slice(0, 6).map(
           (target): ContextMenuItem => ({
-            label: t("ctx.moveUnder", {
-              name: `${target.icon ?? ""}${target.name}`,
-            }),
+            // target.icon is a registry key (e.g. "chat"), not a glyph
+            // — don't prefix it as text or the menu reads "chat
+            // Outreach" instead of just "Outreach". The icon already
+            // shows next to the menu item as an SVG via the `icon`
+            // prop below.
+            label: t("ctx.moveUnder", { name: target.name }),
             icon: <MoveIcon />,
             onClick: async () => {
               const res = await moveNavNode({

@@ -563,16 +563,18 @@ function DayView({
   intlLocale: string;
   tr: Tr;
 }) {
-  // Hour rail with chips per fire.
+  // Hour rail with chips per fire — compacted from the original 24×58px
+  // layout (~1.4k px tall) to ~22px per row. Empty rows render as a
+  // single dim line so the grid stays scannable without towering.
   const hours = Array.from({ length: 24 }, (_, i) => i);
   return (
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "60px 1fr",
+        gridTemplateColumns: "44px 1fr",
         gap: 0,
         border: "1px solid var(--app-border-2)",
-        borderRadius: 12,
+        borderRadius: 10,
         overflow: "hidden",
       }}
     >
@@ -606,34 +608,37 @@ function DayHourRow({
   intlLocale: string;
   tr: Tr;
 }) {
+  const isEmpty = fires.length === 0;
   return (
     <>
       <div
         style={{
-          padding: "10px 8px",
-          fontSize: 11,
+          padding: "3px 6px",
+          fontSize: 10,
           color: "var(--app-fg-3)",
           fontFamily: "ui-monospace, Menlo, monospace",
           borderTop: "1px solid var(--app-border-2)",
           borderRight: "1px solid var(--app-border-2)",
           background: "var(--app-card-2)",
           textAlign: "right",
+          opacity: isEmpty ? 0.55 : 1,
         }}
       >
-        {hour.toString().padStart(2, "0")}:00
+        {hour.toString().padStart(2, "0")}
       </div>
       <div
         style={{
-          padding: "8px 10px",
+          padding: isEmpty ? "3px 8px" : "4px 8px",
           borderTop: "1px solid var(--app-border-2)",
-          minHeight: 40,
+          minHeight: isEmpty ? 18 : 22,
           display: "flex",
           flexWrap: "wrap",
-          gap: 6,
+          gap: 4,
+          alignItems: "center",
         }}
       >
         {fires.map((f, i) => (
-          <FireChip key={i} fire={f} intlLocale={intlLocale} tr={tr} />
+          <FireChip key={i} fire={f} compact intlLocale={intlLocale} tr={tr} />
         ))}
       </div>
     </>
