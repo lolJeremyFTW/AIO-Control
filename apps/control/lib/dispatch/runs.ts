@@ -23,6 +23,7 @@ import {
 } from "../agents/business-context";
 import { checkSpendLimit } from "./spend-limit";
 import { getServiceRoleSupabase } from "../supabase/service";
+import { resolveApiKey } from "../api-keys/resolve";
 
 type DispatchResult = {
   ok: boolean;
@@ -152,12 +153,21 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
   // single row read, no-op when the workspace hasn't configured one.
   const ollamaEndpoint = await resolveOllamaEndpoint(run.workspace_id);
 
+  // Resolve the provider API key the same way the chat route does —
+  // walk navnode → business → workspace → env fallback. Without this,
+  // keys stored in Settings → API Keys are ignored for cron/webhook runs.
+  const apiKey = await resolveApiKey(agent.provider, {
+    workspaceId: run.workspace_id,
+    businessId: run.business_id,
+  });
+
   try {
     for await (const event of streamChat({
       provider: agent.provider as ProviderId,
       config,
       messages,
       runId,
+      apiKey,
       tenant: {
         workspaceId: run.workspace_id,
         businessId: run.business_id,
