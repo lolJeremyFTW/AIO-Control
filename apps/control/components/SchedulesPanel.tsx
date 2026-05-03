@@ -404,28 +404,51 @@ export function SchedulesPanel({
                     >
                       {s.kind}
                     </span>
-                    <label
+                    <button
+                      type="button"
+                      disabled={pending}
+                      onClick={() => toggle(s.id, !s.enabled)}
                       style={{
                         display: "inline-flex",
                         alignItems: "center",
                         gap: 6,
+                        background: "none",
+                        border: "none",
+                        padding: 0,
+                        cursor: pending ? "wait" : "pointer",
                         fontSize: 10.5,
                         fontWeight: 700,
-                        cursor: "pointer",
-                        color: s.enabled
-                          ? "var(--tt-green)"
-                          : "var(--app-fg-3)",
+                        color: s.enabled ? "var(--tt-green)" : "var(--app-fg-3)",
                       }}
                     >
-                      <input
-                        type="checkbox"
-                        checked={s.enabled}
-                        disabled={pending}
-                        onChange={() => toggle(s.id, !s.enabled)}
-                        style={{ accentColor: "var(--tt-green)" }}
-                      />
+                      <span
+                        style={{
+                          position: "relative",
+                          display: "inline-block",
+                          width: 34,
+                          height: 19,
+                          borderRadius: 10,
+                          background: s.enabled ? "var(--tt-green)" : "var(--app-border)",
+                          transition: "background 0.2s",
+                          flexShrink: 0,
+                        }}
+                      >
+                        <span
+                          style={{
+                            position: "absolute",
+                            top: 2,
+                            left: s.enabled ? 17 : 2,
+                            width: 15,
+                            height: 15,
+                            borderRadius: "50%",
+                            background: "#fff",
+                            transition: "left 0.2s",
+                            boxShadow: "0 1px 3px rgba(0,0,0,0.18)",
+                          }}
+                        />
+                      </span>
                       {s.enabled ? "AAN" : "GEPAUZEERD"}
-                    </label>
+                    </button>
                   </div>
                   <div
                     style={{
@@ -474,6 +497,14 @@ export function SchedulesPanel({
                     </span>
                   )}
                   <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      disabled={pending}
+                      onClick={() => triggerNow(s.agent_id)}
+                      style={btnSecondary(pending)}
+                    >
+                      ▶ Run now
+                    </button>
                     <button
                       type="button"
                       disabled={pending}
