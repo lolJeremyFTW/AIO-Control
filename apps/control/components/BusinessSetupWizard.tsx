@@ -1,28 +1,44 @@
-// Multi-step setup wizard for new businesses. Replaces the single
-// NewBusinessDialog with a guided flow:
+// Multi-step setup wizard for new businesses.
 //
-//   Step 1  Identity      name + sub + appearance (variant + icon + logo)
+//   Step 1  Identity      name + appearance (variant + icon + logo)
 //   Step 2  Intent        description + mission + first targets
 //   Step 3  Topics        seed initial nav-nodes ("Content / Marketing /…")
-//   Step 4  Isolation     standalone vs inherits-from-workspace
-//   Step 5  Confirm       summary + create
+//   Step 4  Main agent    name + provider + model + key source
+//   Step 5  Telegram      pick existing target or skip
+//   Step 6  Isolation     standalone vs inherits-from-workspace
+//   Step 7  Confirm       summary + create
 //
-// All work happens in step 5 — earlier steps are local state. After
-// create we router.refresh and close.
+// All work happens in step 7 — earlier steps are local state. After
+// create we router.refresh and route to the new business.
 
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { createBusiness } from "../app/actions/businesses";
+import { createAgent, type AgentInput } from "../app/actions/agents";
 import { createNavNode } from "../app/actions/nav-nodes";
+import { listWorkspaceTelegramTargets } from "../app/actions/telegram";
 import { AppearancePicker, type AppearanceValue } from "./AppearancePicker";
 import { TargetsEditor, type Target } from "./TargetsEditor";
+
+type TelegramTargetOption = {
+  id: string;
+  name: string;
+  chat_id?: string | null;
+};
 
 type Props = {
   workspaceSlug: string;
   workspaceId: string;
+  /** Existing telegram targets the user can re-use for this new
+   *  business (passed in from the WorkspaceShell — fetched server-
+   *  side once per layout render). */
+  telegramTargets?: TelegramTargetOption[];
+  /** Workspace defaults so the main-agent step can pre-fill. */
+  defaultProvider?: AgentInput["provider"];
+  defaultModel?: string | null;
   onClose: () => void;
 };
 
@@ -30,12 +46,14 @@ const STEPS = [
   { id: 1, label: "Identiteit" },
   { id: 2, label: "Doel" },
   { id: 3, label: "Topics" },
-  { id: 4, label: "Isolatie" },
-  { id: 5, label: "Bevestig" },
-];
+  { id: 4, label: "Main agent" },
+  { id: 5, label: "Telegram" },
+  { id: 6, label: "Isolatie" },
+  { id: 7, label: "Bevestig" },
+] as const;
 
-// Topic preset bundles. Plain names — the user picks an SVG icon for
-// each topic later in the topic-edit dialog. NEVER use emojis here.
+const TOTAL_STEPS = STEPS.length;
+
 const TOPIC_PRESETS = [
   ["Content", "Marketing", "Sales", "Analytics"],
   ["Video", "Thumbnails", "Scripts", "Publishing"],
@@ -43,9 +61,24 @@ const TOPIC_PRESETS = [
   ["Agents", "Schedules", "Integrations"],
 ];
 
+type Provider = AgentInput["provider"];
+const PROVIDERS: { id: Provider; label: string; defaultModel?: string }[] = [
+  { id: "claude", label: "Claude (API key)", defaultModel: "claude-sonnet-4-6" },
+  { id: "claude_cli", label: "Claude CLI (subscription)", defaultModel: "sonnet" },
+  { id: "openrouter", label: "OpenRouter", defaultModel: "openrouter/auto" },
+  { id: "minimax", label: "MiniMax (Coder Plan)", defaultModel: "MiniMax-M2.7-Highspeed" },
+  { id: "ollama", label: "Ollama (lokaal/VPS)", defaultModel: "llama3" },
+  { id: "openclaw", label: "OpenClaw (CLI)" },
+  { id: "hermes", label: "Hermes (CLI)" },
+  { id: "codex", label: "Codex / OpenAI" },
+];
+
 export function BusinessSetupWizard({
   workspaceSlug,
   workspaceId,
+  telegramTargets = [],
+  defaultProvider,
+  defaultModel,
   onClose,
 }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -60,7 +93,6 @@ export function BusinessSetupWizard({
 
   // ── Step 1: Identity ──
   const [name, setName] = useState("");
-  const [sub, setSub] = useState("");
   const [appearance, setAppearance] = useState<AppearanceValue>({
     variant: "brand",
     icon: "",
@@ -83,10 +115,66 @@ export function BusinessSetupWizard({
     setTopicInput("");
   };
 
-  // ── Step 4: Isolation ──
+  // ── Step 4: Main agent ──
+  const [createMainAgent, setCreateMainAgent] = useState(true);
+  const [agentName, setAgentName] = useState("");
+  const [agentProvider, setAgentProvider] = useState<Provider>(
+    defaultProvider ?? "claude",
+  );
+  const [agentModel, setAgentModel] = useState(defaultModel ?? "");
+  const [agentKeySource, setAgentKeySource] = useState<
+    "subscription" | "api_key" | "env"
+  >("env");
+  const providerSpec = PROVIDERS.find((p) => p.id === agentProvider)!;
+  // When the user types a name in step 1, suggest "<Name> Main Agent"
+  // as the default agent name on first visit to step 4.
+  useEffect(() => {
+    if (!agentName && name) setAgentName(`${name} Main Agent`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [name]);
+
+  // ── Step 5: Telegram ──
+  // "skip" = no telegram target; "existing" = pick one of the
+  // workspace's existing targets; "auto" = let the auto-create-topic
+  // flow (already wired via createBusiness) handle it.
+  // We lazy-load the workspace's targets when the wizard mounts so
+  // the parent doesn't have to thread them through.
+  const [tgTargets, setTgTargets] = useState<TelegramTargetOption[]>(
+    telegramTargets,
+  );
+  useEffect(() => {
+    if (telegramTargets.length > 0) return;
+    let cancelled = false;
+    void listWorkspaceTelegramTargets({ workspace_id: workspaceId }).then(
+      (res) => {
+        if (cancelled || !res.ok) return;
+        setTgTargets(res.data);
+        if (res.data.length > 0) {
+          setTgChoice("existing");
+          setTgExistingId(res.data[0]!.id);
+        }
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceId]);
+  const [tgChoice, setTgChoice] = useState<"skip" | "existing" | "auto">(
+    telegramTargets.length > 0 ? "existing" : "auto",
+  );
+  const [tgExistingId, setTgExistingId] = useState<string>(
+    telegramTargets[0]?.id ?? "",
+  );
+
+  // ── Step 6: Isolation ──
   const [isolated, setIsolated] = useState(false);
 
-  const canNext = step === 1 ? name.trim().length > 0 : true;
+  const canNext = (() => {
+    if (step === 1) return name.trim().length > 0;
+    if (step === 4 && createMainAgent) return agentName.trim().length > 0;
+    return true;
+  })();
 
   const submit = async () => {
     setError(null);
@@ -96,7 +184,6 @@ export function BusinessSetupWizard({
         workspace_slug: workspaceSlug,
         workspace_id: workspaceId,
         name,
-        sub: sub || undefined,
         variant: appearance.variant,
         icon: appearance.icon || undefined,
         color_hex: appearance.colorHex,
@@ -109,18 +196,19 @@ export function BusinessSetupWizard({
         setError(res.error);
         return;
       }
-      // Topics — best-effort, sequentially. We no longer parse out a
-      // leading emoji from the input; the appearance picker on the
-      // topic-edit dialog is the right place to choose an SVG icon.
+      const newBizId = res.data.id;
+
+      // Topics — best-effort, sequentially.
       for (const t of topicNames) {
         await createNavNode({
           workspace_slug: workspaceSlug,
           workspace_id: workspaceId,
-          business_id: res.data.id,
+          business_id: newBizId,
           parent_id: null,
           name: t,
         });
       }
+
       // Targets aren't on createBusiness — push them via updateBusiness
       // immediately if any were entered.
       if (targets.length > 0) {
@@ -129,12 +217,42 @@ export function BusinessSetupWizard({
         );
         await updateBusiness({
           workspace_slug: workspaceSlug,
-          id: res.data.id,
+          id: newBizId,
           patch: { targets },
         });
       }
+
+      // Main agent — only when the user kept it enabled.
+      if (createMainAgent && agentName.trim()) {
+        await createAgent({
+          workspace_slug: workspaceSlug,
+          workspace_id: workspaceId,
+          business_id: newBizId,
+          name: agentName.trim(),
+          kind: "chat",
+          provider: agentProvider,
+          model: agentModel || providerSpec.defaultModel,
+          key_source: agentKeySource,
+        });
+      }
+
+      // Telegram — link the picked target to this business when the
+      // user chose "existing". "auto" relies on the workspace's
+      // auto_create_topics_for_businesses flag (set on the existing
+      // workspace target, see migration 027). "skip" does nothing.
+      if (tgChoice === "existing" && tgExistingId) {
+        const { updateBusiness } = await import(
+          "../app/actions/businesses"
+        );
+        await updateBusiness({
+          workspace_slug: workspaceSlug,
+          id: newBizId,
+          patch: { telegram_target_id: tgExistingId },
+        });
+      }
+
       onClose();
-      router.push(`/${workspaceSlug}/business/${res.data.id}`);
+      router.push(`/${workspaceSlug}/business/${newBizId}`);
     } finally {
       setCreating(false);
     }
@@ -167,7 +285,7 @@ export function BusinessSetupWizard({
               letterSpacing: "-0.3px",
             }}
           >
-            Nieuwe business · stap {step} / 5
+            Nieuwe business · stap {step} / {TOTAL_STEPS}
           </h2>
           <button
             type="button"
@@ -205,8 +323,8 @@ export function BusinessSetupWizard({
         {step === 1 && (
           <>
             <p style={hint}>
-              Geef je business een naam en uiterlijk. Sub is optioneel —
-              handig voor varianten zoals &quot;NL Tech kanaal&quot;.
+              Geef je business een naam en uiterlijk. De kleur + icoon
+              komen terug in de rail en in iedere notificatie.
             </p>
             <Field label="Naam">
               <input
@@ -216,14 +334,6 @@ export function BusinessSetupWizard({
                 placeholder="Faceless YouTube"
                 style={inp}
                 required
-              />
-            </Field>
-            <Field label="Sub (optioneel)">
-              <input
-                value={sub}
-                onChange={(e) => setSub(e.target.value)}
-                placeholder="NL Tech kanaal"
-                style={inp}
               />
             </Field>
             <AppearancePicker
@@ -348,99 +458,203 @@ export function BusinessSetupWizard({
           </>
         )}
 
-        {/* ── Step 4 ──────────────────────────────────────── */}
+        {/* ── Step 4 — Main agent ─────────────────────────── */}
         {step === 4 && (
           <>
             <p style={hint}>
-              <strong>Isolatie</strong> bepaalt of deze business gebruikt
-              wat in <em>Settings → API Keys / Telegram / Email</em> staat
-              op workspace-niveau, of dat 'ie volledig op zichzelf draait.
+              Iedere business begint met een <strong>main agent</strong> —
+              de chat-agent waar je standaard mee praat. Je kunt later meer
+              agents toevoegen op de business pagina.
             </p>
             <label
               style={{
                 display: "flex",
-                gap: 12,
-                alignItems: "flex-start",
-                padding: 14,
-                border: `1.5px solid ${isolated ? "var(--app-border)" : "var(--tt-green)"}`,
-                borderRadius: 10,
-                background: isolated ? "transparent" : "rgba(57,178,85,0.06)",
-                cursor: "pointer",
-                marginBottom: 8,
+                gap: 10,
+                alignItems: "center",
+                marginBottom: 14,
+                fontSize: 13,
+                fontWeight: 600,
               }}
             >
               <input
-                type="radio"
-                name="isolated"
-                checked={!isolated}
-                onChange={() => setIsolated(false)}
-                style={{ marginTop: 4, accentColor: "var(--tt-green)" }}
+                type="checkbox"
+                checked={createMainAgent}
+                onChange={(e) => setCreateMainAgent(e.target.checked)}
+                style={{ accentColor: "var(--tt-green)" }}
               />
-              <div>
-                <div style={{ fontWeight: 700 }}>
-                  Inherits — gebruik workspace defaults
-                </div>
-                <div style={{ fontSize: 11.5, color: "var(--app-fg-3)", marginTop: 2 }}>
-                  Default. Als deze business geen eigen API key / Telegram
-                  channel / SMTP creds heeft, valt 'ie terug op wat in
-                  Settings staat.
-                </div>
-              </div>
+              Maak meteen een main agent aan
             </label>
-            <label
-              style={{
-                display: "flex",
-                gap: 12,
-                alignItems: "flex-start",
-                padding: 14,
-                border: `1.5px solid ${isolated ? "var(--rose)" : "var(--app-border)"}`,
-                borderRadius: 10,
-                background: isolated ? "rgba(230,82,107,0.06)" : "transparent",
-                cursor: "pointer",
-              }}
-            >
-              <input
-                type="radio"
-                name="isolated"
-                checked={isolated}
-                onChange={() => setIsolated(true)}
-                style={{ marginTop: 4, accentColor: "var(--rose)" }}
-              />
-              <div>
-                <div style={{ fontWeight: 700, color: "var(--rose)" }}>
-                  🔒 Isolated — niets uit globals
+            {createMainAgent && (
+              <>
+                <Field label="Agent naam">
+                  <input
+                    value={agentName}
+                    onChange={(e) => setAgentName(e.target.value)}
+                    placeholder={`${name || "Business"} Main Agent`}
+                    style={inp}
+                  />
+                </Field>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: 12,
+                  }}
+                >
+                  <Field label="Provider">
+                    <select
+                      value={agentProvider}
+                      onChange={(e) => {
+                        const next = e.target.value as Provider;
+                        setAgentProvider(next);
+                        setAgentModel("");
+                      }}
+                      style={inp}
+                    >
+                      {PROVIDERS.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.label}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field
+                    label={`Model${providerSpec.defaultModel ? ` (default: ${providerSpec.defaultModel})` : ""}`}
+                  >
+                    <input
+                      value={agentModel}
+                      onChange={(e) => setAgentModel(e.target.value)}
+                      placeholder={providerSpec.defaultModel ?? "model id"}
+                      style={inp}
+                    />
+                  </Field>
                 </div>
-                <div style={{ fontSize: 11.5, color: "var(--app-fg-3)", marginTop: 2 }}>
-                  Deze business gebruikt UITSLUITEND eigen credentials. Ze
-                  krijgen GEEN workspace API keys, GEEN workspace Telegram
-                  bot, GEEN workspace SMTP. Per ongeluk een client-account
-                  een mail vanaf jouw TrompTech adres laten sturen?
-                  Onmogelijk.
-                </div>
-              </div>
-            </label>
+
+                {(agentProvider === "claude" ||
+                  agentProvider === "claude_cli") && (
+                  <Field label="Credentials">
+                    <select
+                      value={agentKeySource}
+                      onChange={(e) =>
+                        setAgentKeySource(
+                          e.target.value as
+                            | "subscription"
+                            | "api_key"
+                            | "env",
+                        )
+                      }
+                      style={inp}
+                    >
+                      <option value="subscription">
+                        Claude Pro/Max/Team subscription (Routines)
+                      </option>
+                      <option value="api_key">
+                        Anthropic API key (lokale cron)
+                      </option>
+                      <option value="env">
+                        Env var fallback
+                      </option>
+                    </select>
+                  </Field>
+                )}
+              </>
+            )}
           </>
         )}
 
-        {/* ── Step 5 — Confirm ────────────────────────────── */}
+        {/* ── Step 5 — Telegram ───────────────────────────── */}
         {step === 5 && (
+          <>
+            <p style={hint}>
+              Notificaties van runs / queue items kunnen naar Telegram. Je
+              kunt een bestaand workspace-target hergebruiken, of de
+              auto-create-topic flow gebruiken (vereist een workspace-bot
+              met topics aan).
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {tgTargets.length > 0 && (
+                <RadioCard
+                  active={tgChoice === "existing"}
+                  onClick={() => setTgChoice("existing")}
+                  title="Hergebruik bestaand target"
+                  desc="Pick een bestaande workspace-bot + chat. Gebruikt diezelfde plek voor notificaties."
+                >
+                  {tgChoice === "existing" && (
+                    <select
+                      value={tgExistingId}
+                      onChange={(e) => setTgExistingId(e.target.value)}
+                      style={{ ...inp, marginTop: 8 }}
+                    >
+                      {tgTargets.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                          {t.chat_id ? ` · chat ${t.chat_id}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </RadioCard>
+              )}
+              <RadioCard
+                active={tgChoice === "auto"}
+                onClick={() => setTgChoice("auto")}
+                title="Automatisch nieuw topic in workspace-bot"
+                desc="Vereist dat je workspace-bot 'auto_create_topics_for_businesses' aan heeft. Bij create maakt 'ie een nieuw forum-topic met de business-naam."
+              />
+              <RadioCard
+                active={tgChoice === "skip"}
+                onClick={() => setTgChoice("skip")}
+                title="Sla over"
+                desc="Geen Telegram-notificaties voor deze business. Kan later in Settings worden toegevoegd."
+              />
+            </div>
+          </>
+        )}
+
+        {/* ── Step 6 — Isolation ──────────────────────────── */}
+        {step === 6 && (
+          <>
+            <p style={hint}>
+              <strong>Isolatie</strong> bepaalt of deze business gebruikt
+              wat in <em>Settings → API Keys / Telegram / Email</em> staat
+              op workspace-niveau, of dat &apos;ie volledig op zichzelf
+              draait.
+            </p>
+            <RadioCard
+              active={!isolated}
+              onClick={() => setIsolated(false)}
+              title="Inherits — gebruik workspace defaults"
+              desc="Default. Als deze business geen eigen API key / Telegram channel / SMTP creds heeft, valt 'ie terug op wat in Settings staat."
+            />
+            <div style={{ height: 8 }} />
+            <RadioCard
+              active={isolated}
+              onClick={() => setIsolated(true)}
+              title="Isolated — niets uit globals"
+              desc="Deze business gebruikt UITSLUITEND eigen credentials. Geen workspace API keys, geen workspace Telegram bot, geen workspace SMTP. Veilig voor client-werk."
+              danger
+            />
+          </>
+        )}
+
+        {/* ── Step 7 — Confirm ────────────────────────────── */}
+        {step === 7 && (
           <>
             <p style={hint}>
               Klaar voor lancering. Check de samenvatting en klik
               <strong> Aanmaken</strong>.
             </p>
             <Summary label="Naam" value={name} />
-            {sub && <Summary label="Sub" value={sub} />}
             {description && (
               <Summary label="Beschrijving" value={description} multi />
             )}
-            {mission && (
-              <Summary label="Mission" value={mission} multi />
-            )}
+            {mission && <Summary label="Mission" value={mission} multi />}
             {targets.length > 0 && (
               <Summary
                 label="Targets"
-                value={targets.map((t) => `• ${t.name} → ${t.target}`).join("\n")}
+                value={targets
+                  .map((t) => `• ${t.name} → ${t.target}`)
+                  .join("\n")}
                 multi
               />
             )}
@@ -451,10 +665,31 @@ export function BusinessSetupWizard({
               />
             )}
             <Summary
+              label="Main agent"
+              value={
+                createMainAgent
+                  ? `${agentName} (${agentProvider}${agentModel ? ` · ${agentModel}` : ""})`
+                  : "— sla over —"
+              }
+            />
+            <Summary
+              label="Telegram"
+              value={
+                tgChoice === "existing"
+                  ? `Hergebruik: ${
+                      tgTargets.find((t) => t.id === tgExistingId)?.name ??
+                      "—"
+                    }`
+                  : tgChoice === "auto"
+                    ? "Auto-create topic in workspace-bot"
+                    : "Sla over"
+              }
+            />
+            <Summary
               label="Isolatie"
               value={
                 isolated
-                  ? "🔒 Isolated — eigen credentials, geen fallback"
+                  ? "Isolated — eigen credentials, geen fallback"
                   : "Inherits van workspace"
               }
             />
@@ -494,10 +729,10 @@ export function BusinessSetupWizard({
           >
             ← Terug
           </button>
-          {step < 5 ? (
+          {step < TOTAL_STEPS ? (
             <button
               type="button"
-              onClick={() => setStep((s) => Math.min(5, s + 1))}
+              onClick={() => setStep((s) => Math.min(TOTAL_STEPS, s + 1))}
               disabled={!canNext}
               style={btnPrimary(false)}
             >
@@ -587,6 +822,84 @@ function Field({
       <span style={{ display: "block", marginBottom: 4 }}>{label}</span>
       {children}
     </label>
+  );
+}
+
+function RadioCard({
+  active,
+  onClick,
+  title,
+  desc,
+  danger,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  title: string;
+  desc: string;
+  danger?: boolean;
+  children?: React.ReactNode;
+}) {
+  const accent = danger ? "var(--rose)" : "var(--tt-green)";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        display: "block",
+        width: "100%",
+        textAlign: "left",
+        padding: 14,
+        border: `1.5px solid ${active ? accent : "var(--app-border)"}`,
+        borderRadius: 10,
+        background: active
+          ? danger
+            ? "rgba(230,82,107,0.06)"
+            : "rgba(57,178,85,0.06)"
+          : "transparent",
+        color: "var(--app-fg)",
+        cursor: "pointer",
+        fontFamily: "var(--type)",
+      }}
+    >
+      <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+        <span
+          aria-hidden
+          style={{
+            width: 16,
+            height: 16,
+            marginTop: 2,
+            borderRadius: "50%",
+            border: `2px solid ${active ? accent : "var(--app-border)"}`,
+            background: active ? accent : "transparent",
+            flexShrink: 0,
+          }}
+        />
+        <span>
+          <span
+            style={{
+              fontWeight: 700,
+              fontSize: 13,
+              color: danger && active ? accent : "var(--app-fg)",
+            }}
+          >
+            {title}
+          </span>
+          <span
+            style={{
+              display: "block",
+              fontSize: 11.5,
+              color: "var(--app-fg-3)",
+              marginTop: 2,
+              lineHeight: 1.45,
+            }}
+          >
+            {desc}
+          </span>
+        </span>
+      </div>
+      {children}
+    </button>
   );
 }
 

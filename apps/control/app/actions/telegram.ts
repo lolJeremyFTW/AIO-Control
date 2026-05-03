@@ -86,6 +86,35 @@ export async function setTelegramAutoCreateTopics(input: {
   return { ok: true, data: null };
 }
 
+/**
+ * Read helper used by the BusinessSetupWizard's Telegram step. Returns
+ * the workspace-scope targets that the user can re-use for a new
+ * business. RLS gates this to workspace members.
+ */
+export async function listWorkspaceTelegramTargets(input: {
+  workspace_id: string;
+}): Promise<
+  Result<Array<{ id: string; name: string; chat_id: string | null }>>
+> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("telegram_targets")
+    .select("id, name, chat_id")
+    .eq("workspace_id", input.workspace_id)
+    .eq("scope", "workspace")
+    .eq("enabled", true)
+    .order("created_at", { ascending: true });
+  if (error) return { ok: false, error: error.message };
+  return {
+    ok: true,
+    data: (data ?? []) as Array<{
+      id: string;
+      name: string;
+      chat_id: string | null;
+    }>,
+  };
+}
+
 export async function deleteTelegramTarget(input: {
   workspace_slug: string;
   id: string;

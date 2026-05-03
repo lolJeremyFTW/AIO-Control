@@ -107,6 +107,11 @@ export async function updateBusiness(input: {
     mission?: string | null;
     targets?: unknown[];
     isolated?: boolean;
+    /** Workspace-level wizard step #5 lets the user reuse an existing
+     *  telegram_targets row instead of letting the auto-create flow
+     *  spawn one. The column is the same (telegram_topic_target_id);
+     *  the difference is who owns the row. */
+    telegram_target_id?: string | null;
   };
 }): Promise<ActionResult<null>> {
   const patch: Record<string, unknown> = {};
@@ -140,6 +145,8 @@ export async function updateBusiness(input: {
     patch.mission = input.patch.mission?.toString() || null;
   if (input.patch.targets !== undefined) patch.targets = input.patch.targets;
   if (input.patch.isolated !== undefined) patch.isolated = input.patch.isolated;
+  if (input.patch.telegram_target_id !== undefined)
+    patch.telegram_topic_target_id = input.patch.telegram_target_id;
 
   if (Object.keys(patch).length === 0) return { ok: true, data: null };
 
