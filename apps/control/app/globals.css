@@ -137,6 +137,24 @@ body[data-theme="light"] .rail-divider {
   );
 }
 
+/* Drilled-rail nesting — when the user has navigated TrompTech →
+   Instagram → Instagram post, each level is indented inline via
+   padding-left and we draw a single left guideline so the visual
+   hierarchy reads cleanly. The guideline lives on the wrapper so it
+   spans every nested row. */
+.rail-drill-stack {
+  position: relative;
+  margin-left: 6px;
+  padding-left: 4px;
+  border-left: 2px solid var(--app-border-2);
+}
+body[data-theme="light"] .rail-drill-stack {
+  border-left-color: var(--ink-faint);
+}
+.rail-drill-row {
+  position: relative;
+}
+
 .nav-row {
   display: grid;
   grid-template-columns: 48px 1fr auto;

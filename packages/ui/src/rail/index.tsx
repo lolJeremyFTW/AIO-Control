@@ -263,11 +263,30 @@ export function Rail({
             onClick={onSelectProfile}
           />
         ) : (
-          <BackRow
-            label={L.allBusinesses}
-            expanded={expanded}
-            onClick={onBack}
-          />
+          /* Drilled in: top slot shows the BUSINESS as the primary
+             label. Click → back to all businesses. Hover tooltip
+             confirms the back-action. The drillChain (Instagram →
+             Instagram post → …) lives below the divider in rail-mid. */
+          <div title={`← ${L.allBusinesses}`}>
+            <NavRow
+              item={drilledInto!}
+              expanded={expanded}
+              /* Highlighted as the active context; clicking always
+                 routes to the workspace root (see WorkspaceShell's
+                 onBack handler — it pops to /dashboard when at
+                 business root). */
+              selected={drillChain.length === 0}
+              onClick={onBack}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onContextMenuRail?.(e, {
+                  kind: "drilled-business",
+                  id: drilledInto!.id,
+                });
+              }}
+            />
+          </div>
         )}
       </div>
       <div className="rail-divider" />
@@ -300,105 +319,106 @@ export function Rail({
             ))
           )
         ) : (
-          <>
-            {/* Drilled-in: show the business header chip, then the
-                breadcrumb chain (topic → subtopic → …), then the
-                children of the deepest node. Each chain item is
-                clickable so the user can hop back to any level. */}
-            <div style={{ marginBottom: 6 }}>
-              <NavRow
-                item={drilledInto!}
-                expanded={expanded}
-                selected={drillChain.length === 0}
-                onClick={drillChain.length > 0 ? onBack : undefined}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onContextMenuRail?.(e, {
-                    kind: "drilled-business",
-                    id: drilledInto!.id,
-                  });
-                }}
-              />
-            </div>
-            {drillChain.length > 0 && (
-              <div
-                style={{
-                  marginBottom: 6,
-                  marginLeft: 6,
-                  borderLeft: "2px solid var(--app-border-2)",
-                  paddingLeft: 4,
-                }}
-              >
+          /* Drilled-in: render the breadcrumb chain (topic →
+             subtopic → …) as visually-nested rows. Each level is
+             indented with a left guideline; the topics list shown
+             below sits one level deeper than the deepest chain item
+             — so e.g. "Instagram post" appears clearly indented as
+             a child of "Instagram". The business header chip itself
+             lives in rail-top above the divider. */
+          (() => {
+            const INDENT = 12;
+            const baseDepth = drillChain.length; // topics live below the last chain entry
+            return (
+              <div className={baseDepth > 0 ? "rail-drill-stack" : undefined}>
                 {drillChain.map((node, i) => {
                   const isDeepest = i === drillChain.length - 1;
                   return (
-                    <NavRow
+                    <div
                       key={node.id}
-                      item={node}
-                      expanded={expanded}
-                      selected={isDeepest}
-                      onClick={node.onClick}
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        onContextMenuRail?.(e, {
-                          kind: "topic",
-                          id: node.id,
-                        });
-                      }}
-                    />
+                      style={{ paddingLeft: i * INDENT }}
+                      className="rail-drill-row"
+                    >
+                      <NavRow
+                        item={node}
+                        expanded={expanded}
+                        selected={isDeepest}
+                        onClick={node.onClick}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          onContextMenuRail?.(e, {
+                            kind: "topic",
+                            id: node.id,
+                          });
+                        }}
+                      />
+                    </div>
                   );
                 })}
+                {topics.length === 0
+                  ? expanded && (
+                      <div
+                        className="rail-drill-row"
+                        style={{
+                          paddingLeft: baseDepth * INDENT,
+                        }}
+                      >
+                        <div
+                          style={{
+                            padding: "12px 8px",
+                            fontSize: 11,
+                            lineHeight: 1.4,
+                            color: "var(--app-fg-3)",
+                          }}
+                        >
+                          {L.emptyTopics}
+                        </div>
+                      </div>
+                    )
+                  : topics.map((t) => (
+                      <div
+                        key={t.id}
+                        className="rail-drill-row"
+                        style={{ paddingLeft: baseDepth * INDENT }}
+                      >
+                        <TopicRow
+                          topic={t}
+                          expanded={expanded}
+                          selected={selectedTopicId === t.id}
+                          onClick={() => onSelectTopic?.(t)}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onContextMenuRail?.(e, {
+                              kind: "topic",
+                              id: t.id,
+                            });
+                          }}
+                          onDropOn={
+                            onReorderTopic
+                              ? (sourceId) => onReorderTopic(sourceId, t.id)
+                              : undefined
+                          }
+                        />
+                      </div>
+                    ))}
+                {onCreateTopic && (
+                  <div
+                    className="rail-drill-row"
+                    style={{ paddingLeft: baseDepth * INDENT }}
+                  >
+                    <ActionRow
+                      icon={<PlusIcon size={14} />}
+                      label={L.newTopic}
+                      expanded={expanded}
+                      onClick={onCreateTopic}
+                    />
+                  </div>
+                )}
               </div>
-            )}
-            {topics.length === 0 ? (
-              expanded && (
-                <div
-                  style={{
-                    padding: "12px 8px",
-                    fontSize: 11,
-                    lineHeight: 1.4,
-                    color: "var(--app-fg-3)",
-                    textAlign: "center",
-                  }}
-                >
-                  {L.emptyTopics}
-                </div>
-              )
-            ) : (
-              topics.map((t) => (
-                <TopicRow
-                  key={t.id}
-                  topic={t}
-                  expanded={expanded}
-                  selected={selectedTopicId === t.id}
-                  onClick={() => onSelectTopic?.(t)}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    onContextMenuRail?.(e, { kind: "topic", id: t.id });
-                  }}
-                  onDropOn={
-                    onReorderTopic
-                      ? (sourceId) => onReorderTopic(sourceId, t.id)
-                      : undefined
-                  }
-                />
-              ))
-            )}
-            {/* Visible "+ Topic" button so the user doesn't have to
-                discover the right-click menu. Stays at the bottom of
-                the topic list when drilled in. */}
-            {onCreateTopic && (
-              <ActionRow
-                icon={<PlusIcon size={14} />}
-                label={L.newTopic}
-                expanded={expanded}
-                onClick={onCreateTopic}
-              />
-            )}
-          </>
+            );
+          })()
         )}
       </div>
       <div className="rail-divider" />
