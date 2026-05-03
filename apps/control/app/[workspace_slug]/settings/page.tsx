@@ -87,7 +87,7 @@ export default async function SettingsPage({ params }: Props) {
     supabase
       .from("telegram_targets")
       .select(
-        "id, scope, scope_id, name, chat_id, topic_id, allowlist, denylist, send_run_done, send_run_fail, send_queue_review, enabled",
+        "id, scope, scope_id, name, chat_id, topic_id, allowlist, denylist, send_run_done, send_run_fail, send_queue_review, enabled, auto_create_topics_for_businesses",
       )
       .eq("workspace_id", workspace.id)
       .order("created_at", { ascending: true }),

@@ -60,6 +60,32 @@ export async function createTelegramTarget(
   return { ok: true, data: { id: data.id } };
 }
 
+export async function setTelegramAutoCreateTopics(input: {
+  workspace_slug: string;
+  workspace_id: string;
+  target_id: string;
+  enabled: boolean;
+}): Promise<Result<null>> {
+  const supabase = await createSupabaseServerClient();
+  // Defensive: only ONE workspace-scope target may have the flag on.
+  // If we're turning ON, clear it from any siblings first so the
+  // resolver always finds at most one parent group.
+  if (input.enabled) {
+    await supabase
+      .from("telegram_targets")
+      .update({ auto_create_topics_for_businesses: false })
+      .eq("workspace_id", input.workspace_id)
+      .eq("scope", "workspace");
+  }
+  const { error } = await supabase
+    .from("telegram_targets")
+    .update({ auto_create_topics_for_businesses: input.enabled })
+    .eq("id", input.target_id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath(`/${input.workspace_slug}/settings`);
+  return { ok: true, data: null };
+}
+
 export async function deleteTelegramTarget(input: {
   workspace_slug: string;
   id: string;

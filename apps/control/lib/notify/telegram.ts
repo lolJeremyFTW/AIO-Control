@@ -92,6 +92,132 @@ export async function sendTelegram(opts: {
   }
 }
 
+// ─── Forum topic management ─────────────────────────────────────────
+// Used by the auto-topic flow: when a business is created we mint a
+// new forum topic in the workspace's "parent" group; when the
+// business is renamed we update the topic title; when it's archived
+// we close the topic. Each helper returns OK/error so the caller can
+// log without blocking the underlying business operation.
+
+export async function telegramCreateForumTopic(opts: {
+  workspace_id: string;
+  chat_id: string;
+  name: string;
+  /** Optional emoji icon — Telegram accepts a unicode codepoint in
+   *  the icon_color OR a custom_emoji_id. We pass plain icon_color
+   *  picked from the safe presets (see Telegram docs). */
+  icon_color?: number;
+}): Promise<
+  | { ok: true; message_thread_id: number }
+  | { ok: false; error: string }
+> {
+  const token = await resolveApiKey("telegram", {
+    workspaceId: opts.workspace_id,
+  });
+  if (!token) return { ok: false, error: "geen telegram bot token" };
+  try {
+    const res = await fetch(
+      `https://api.telegram.org/bot${token}/createForumTopic`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          chat_id: opts.chat_id,
+          name: opts.name.slice(0, 128), // Telegram limit
+          icon_color: opts.icon_color ?? 7322096, // default sky-blue
+        }),
+      },
+    );
+    const data = (await res.json()) as {
+      ok?: boolean;
+      result?: { message_thread_id?: number };
+      description?: string;
+    };
+    if (!data.ok || !data.result?.message_thread_id) {
+      return {
+        ok: false,
+        error:
+          data.description ??
+          "createForumTopic faalde — is de bot admin met can_manage_topics?",
+      };
+    }
+    return { ok: true, message_thread_id: data.result.message_thread_id };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "network error",
+    };
+  }
+}
+
+export async function telegramEditForumTopic(opts: {
+  workspace_id: string;
+  chat_id: string;
+  message_thread_id: number;
+  name: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const token = await resolveApiKey("telegram", {
+    workspaceId: opts.workspace_id,
+  });
+  if (!token) return { ok: false, error: "geen telegram bot token" };
+  try {
+    const res = await fetch(
+      `https://api.telegram.org/bot${token}/editForumTopic`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          chat_id: opts.chat_id,
+          message_thread_id: opts.message_thread_id,
+          name: opts.name.slice(0, 128),
+        }),
+      },
+    );
+    const data = (await res.json()) as { ok?: boolean; description?: string };
+    if (!data.ok)
+      return { ok: false, error: data.description ?? "editForumTopic faalde" };
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "network error",
+    };
+  }
+}
+
+export async function telegramCloseForumTopic(opts: {
+  workspace_id: string;
+  chat_id: string;
+  message_thread_id: number;
+}): Promise<{ ok: boolean; error?: string }> {
+  const token = await resolveApiKey("telegram", {
+    workspaceId: opts.workspace_id,
+  });
+  if (!token) return { ok: false, error: "geen telegram bot token" };
+  try {
+    const res = await fetch(
+      `https://api.telegram.org/bot${token}/closeForumTopic`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          chat_id: opts.chat_id,
+          message_thread_id: opts.message_thread_id,
+        }),
+      },
+    );
+    const data = (await res.json()) as { ok?: boolean; description?: string };
+    if (!data.ok)
+      return { ok: false, error: data.description ?? "closeForumTopic faalde" };
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "network error",
+    };
+  }
+}
+
 /** getMe — used by the "Test bot" button in settings. Returns the bot
  *  username so the user knows their token is valid. */
 export async function telegramGetMe(opts: {

@@ -12,6 +12,7 @@ import { useState, useTransition } from "react";
 import {
   createTelegramTarget,
   deleteTelegramTarget,
+  setTelegramAutoCreateTopics,
   testTelegramTarget,
 } from "../app/actions/telegram";
 import type { BusinessRow } from "../lib/queries/businesses";
@@ -30,6 +31,7 @@ export type TelegramTargetRow = {
   send_run_fail: boolean;
   send_queue_review: boolean;
   enabled: boolean;
+  auto_create_topics_for_businesses?: boolean;
 };
 
 type Props = {
@@ -142,6 +144,35 @@ export function TelegramPanel({
       }
     });
 
+  const toggleAutoCreate = (id: string, enabled: boolean) =>
+    startTransition(async () => {
+      setError(null);
+      setInfo(null);
+      const res = await setTelegramAutoCreateTopics({
+        workspace_slug: workspaceSlug,
+        workspace_id: workspaceId,
+        target_id: id,
+        enabled,
+      });
+      if (!res.ok) setError(res.error);
+      else {
+        setTargets((prev) =>
+          prev.map((t) => ({
+            ...t,
+            // Only one workspace-scope target may have it on at once
+            // — clear siblings to mirror the server-side behaviour.
+            auto_create_topics_for_businesses:
+              t.id === id ? enabled : enabled ? false : t.auto_create_topics_for_businesses,
+          })),
+        );
+        setInfo(
+          enabled
+            ? "Auto-topic creation aan. Nieuwe businesses krijgen vanaf nu automatisch een topic in deze groep."
+            : "Auto-topic creation uit.",
+        );
+      }
+    });
+
   const labelFor = (t: TelegramTargetRow) => {
     if (t.scope === "workspace") return "Workspace";
     if (t.scope === "business") {
@@ -166,6 +197,66 @@ export function TelegramPanel({
         &quot;Telegram&quot;. Hier definieer je waar reports heen gaan: chat_id +
         optioneel topic_id voor forum-style groepen.
       </p>
+
+      <details
+        style={{
+          background: "var(--app-card-2)",
+          border: "1px solid var(--app-border-2)",
+          borderRadius: 10,
+          padding: "10px 12px",
+          fontSize: 12,
+        }}
+      >
+        <summary
+          style={{
+            cursor: "pointer",
+            fontWeight: 700,
+            color: "var(--app-fg-2)",
+          }}
+        >
+          🪄 Auto-create topic per business — setup
+        </summary>
+        <ol
+          style={{
+            paddingLeft: 18,
+            margin: "8px 0 0",
+            color: "var(--app-fg-3)",
+            lineHeight: 1.55,
+          }}
+        >
+          <li>
+            Maak een Telegram <strong>supergroup</strong> en zet onder{" "}
+            <em>Manage → Topics</em> de optie <strong>Topics</strong> AAN.
+          </li>
+          <li>
+            Voeg je bot toe als <strong>admin</strong> met de permissie{" "}
+            <strong>Manage Topics</strong> (en Send Messages, Edit, Delete).
+          </li>
+          <li>
+            Pak de chat_id (start met <code>-100…</code>) via{" "}
+            <a
+              href="https://t.me/RawDataBot"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: "var(--tt-green)" }}
+            >
+              @RawDataBot
+            </a>
+            , voeg hier een nieuwe channel toe scope ={" "}
+            <strong>Workspace default</strong>, laat topic_id leeg.
+          </li>
+          <li>
+            Vink hieronder <strong>&quot;Auto-create forum topic per nieuwe
+            business&quot;</strong> aan op die row.
+          </li>
+          <li>
+            Klaar — vanaf nu krijgt élke nieuwe business automatisch een
+            eigen forum topic met dezelfde naam (+ emoji als je die set).
+            Bestaande businesses krijgen NIET automatisch een topic; maak ze
+            handmatig of dupliceer ze.
+          </li>
+        </ol>
+      </details>
 
       {targets.length === 0 ? (
         <p
@@ -202,7 +293,34 @@ export function TelegramPanel({
               }}
             >
               <div>
-                <div style={{ fontSize: 13, fontWeight: 700 }}>{t.name}</div>
+                <div
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 700,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  {t.name}
+                  {t.auto_create_topics_for_businesses && (
+                    <span
+                      style={{
+                        fontSize: 9.5,
+                        fontWeight: 700,
+                        letterSpacing: "0.14em",
+                        padding: "2px 6px",
+                        borderRadius: 999,
+                        border: "1px solid var(--tt-green)",
+                        color: "var(--tt-green)",
+                        background: "rgba(57,178,85,0.10)",
+                      }}
+                    >
+                      AUTO-TOPICS
+                    </span>
+                  )}
+                </div>
                 <div
                   style={{
                     fontSize: 11,
@@ -213,6 +331,31 @@ export function TelegramPanel({
                   chat {t.chat_id}
                   {t.topic_id != null && ` · topic ${t.topic_id}`}
                 </div>
+                {t.scope === "workspace" && (
+                  <label
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      fontSize: 10.5,
+                      color: "var(--app-fg-2)",
+                      marginTop: 6,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={
+                        t.auto_create_topics_for_businesses ?? false
+                      }
+                      onChange={(e) =>
+                        toggleAutoCreate(t.id, e.target.checked)
+                      }
+                      style={{ accentColor: "var(--tt-green)" }}
+                    />
+                    Auto-create forum topic per nieuwe business
+                  </label>
+                )}
               </div>
               <div style={{ fontSize: 12, color: "var(--app-fg-2)" }}>
                 {labelFor(t)}
