@@ -34,18 +34,26 @@ import { createSupabaseServerClient } from "../../../lib/supabase/server";
 
 type Props = { params: Promise<{ workspace_slug: string }> };
 
-const SECTIONS = [
-  { id: "general", label: "General" },
-  { id: "agent-defaults", label: "Agent defaults" },
-  { id: "weather", label: "Weather" },
-  { id: "api-keys", label: "API Keys" },
-  { id: "spend-limits", label: "Spend limits" },
-  { id: "telegram", label: "Telegram" },
-  { id: "email", label: "Email" },
-  { id: "custom-integrations", label: "Custom integrations" },
-  { id: "notifications", label: "Notifications" },
-  { id: "team", label: "Team & roles" },
-  { id: "danger", label: "Danger zone" },
+type SettingsNavEntry =
+  | { kind: "anchor"; id: string; label: string }
+  | { kind: "page"; href: string; label: string };
+
+const SECTIONS: SettingsNavEntry[] = [
+  { kind: "anchor", id: "general", label: "General" },
+  { kind: "anchor", id: "agent-defaults", label: "Agent defaults" },
+  { kind: "anchor", id: "weather", label: "Weather" },
+  { kind: "anchor", id: "api-keys", label: "API Keys" },
+  { kind: "anchor", id: "spend-limits", label: "Spend limits" },
+  { kind: "anchor", id: "telegram", label: "Telegram" },
+  { kind: "anchor", id: "email", label: "Email" },
+  { kind: "anchor", id: "custom-integrations", label: "Custom integrations" },
+  { kind: "anchor", id: "notifications", label: "Notifications" },
+  { kind: "anchor", id: "team", label: "Team & roles" },
+  // Sub-pages — clicking these routes the user away from the
+  // single-page scrollable settings view to a dedicated page.
+  { kind: "page", href: "talk", label: "Talk to AI" },
+  { kind: "page", href: "subscription", label: "Abonnement" },
+  { kind: "anchor", id: "danger", label: "Danger zone" },
 ];
 
 export default async function SettingsPage({ params }: Props) {
@@ -123,8 +131,8 @@ export default async function SettingsPage({ params }: Props) {
         <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
           {SECTIONS.map((s) => (
             <a
-              key={s.id}
-              href={`#${s.id}`}
+              key={s.kind === "anchor" ? `a:${s.id}` : `p:${s.href}`}
+              href={s.kind === "anchor" ? `#${s.id}` : s.href}
               style={{
                 padding: "10px 12px",
                 borderRadius: 10,
