@@ -8,6 +8,7 @@ import {
   getCurrentUser,
   getWorkspaceBySlug,
 } from "../../../lib/auth/workspace";
+import { getDict } from "../../../lib/i18n/server";
 import { ActivityFeed } from "../../../components/ActivityFeed";
 import { createSupabaseServerClient } from "../../../lib/supabase/server";
 
@@ -49,12 +50,13 @@ export default async function ActivityPage({ params, searchParams }: Props) {
   const actorName = Object.fromEntries(
     (profiles ?? []).map((p) => [p.id, p.display_name]),
   );
+  const { t } = await getDict();
 
   return (
     <div className="content">
       <div className="page-title-row">
-        <h1>Activity</h1>
-        <span className="sub">Audit log van alle wijzigingen</span>
+        <h1>{t("page.activity")}</h1>
+        <span className="sub">{t("page.activity.sub")}</span>
       </div>
       <ActivityFeed
         workspaceSlug={workspace_slug}

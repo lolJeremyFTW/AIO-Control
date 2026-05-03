@@ -7,6 +7,7 @@ import {
   getCurrentUser,
   getWorkspaceBySlug,
 } from "../../../lib/auth/workspace";
+import { getDict } from "../../../lib/i18n/server";
 import { listBusinesses } from "../../../lib/queries/businesses";
 import { listMarketplace } from "../../../lib/queries/marketplace";
 import { MarketplaceGrid } from "../../../components/MarketplaceGrid";
@@ -25,12 +26,13 @@ export default async function MarketplacePage({ params }: Props) {
     listBusinesses(workspace.id),
     listMarketplace(),
   ]);
+  const { t } = await getDict();
 
   return (
     <div className="content">
       <div className="page-title-row">
-        <h1>Marketplace</h1>
-        <span className="sub">Curated AI agent presets</span>
+        <h1>{t("page.marketplace")}</h1>
+        <span className="sub">{t("page.marketplace.sub")}</span>
       </div>
       <MarketplaceGrid
         workspaceSlug={workspace.slug}

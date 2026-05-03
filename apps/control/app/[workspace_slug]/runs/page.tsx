@@ -8,6 +8,7 @@ import {
   getCurrentUser,
   getWorkspaceBySlug,
 } from "../../../lib/auth/workspace";
+import { getDict } from "../../../lib/i18n/server";
 import { listAgentsForWorkspace } from "../../../lib/queries/agents";
 import { listBusinesses } from "../../../lib/queries/businesses";
 import { RunsPage } from "../../../components/RunsPage";
@@ -34,12 +35,13 @@ export default async function WorkspaceRunsPage({ params, searchParams }: Props)
   const businessName = Object.fromEntries(
     businesses.map((b) => [b.id, b.name]),
   );
+  const { t } = await getDict();
 
   return (
     <div className="content">
       <div className="page-title-row">
-        <h1>Runs</h1>
-        <span className="sub">Alle runs over alle businesses</span>
+        <h1>{t("page.runs")}</h1>
+        <span className="sub">{t("page.runs.sub")}</span>
       </div>
       <RunsPage
         workspaceSlug={workspace_slug}

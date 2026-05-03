@@ -87,6 +87,18 @@ const nl: Dict = {
   "page.workspaceAgents.countSingular": "agent",
   "page.workspaceAgents.countPlural": "agents",
 
+  "page.queue": "Wachtrij",
+  "page.queue.sub": "HITL items over alle businesses — open + opgelost",
+  "page.runs": "Runs",
+  "page.runs.sub": "Alle runs over alle businesses",
+  "page.activity": "Activiteit",
+  "page.activity.sub": "Audit log van alle wijzigingen",
+  "page.cost": "Kosten & spend",
+  "page.cost.sub":
+    "Spend per business · per agent · per provider — laatste 30 dagen",
+  "page.marketplace": "Marketplace",
+  "page.marketplace.sub": "Curated AI agent presets",
+
   "rail.empty": "Geen businesses nog",
   "rail.emptyTopics": "Nog geen subtopics — maak er een aan ↓",
 
@@ -386,6 +398,18 @@ const en: Partial<Dict> = {
   "page.workspaceAgents.countSingular": "agent",
   "page.workspaceAgents.countPlural": "agents",
 
+  "page.queue": "Queue",
+  "page.queue.sub": "HITL items across every business — open + resolved",
+  "page.runs": "Runs",
+  "page.runs.sub": "Every run across every business",
+  "page.activity": "Activity",
+  "page.activity.sub": "Audit log of every change",
+  "page.cost": "Cost & spend",
+  "page.cost.sub":
+    "Spend per business · per agent · per provider — last 30 days",
+  "page.marketplace": "Marketplace",
+  "page.marketplace.sub": "Curated AI agent presets",
+
   "settings.sub": "Account · workspace · automations",
   "settings.section.agentDefaults": "Agent defaults",
   "settings.section.agentDefaults.desc":
@@ -599,6 +623,18 @@ const de: Partial<Dict> = {
   "page.workspaceAgents.businessGroupSub": "Business-Agents",
   "page.workspaceAgents.countSingular": "Agent",
   "page.workspaceAgents.countPlural": "Agents",
+
+  "page.queue": "Warteschlange",
+  "page.queue.sub": "HITL-Items über alle Businesses — offen + gelöst",
+  "page.runs": "Runs",
+  "page.runs.sub": "Alle Runs über alle Businesses",
+  "page.activity": "Aktivität",
+  "page.activity.sub": "Audit-Log aller Änderungen",
+  "page.cost": "Kosten & Verbrauch",
+  "page.cost.sub":
+    "Verbrauch pro Business · pro Agent · pro Provider — letzte 30 Tage",
+  "page.marketplace": "Marketplace",
+  "page.marketplace.sub": "Kuratierte AI-Agent-Presets",
 
   "settings.sub": "Konto · Workspace · Automatisierungen",
   "settings.section.agentDefaults": "Agent-Defaults",

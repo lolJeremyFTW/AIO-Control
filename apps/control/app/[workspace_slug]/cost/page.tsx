@@ -8,6 +8,7 @@ import {
   getCurrentUser,
   getWorkspaceBySlug,
 } from "../../../lib/auth/workspace";
+import { getDict } from "../../../lib/i18n/server";
 import { listAgentsForWorkspace } from "../../../lib/queries/agents";
 import { listBusinesses } from "../../../lib/queries/businesses";
 import {
@@ -58,13 +59,13 @@ export default async function WorkspaceCostPage({ params }: Props) {
       .order("day", { ascending: true }),
   ]);
 
+  const { t } = await getDict();
+
   return (
     <div className="content">
       <div className="page-title-row">
-        <h1>Cost & spend</h1>
-        <span className="sub">
-          Spend per business · per agent · per provider — laatste 30 dagen
-        </span>
+        <h1>{t("page.cost")}</h1>
+        <span className="sub">{t("page.cost.sub")}</span>
       </div>
       <CostDashboard
         businesses={businesses}

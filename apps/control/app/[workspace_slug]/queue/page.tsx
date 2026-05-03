@@ -8,6 +8,7 @@ import {
   getCurrentUser,
   getWorkspaceBySlug,
 } from "../../../lib/auth/workspace";
+import { getDict } from "../../../lib/i18n/server";
 import { listBusinesses } from "../../../lib/queries/businesses";
 import { QueuePage } from "../../../components/QueuePage";
 
@@ -30,14 +31,13 @@ export default async function WorkspaceQueuePage({ params, searchParams }: Props
   if (!workspace) notFound();
 
   const businesses = await listBusinesses(workspace.id);
+  const { t } = await getDict();
 
   return (
     <div className="content">
       <div className="page-title-row">
-        <h1>Wachtrij</h1>
-        <span className="sub">
-          HITL items over alle businesses — open + opgelost
-        </span>
+        <h1>{t("page.queue")}</h1>
+        <span className="sub">{t("page.queue.sub")}</span>
       </div>
       <QueuePage
         workspaceSlug={workspace_slug}
