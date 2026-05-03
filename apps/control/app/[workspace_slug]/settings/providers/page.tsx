@@ -29,7 +29,7 @@ export default async function ProvidersSettingsPage({ params }: Props) {
   const { data: ws } = await supabase
     .from("workspaces")
     .select(
-      "ollama_host, ollama_port, ollama_models_cached, ollama_last_scan_at, hermes_endpoint, hermes_last_test_at, openclaw_endpoint, openclaw_last_test_at",
+      "ollama_host, ollama_port, ollama_models_cached, ollama_last_scan_at, hermes_endpoint, hermes_last_test_at, hermes_agent_name, hermes_agent_initialized_at, openclaw_endpoint, openclaw_last_test_at, openclaw_agent_name, openclaw_agent_initialized_at",
     )
     .eq("id", workspace.id)
     .maybeSingle();
@@ -59,10 +59,18 @@ export default async function ProvidersSettingsPage({ params }: Props) {
               (ws?.hermes_endpoint as string | null) ?? null,
             hermes_last_test_at:
               (ws?.hermes_last_test_at as string | null) ?? null,
+            hermes_agent_name:
+              (ws?.hermes_agent_name as string | null) ?? null,
+            hermes_agent_initialized_at:
+              (ws?.hermes_agent_initialized_at as string | null) ?? null,
             openclaw_endpoint:
               (ws?.openclaw_endpoint as string | null) ?? null,
             openclaw_last_test_at:
               (ws?.openclaw_last_test_at as string | null) ?? null,
+            openclaw_agent_name:
+              (ws?.openclaw_agent_name as string | null) ?? null,
+            openclaw_agent_initialized_at:
+              (ws?.openclaw_agent_initialized_at as string | null) ?? null,
           }}
         />
       </SettingsSectionCard>

@@ -53,16 +53,33 @@ export async function* streamOpenclaw(
   const sessionId = opts.sessionId
     ? `aio-thread-${opts.sessionId.slice(0, 12)}`
     : `aio-run-${(opts.runId ?? randomUUID()).slice(0, 8)}`;
-  const args = [
-    "agent",
-    "--local",
-    "--json",
-    ...extra,
-    "--session-id",
-    sessionId,
-    "-m",
-    prompt,
-  ];
+  // When the workspace has registered a persistent agent
+  // (`openclaw agents add aio-<slug>`), invoke that named agent so
+  // OpenClaw routes through its registry + per-agent session storage
+  // under ~/.openclaw/agents/<id>/sessions. Otherwise fall back to
+  // the ad-hoc `--local` mode.
+  const agentName = opts.tenant?.openclawAgentName?.trim() || null;
+  const args = agentName
+    ? [
+        "agent",
+        agentName,
+        "--json",
+        ...extra,
+        "--session-id",
+        sessionId,
+        "-m",
+        prompt,
+      ]
+    : [
+        "agent",
+        "--local",
+        "--json",
+        ...extra,
+        "--session-id",
+        sessionId,
+        "-m",
+        prompt,
+      ];
 
   const child = spawn(binary, args, { stdio: ["pipe", "pipe", "pipe"] });
   child.stdin.end();

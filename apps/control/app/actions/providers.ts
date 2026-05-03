@@ -14,10 +14,92 @@ import { spawn } from "node:child_process";
 import { revalidatePath } from "next/cache";
 
 import { createSupabaseServerClient } from "../../lib/supabase/server";
+import {
+  RUNTIME_AGENT_NAME_RE,
+  type RuntimeAgentProvider,
+} from "../../lib/providers/runtime";
 
 type BinaryProbeResult =
   | { ok: true; firstLine: string; latencyMs: number }
   | { ok: false; error: string };
+
+type BinaryRunResult =
+  | { ok: true; stdout: string; stderr: string; latencyMs: number }
+  | { ok: false; error: string };
+
+/** Spawn `binary args…`, capture full stdout + stderr, return on exit
+ *  with a 10s hard timeout. Used by the runtime-agent verify flow to
+ *  inspect `hermes profile list` / `openclaw agents list` output. */
+async function runBinary(
+  binary: string,
+  args: string[],
+): Promise<BinaryRunResult> {
+  const t0 = Date.now();
+  return new Promise<BinaryRunResult>((resolve) => {
+    let resolved = false;
+    let stdout = "";
+    let stderr = "";
+
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(binary, args, { stdio: ["ignore", "pipe", "pipe"] });
+    } catch (err) {
+      resolve({
+        ok: false,
+        error: `Kan binary "${binary}" niet starten: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      });
+      return;
+    }
+
+    const finish = (out: BinaryRunResult) => {
+      if (resolved) return;
+      resolved = true;
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        // ignore
+      }
+      resolve(out);
+    };
+
+    const timer = setTimeout(() => {
+      finish({
+        ok: false,
+        error: `Timeout (${binary} ${args.join(" ")} reageerde niet binnen 10s).`,
+      });
+    }, 10_000);
+
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
+    child.stdout?.on("data", (c: string) => (stdout += c));
+    child.stderr?.on("data", (c: string) => (stderr += c));
+    child.once("error", (err) => {
+      clearTimeout(timer);
+      finish({
+        ok: false,
+        error:
+          `Spawn van "${binary}" faalde: ${err.message}. ` +
+          `Check of de binary in PATH staat of zet de absolute pad-env-var.`,
+      });
+    });
+    child.once("close", (code) => {
+      clearTimeout(timer);
+      const latencyMs = Date.now() - t0;
+      if (typeof code === "number" && code === 0) {
+        finish({ ok: true, stdout, stderr, latencyMs });
+      } else {
+        finish({
+          ok: false,
+          error: `${binary} ${args.join(" ")} eindigde met exit ${code}. ${
+            stderr.trim().slice(0, 300) || stdout.trim().slice(0, 300) || ""
+          }`.trim(),
+        });
+      }
+    });
+  });
+}
 
 /** Spawn a binary with --version, capture the exit code + the first
  *  line of stdout/stderr. 5s hard timeout — anything slower means the
@@ -306,3 +388,120 @@ export async function testOpenClawEndpoint(input: {
     data: { mode: "cli", detail: r.firstLine, latencyMs: r.latencyMs },
   };
 }
+
+// ─── Persistent runtime agents ───────────────────────────────────────
+// Onboarding for the "named profile" / "registered agent" model both
+// runtimes support. Flow:
+//   1. user picks a name (default: aio-<slug>)  → setRuntimeAgentName
+//   2. user runs the install command on their host (we render a
+//      copy-button with the exact CLI invocation)
+//   3. user clicks Verify → we shell out to `<binary> profile list`
+//      (Hermes) or `openclaw agents list`, grep for the name, stamp
+//      *_agent_initialized_at on success
+// After step 3, the provider router prefers the named-profile spawn
+// path so subsequent chats reuse the runtime's persistent state.
+
+export async function setRuntimeAgentName(input: {
+  workspace_id: string;
+  workspace_slug: string;
+  provider: RuntimeAgentProvider;
+  name: string;
+}): Promise<Result<null>> {
+  const auth = await requireAdmin(input.workspace_id);
+  if (!auth.ok) return auth;
+  const trimmed = input.name.trim().toLowerCase();
+  if (!trimmed) return { ok: false, error: "Naam mag niet leeg zijn." };
+  if (!RUNTIME_AGENT_NAME_RE.test(trimmed)) {
+    return {
+      ok: false,
+      error:
+        "Agent-naam: kleine letters, cijfers, _ of -, 2-41 chars, beginnen met letter (bv. aio-admin).",
+    };
+  }
+  const supabase = await createSupabaseServerClient();
+  const col =
+    input.provider === "hermes" ? "hermes_agent_name" : "openclaw_agent_name";
+  // Setting a new name resets the initialized stamp — the user has
+  // to re-verify against whatever is actually present in the runtime.
+  const initCol =
+    input.provider === "hermes"
+      ? "hermes_agent_initialized_at"
+      : "openclaw_agent_initialized_at";
+  const { error } = await supabase
+    .from("workspaces")
+    .update({ [col]: trimmed, [initCol]: null })
+    .eq("id", input.workspace_id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath(`/${input.workspace_slug}/settings/providers`);
+  return { ok: true, data: null };
+}
+
+/** Verify the named profile / agent actually exists in the runtime
+ *  on the box where AIO Control runs. On match we stamp
+ *  *_agent_initialized_at and the panel flips to a green pill. */
+export async function verifyRuntimeAgent(input: {
+  workspace_id: string;
+  workspace_slug: string;
+  provider: RuntimeAgentProvider;
+}): Promise<Result<{ name: string; latencyMs: number }>> {
+  const auth = await requireAdmin(input.workspace_id);
+  if (!auth.ok) return auth;
+
+  const supabase = await createSupabaseServerClient();
+  const { data: ws } = await supabase
+    .from("workspaces")
+    .select("hermes_agent_name, openclaw_agent_name")
+    .eq("id", input.workspace_id)
+    .maybeSingle();
+
+  const name =
+    input.provider === "hermes"
+      ? ((ws?.hermes_agent_name as string | null) ?? null)
+      : ((ws?.openclaw_agent_name as string | null) ?? null);
+  if (!name) {
+    return {
+      ok: false,
+      error: "Stel eerst een agent-naam in en klik Save.",
+    };
+  }
+
+  const binary =
+    input.provider === "hermes"
+      ? process.env.HERMES_BIN || "hermes"
+      : process.env.OPENCLAW_BIN || "openclaw";
+  const args =
+    input.provider === "hermes" ? ["profile", "list"] : ["agents", "list"];
+
+  const r = await runBinary(binary, args);
+  if (!r.ok) return { ok: false, error: r.error };
+
+  // Both `hermes profile list` and `openclaw agents list` print one
+  // entry per line. We do a generous match (whitespace-or-line-bounded)
+  // because the format isn't formally documented and may evolve.
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const matched = new RegExp(`(^|\\s)${escaped}(\\s|$)`, "m").test(r.stdout);
+  if (!matched) {
+    return {
+      ok: false,
+      error: `Profiel "${name}" niet gevonden in '${binary} ${args.join(" ")}' output. Heb je het install-commando hierboven al uitgevoerd?`,
+    };
+  }
+
+  const initCol =
+    input.provider === "hermes"
+      ? "hermes_agent_initialized_at"
+      : "openclaw_agent_initialized_at";
+  const { error: updErr } = await supabase
+    .from("workspaces")
+    .update({ [initCol]: new Date().toISOString() })
+    .eq("id", input.workspace_id);
+  if (updErr) return { ok: false, error: updErr.message };
+
+  revalidatePath(`/${input.workspace_slug}/settings/providers`);
+  return { ok: true, data: { name, latencyMs: r.latencyMs } };
+}
+
+// runtimeInstallCommand + defaultRuntimeAgentName live in
+// lib/providers/runtime.ts — see the "use server" boundary note in
+// app/actions/api-keys.ts (Next forbids non-async-function exports
+// from action files).

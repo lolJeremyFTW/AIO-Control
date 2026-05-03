@@ -153,6 +153,20 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
   // single row read, no-op when the workspace hasn't configured one.
   const ollamaEndpoint = await resolveOllamaEndpoint(run.workspace_id);
 
+  // Persistent runtime-agent names — Hermes/OpenClaw providers spawn
+  // the named profile/agent when set. Same row-read pattern as the
+  // chat route; runs through the service-role client because the
+  // worker isn't authed as a user.
+  const { data: runtimeRow } = await supabase
+    .from("workspaces")
+    .select("hermes_agent_name, openclaw_agent_name")
+    .eq("id", run.workspace_id)
+    .maybeSingle();
+  const hermesAgentName =
+    (runtimeRow?.hermes_agent_name as string | null) ?? null;
+  const openclawAgentName =
+    (runtimeRow?.openclaw_agent_name as string | null) ?? null;
+
   // Resolve the provider API key the same way the chat route does —
   // walk navnode → business → workspace → env fallback. Without this,
   // keys stored in Settings → API Keys are ignored for cron/webhook runs.
@@ -172,6 +186,8 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
         workspaceId: run.workspace_id,
         businessId: run.business_id,
         ollamaEndpoint,
+        hermesAgentName,
+        openclawAgentName,
       },
     })) {
       if (event.type === "token") output += event.delta;

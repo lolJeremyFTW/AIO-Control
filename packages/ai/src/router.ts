@@ -112,6 +112,15 @@ export interface StreamChatOptions {
      *  Empty when the workspace hasn't configured one — providers fall
      *  back to OLLAMA_BASE_URL / localhost. */
     ollamaEndpoint?: string | null;
+    /** Persistent Hermes profile name registered for this workspace
+     *  (e.g. "aio-admin"). When set, the Hermes provider invokes
+     *  `<name> chat …` instead of the bare `hermes chat …` so the
+     *  runtime keeps long-lived per-profile state.db / SOUL.md. */
+    hermesAgentName?: string | null;
+    /** Persistent OpenClaw agent name. When set, the OpenClaw
+     *  provider invokes `openclaw agent <name> …` instead of
+     *  `openclaw agent --local …`. */
+    openclawAgentName?: string | null;
   };
   /** Stable session id used by subprocess providers (openclaw, hermes)
    *  to keep conversational context across turns within the same chat

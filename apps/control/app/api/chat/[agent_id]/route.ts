@@ -169,6 +169,20 @@ export async function POST(
   // fall back to OLLAMA_BASE_URL → localhost.
   const ollamaEndpoint = await resolveOllamaEndpoint(agent.workspace_id);
 
+  // Persistent runtime-agent names — when the operator has run the
+  // onboarding flow (Settings → Providers → Persistent agent), the
+  // Hermes / OpenClaw providers spawn the named profile/agent
+  // instead of the bare CLI so the runtimes keep long-lived state.
+  const { data: runtimeRow } = await supabase
+    .from("workspaces")
+    .select("hermes_agent_name, openclaw_agent_name")
+    .eq("id", agent.workspace_id)
+    .maybeSingle();
+  const hermesAgentName =
+    (runtimeRow?.hermes_agent_name as string | null) ?? null;
+  const openclawAgentName =
+    (runtimeRow?.openclaw_agent_name as string | null) ?? null;
+
   const encoder = new TextEncoder();
   const finishedAt = { ts: 0 };
   let assistantText = "";
@@ -312,6 +326,8 @@ export async function POST(
               workspaceId: agent.workspace_id,
               businessId: agent.business_id,
               ollamaEndpoint,
+              hermesAgentName,
+              openclawAgentName,
             },
             sessionId: threadId ?? undefined,
             tools,

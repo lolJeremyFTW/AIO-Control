@@ -439,6 +439,20 @@ const nl: Dict = {
   "providers.openclaw.step4":
     "Optioneel: draai je openclaw als HTTP-daemon? Plak de URL hieronder en klik Test (verwacht /healthz).",
 
+  "providers.runtime.title": "Persistent runtime agent",
+  "providers.runtime.desc":
+    "Maak één named profile/agent in de runtime aan zodat sessies, memory en skills tussen runs blijven leven. AIO Control switcht dan automatisch naar deze named-spawn ipv per-turn ad-hoc.",
+  "providers.runtime.nameLabel": "Agent naam",
+  "providers.runtime.cmdLabel": "Run dit commando op de runtime-host:",
+  "providers.runtime.copy": "Kopieer",
+  "providers.runtime.copied": "✓ Gekopieerd",
+  "providers.runtime.copyFailed": "Kon niet naar clipboard kopiëren — selecteer + Ctrl+C handmatig.",
+  "providers.runtime.verify": "Verify",
+  "providers.runtime.savedNotice": "Naam opgeslagen. Run het commando, dan klik Verify.",
+  "providers.runtime.verifiedNotice": "✓ Agent \"{name}\" gevonden in runtime — toekomstige chats gebruiken deze profile.",
+  "providers.runtime.initializedAgo": "Geïnitialiseerd {when}",
+  "providers.status.runtimeReady": "Runtime ready · {name} ✓",
+
   "dash.kpi.agents": "Agents",
   "dash.kpi.activeRoutines": "Actieve routines",
   "dash.kpi.runsToday": "Runs vandaag",
@@ -785,6 +799,20 @@ const en: Partial<Dict> = {
     "Done — AIO Control spawns the CLI per chat / run.",
   "providers.openclaw.step4":
     "Optional: running openclaw as an HTTP daemon? Paste the URL below and click Test (expects /healthz).",
+
+  "providers.runtime.title": "Persistent runtime agent",
+  "providers.runtime.desc":
+    "Register a named profile/agent in the runtime so sessions, memory and skills persist across runs. AIO Control then auto-switches to the named-spawn path instead of ad-hoc per-turn invocations.",
+  "providers.runtime.nameLabel": "Agent name",
+  "providers.runtime.cmdLabel": "Run this command on the runtime host:",
+  "providers.runtime.copy": "Copy",
+  "providers.runtime.copied": "✓ Copied",
+  "providers.runtime.copyFailed": "Couldn't write to clipboard — select + Ctrl+C manually.",
+  "providers.runtime.verify": "Verify",
+  "providers.runtime.savedNotice": "Name saved. Run the command, then click Verify.",
+  "providers.runtime.verifiedNotice": "✓ Agent \"{name}\" found in runtime — future chats use this profile.",
+  "providers.runtime.initializedAgo": "Initialized {when}",
+  "providers.status.runtimeReady": "Runtime ready · {name} ✓",
 
   "dash.kpi.agents": "Agents",
   "dash.kpi.activeRoutines": "Active routines",
@@ -1321,6 +1349,20 @@ const de: Partial<Dict> = {
     "Fertig — AIO Control spawnt die CLI pro Chat / Run.",
   "providers.openclaw.step4":
     "Optional: openclaw als HTTP-Daemon? Plak die URL unten und klick Test (erwartet /healthz).",
+
+  "providers.runtime.title": "Persistent Runtime-Agent",
+  "providers.runtime.desc":
+    "Registriere ein named profile/agent in der Runtime, damit Sessions, Memory und Skills run-übergreifend bestehen bleiben. AIO Control schaltet dann automatisch auf den named-spawn-Pfad.",
+  "providers.runtime.nameLabel": "Agent-Name",
+  "providers.runtime.cmdLabel": "Führe dieses Kommando auf dem Runtime-Host aus:",
+  "providers.runtime.copy": "Kopieren",
+  "providers.runtime.copied": "✓ Kopiert",
+  "providers.runtime.copyFailed": "Konnte nicht in Clipboard schreiben — markiere + Ctrl+C manuell.",
+  "providers.runtime.verify": "Verifizieren",
+  "providers.runtime.savedNotice": "Name gespeichert. Kommando ausführen, dann Verify klicken.",
+  "providers.runtime.verifiedNotice": "✓ Agent \"{name}\" in Runtime gefunden — künftige Chats nutzen dieses Profil.",
+  "providers.runtime.initializedAgo": "Initialisiert {when}",
+  "providers.status.runtimeReady": "Runtime ready · {name} ✓",
 
   "dash.kpi.agents": "Agents",
   "dash.kpi.activeRoutines": "Aktive Routinen",

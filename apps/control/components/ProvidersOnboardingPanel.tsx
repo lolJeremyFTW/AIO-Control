@@ -20,11 +20,18 @@ import { OpenIcon } from "@aio/ui/icon";
 import {
   saveHermesEndpoint,
   saveOpenClawEndpoint,
+  setRuntimeAgentName,
   testHermesEndpoint,
   testOpenClawEndpoint,
+  verifyRuntimeAgent,
 } from "../app/actions/providers";
 import { translate, type Locale } from "../lib/i18n/dict";
 import { useLocale } from "../lib/i18n/client";
+import {
+  defaultRuntimeAgentName,
+  runtimeInstallCommand,
+  type RuntimeAgentProvider,
+} from "../lib/providers/runtime";
 
 type Tr = (
   key: string,
@@ -38,8 +45,12 @@ type Initial = {
   ollama_last_scan_at: string | null;
   hermes_endpoint: string | null;
   hermes_last_test_at: string | null;
+  hermes_agent_name: string | null;
+  hermes_agent_initialized_at: string | null;
   openclaw_endpoint: string | null;
   openclaw_last_test_at: string | null;
+  openclaw_agent_name: string | null;
+  openclaw_agent_initialized_at: string | null;
 };
 
 type Props = {
@@ -71,6 +82,8 @@ export function ProvidersOnboardingPanel({
         workspaceSlug={workspaceSlug}
         initial={initial.hermes_endpoint}
         lastTestAt={initial.hermes_last_test_at}
+        agentName={initial.hermes_agent_name}
+        agentInitializedAt={initial.hermes_agent_initialized_at}
       />
       <OpenClawCard
         t={t}
@@ -78,6 +91,8 @@ export function ProvidersOnboardingPanel({
         workspaceSlug={workspaceSlug}
         initial={initial.openclaw_endpoint}
         lastTestAt={initial.openclaw_last_test_at}
+        agentName={initial.openclaw_agent_name}
+        agentInitializedAt={initial.openclaw_agent_initialized_at}
       />
     </div>
   );
@@ -150,12 +165,16 @@ function HermesCard({
   workspaceSlug,
   initial,
   lastTestAt,
+  agentName,
+  agentInitializedAt,
 }: {
   t: Tr;
   workspaceId: string;
   workspaceSlug: string;
   initial: string | null;
   lastTestAt: string | null;
+  agentName: string | null;
+  agentInitializedAt: string | null;
 }) {
   const [endpoint, setEndpoint] = useState(initial ?? "");
   const [error, setError] = useState<string | null>(null);
@@ -196,13 +215,20 @@ function HermesCard({
       tagline={t("providers.hermes.tagline")}
       docsHref="https://github.com/NousResearch/hermes-agent"
       status={
-        tested
-          ? endpoint.trim()
-            ? { kind: "ready", label: t("providers.status.httpReady") }
-            : { kind: "ready", label: t("providers.status.cliReady") }
-          : endpoint.trim()
-            ? { kind: "partial", label: t("providers.status.partial.url") }
-            : { kind: "partial", label: t("providers.status.partial.cli") }
+        agentInitializedAt
+          ? {
+              kind: "ready",
+              label: t("providers.status.runtimeReady", {
+                name: agentName ?? "?",
+              }),
+            }
+          : tested
+            ? endpoint.trim()
+              ? { kind: "ready", label: t("providers.status.httpReady") }
+              : { kind: "ready", label: t("providers.status.cliReady") }
+            : endpoint.trim()
+              ? { kind: "partial", label: t("providers.status.partial.url") }
+              : { kind: "partial", label: t("providers.status.partial.cli") }
       }
       lastTestedAt={tested}
       steps={[
@@ -222,6 +248,14 @@ function HermesCard({
         pending={pending}
         error={error}
       />
+      <RuntimeAgentSection
+        t={t}
+        provider="hermes"
+        workspaceId={workspaceId}
+        workspaceSlug={workspaceSlug}
+        agentName={agentName}
+        agentInitializedAt={agentInitializedAt}
+      />
     </ProviderCard>
   );
 }
@@ -232,12 +266,16 @@ function OpenClawCard({
   workspaceSlug,
   initial,
   lastTestAt,
+  agentName,
+  agentInitializedAt,
 }: {
   t: Tr;
   workspaceId: string;
   workspaceSlug: string;
   initial: string | null;
   lastTestAt: string | null;
+  agentName: string | null;
+  agentInitializedAt: string | null;
 }) {
   const [endpoint, setEndpoint] = useState(initial ?? "");
   const [error, setError] = useState<string | null>(null);
@@ -278,13 +316,20 @@ function OpenClawCard({
       tagline={t("providers.openclaw.tagline")}
       docsHref="https://github.com/tromptech/openclaw"
       status={
-        tested
-          ? endpoint.trim()
-            ? { kind: "ready", label: t("providers.status.httpReady") }
-            : { kind: "ready", label: t("providers.status.cliReady") }
-          : endpoint.trim()
-            ? { kind: "partial", label: t("providers.status.partial.url") }
-            : { kind: "partial", label: t("providers.status.partial.cli") }
+        agentInitializedAt
+          ? {
+              kind: "ready",
+              label: t("providers.status.runtimeReady", {
+                name: agentName ?? "?",
+              }),
+            }
+          : tested
+            ? endpoint.trim()
+              ? { kind: "ready", label: t("providers.status.httpReady") }
+              : { kind: "ready", label: t("providers.status.cliReady") }
+            : endpoint.trim()
+              ? { kind: "partial", label: t("providers.status.partial.url") }
+              : { kind: "partial", label: t("providers.status.partial.cli") }
       }
       lastTestedAt={tested}
       steps={[
@@ -303,6 +348,14 @@ function OpenClawCard({
         onSave={onSave}
         pending={pending}
         error={error}
+      />
+      <RuntimeAgentSection
+        t={t}
+        provider="openclaw"
+        workspaceId={workspaceId}
+        workspaceSlug={workspaceSlug}
+        agentName={agentName}
+        agentInitializedAt={agentInitializedAt}
       />
     </ProviderCard>
   );
@@ -592,4 +645,269 @@ function formatRelative(d: Date, t: Tr): string {
   const h = Math.floor(m / 60);
   if (h < 24) return t("rel.h", { n: h });
   return t("rel.d", { n: Math.floor(h / 24) });
+}
+
+/** Onboarding sub-section for the named persistent profile/agent.
+ *  Lives inside Hermes + OpenClaw cards. Steps:
+ *    1. Pick a name (default `aio-<workspaceSlug>`).
+ *    2. Save → `setRuntimeAgentName` writes to workspaces row.
+ *    3. Copy the install command + run on the runtime host.
+ *    4. Verify → `verifyRuntimeAgent` shells `<runtime> agents/profile
+ *       list`, greps the name, stamps initialized_at on success.
+ *  After step 4 the parent ProviderCard's status pill flips to
+ *  "Runtime ready · <name>" and the providers/<runtime>.ts spawner
+ *  starts using the named-profile path automatically. */
+function RuntimeAgentSection({
+  t,
+  provider,
+  workspaceId,
+  workspaceSlug,
+  agentName,
+  agentInitializedAt,
+}: {
+  t: Tr;
+  provider: RuntimeAgentProvider;
+  workspaceId: string;
+  workspaceSlug: string;
+  agentName: string | null;
+  agentInitializedAt: string | null;
+}) {
+  const [name, setName] = useState(
+    agentName ?? defaultRuntimeAgentName(workspaceSlug),
+  );
+  const [savedName, setSavedName] = useState(agentName ?? null);
+  const [initializedAt, setInitializedAt] = useState(agentInitializedAt);
+  const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [pending, startTransition] = useTransition();
+
+  const installCmd = runtimeInstallCommand(provider, name);
+
+  const onSaveName = () =>
+    startTransition(async () => {
+      setError(null);
+      setInfo(null);
+      const r = await setRuntimeAgentName({
+        workspace_id: workspaceId,
+        workspace_slug: workspaceSlug,
+        provider,
+        name,
+      });
+      if (!r.ok) {
+        setError(r.error);
+        return;
+      }
+      setSavedName(name.trim().toLowerCase());
+      setInitializedAt(null);
+      setInfo(t("providers.runtime.savedNotice"));
+    });
+
+  const onVerify = () =>
+    startTransition(async () => {
+      setError(null);
+      setInfo(null);
+      const r = await verifyRuntimeAgent({
+        workspace_id: workspaceId,
+        workspace_slug: workspaceSlug,
+        provider,
+      });
+      if (!r.ok) {
+        setError(r.error);
+        return;
+      }
+      setInitializedAt(new Date().toISOString());
+      setInfo(t("providers.runtime.verifiedNotice", { name: r.data.name }));
+    });
+
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(installCmd);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // Some browsers/embeds block clipboard outside HTTPS — show
+      // a fallback so the user still has the text.
+      setError(t("providers.runtime.copyFailed"));
+    }
+  };
+
+  const dirty = savedName !== name.trim().toLowerCase();
+
+  return (
+    <details
+      style={{
+        marginTop: 8,
+        background: "var(--app-card-2)",
+        border: "1px solid var(--app-border-2)",
+        borderRadius: 10,
+        padding: "10px 12px",
+      }}
+      open={!initializedAt}
+    >
+      <summary
+        style={{
+          cursor: "pointer",
+          fontWeight: 700,
+          fontSize: 12.5,
+          color: "var(--app-fg-2)",
+        }}
+      >
+        {t("providers.runtime.title")}
+      </summary>
+
+      <p
+        style={{
+          fontSize: 11.5,
+          color: "var(--app-fg-3)",
+          margin: "8px 0 10px",
+          lineHeight: 1.5,
+        }}
+      >
+        {t("providers.runtime.desc")}
+      </p>
+
+      <div style={{ display: "grid", gap: 10 }}>
+        <label
+          style={{ display: "block", fontSize: 11, fontWeight: 600 }}
+        >
+          <span
+            style={{
+              display: "block",
+              marginBottom: 4,
+              color: "var(--app-fg-2)",
+            }}
+          >
+            {t("providers.runtime.nameLabel")}
+          </span>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) =>
+                setName(
+                  e.target.value
+                    .toLowerCase()
+                    .replace(/[^a-z0-9_-]/g, "-"),
+                )
+              }
+              placeholder={defaultRuntimeAgentName(workspaceSlug)}
+              style={{
+                flex: 1,
+                padding: "6px 10px",
+                borderRadius: 8,
+                border: "1.5px solid var(--app-border)",
+                background: "var(--app-card)",
+                color: "var(--app-fg)",
+                fontSize: 13,
+                fontFamily: "ui-monospace, Menlo, monospace",
+              }}
+              autoComplete="off"
+            />
+            <button
+              type="button"
+              onClick={onSaveName}
+              disabled={pending || !dirty}
+              style={ctaStyle("ghost")}
+            >
+              {pending ? t("common.busy") : t("common.save")}
+            </button>
+          </div>
+        </label>
+
+        <div>
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 600,
+              color: "var(--app-fg-2)",
+              marginBottom: 4,
+            }}
+          >
+            {t("providers.runtime.cmdLabel")}
+          </div>
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              alignItems: "stretch",
+            }}
+          >
+            <code
+              style={{
+                flex: 1,
+                padding: "8px 10px",
+                background: "var(--app-card)",
+                border: "1.5px solid var(--app-border)",
+                borderRadius: 8,
+                fontSize: 12,
+                fontFamily: "ui-monospace, Menlo, monospace",
+                color: "var(--app-fg)",
+                overflowX: "auto",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {installCmd}
+            </code>
+            <button
+              type="button"
+              onClick={onCopy}
+              style={ctaStyle("ghost")}
+            >
+              {copied ? t("providers.runtime.copied") : t("providers.runtime.copy")}
+            </button>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            type="button"
+            onClick={onVerify}
+            disabled={pending || !savedName}
+            style={ctaStyle("primary")}
+          >
+            {pending ? t("common.busy") : t("providers.runtime.verify")}
+          </button>
+          {initializedAt && (
+            <span
+              style={{
+                fontSize: 11,
+                color: "var(--tt-green)",
+                alignSelf: "center",
+              }}
+            >
+              {t("providers.runtime.initializedAgo", {
+                when: formatRelative(new Date(initializedAt), t),
+              })}
+            </span>
+          )}
+        </div>
+
+        {error && (
+          <div
+            style={{
+              background: "rgba(230,82,107,0.1)",
+              border: "1.5px solid rgba(230,82,107,0.4)",
+              borderRadius: 8,
+              padding: "8px 10px",
+              color: "var(--rose)",
+              fontSize: 12,
+            }}
+          >
+            {error}
+          </div>
+        )}
+        {info && !error && (
+          <div
+            style={{
+              fontSize: 12,
+              color: "var(--tt-green)",
+            }}
+          >
+            {info}
+          </div>
+        )}
+      </div>
+    </details>
+  );
 }

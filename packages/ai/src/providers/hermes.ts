@@ -34,7 +34,16 @@ export async function* streamHermes(
 
   yield { type: "message_start", message_id: messageId, role: "assistant" };
 
-  const binary = process.env.HERMES_BIN || "hermes";
+  // Persistent profile name — when the workspace has run the
+  // onboarding flow (`hermes profile create aio-<slug>` + `<name>
+  // setup`), Hermes installs a wrapper script `<name>` in PATH that
+  // scopes HERMES_HOME to ~/.hermes/profiles/<name>/, so each call
+  // hits its own state.db / SOUL.md / memories. Falling through to
+  // bare `hermes chat` when no name is set keeps existing workspaces
+  // running on the shared default profile.
+  const profileName = opts.tenant?.hermesAgentName?.trim() || null;
+  const binary = profileName ?? process.env.HERMES_BIN ?? "hermes";
+
   const extra = (process.env.HERMES_DEFAULT_ARGS ?? "")
     .split(/\s+/)
     .filter(Boolean);
@@ -66,10 +75,13 @@ export async function* streamHermes(
     yield {
       type: "error",
       code: "hermes_missing",
-      message:
-        `Hermes CLI niet gevonden (${earlyErr.message}). ` +
-        `Zet HERMES_BIN in env naar het absolute pad ` +
-        `(bv. /root/.hermes/hermes-agent/hermes — let op user permissies).`,
+      message: profileName
+        ? `Hermes profile "${profileName}" niet gevonden (${earlyErr.message}). ` +
+          `Heb je 'hermes profile create ${profileName} && ${profileName} setup' ` +
+          `op deze host uitgevoerd? Verifieer in Settings → Providers.`
+        : `Hermes CLI niet gevonden (${earlyErr.message}). ` +
+          `Zet HERMES_BIN in env naar het absolute pad ` +
+          `(bv. /root/.hermes/hermes-agent/hermes — let op user permissies).`,
     };
     return;
   }
