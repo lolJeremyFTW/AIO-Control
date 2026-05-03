@@ -214,6 +214,7 @@ export function AgentsList({
           agent={editing}
           telegramTargets={telegramTargets}
           customIntegrations={customIntegrations}
+          siblingAgents={agents.map((a) => ({ id: a.id, name: a.name }))}
           onClose={() => setEditing(null)}
         />
       )}

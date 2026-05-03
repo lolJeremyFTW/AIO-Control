@@ -24,9 +24,15 @@ type Props = {
   agent: AgentRow & {
     telegram_target_id?: string | null;
     custom_integration_id?: string | null;
+    next_agent_on_done?: string | null;
+    next_agent_on_fail?: string | null;
+    notify_email?: string | null;
   };
   telegramTargets?: Target[];
   customIntegrations?: Target[];
+  /** Other agents in the same workspace — used as options for the
+   *  "next agent on done / fail" chain dropdowns. */
+  siblingAgents?: { id: string; name: string }[];
   onClose: () => void;
 };
 
@@ -54,6 +60,7 @@ export function EditAgentDialog({
   agent,
   telegramTargets = [],
   customIntegrations = [],
+  siblingAgents = [],
   onClose,
 }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -76,6 +83,9 @@ export function EditAgentDialog({
   const [customIntegrationId, setCustomIntegrationId] = useState(
     agent.custom_integration_id ?? "",
   );
+  const [nextOnDone, setNextOnDone] = useState(agent.next_agent_on_done ?? "");
+  const [nextOnFail, setNextOnFail] = useState(agent.next_agent_on_fail ?? "");
+  const [notifyEmail, setNotifyEmail] = useState(agent.notify_email ?? "");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -102,6 +112,9 @@ export function EditAgentDialog({
         endpoint: needsEndpoint ? endpoint || null : null,
         telegram_target_id: telegramTargetId || null,
         custom_integration_id: customIntegrationId || null,
+        next_agent_on_done: nextOnDone || null,
+        next_agent_on_fail: nextOnFail || null,
+        notify_email: notifyEmail || null,
       },
     });
     setPending(false);
@@ -227,6 +240,76 @@ export function EditAgentDialog({
             style={{ ...inp, resize: "vertical", minHeight: 80 }}
           />
         </Field>
+
+        <Field label="Email (override workspace default)">
+          <input
+            value={notifyEmail}
+            onChange={(e) => setNotifyEmail(e.target.value)}
+            placeholder="ops@tromptech.life"
+            style={inp}
+          />
+        </Field>
+
+        {siblingAgents.length > 0 && (
+          <div
+            style={{
+              border: "1.5px solid var(--app-border-2)",
+              background: "var(--app-card-2)",
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 12,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                color: "var(--app-fg-2)",
+                marginBottom: 8,
+              }}
+            >
+              Chain — wat draait er na deze agent?
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <Field label="Bij DONE → run agent">
+                <select
+                  value={nextOnDone}
+                  onChange={(e) => setNextOnDone(e.target.value)}
+                  style={inp}
+                >
+                  <option value="">— Geen chain —</option>
+                  {siblingAgents
+                    .filter((a) => a.id !== agent.id)
+                    .map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name}
+                      </option>
+                    ))}
+                </select>
+              </Field>
+              <Field label="Bij FAIL → run agent (triage)">
+                <select
+                  value={nextOnFail}
+                  onChange={(e) => setNextOnFail(e.target.value)}
+                  style={inp}
+                >
+                  <option value="">— Geen triage —</option>
+                  {siblingAgents
+                    .filter((a) => a.id !== agent.id)
+                    .map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name}
+                      </option>
+                    ))}
+                </select>
+              </Field>
+            </div>
+            <p style={{ fontSize: 11, color: "var(--app-fg-3)", margin: "8px 0 0" }}>
+              De volgende agent ontvangt deze run&apos;s output als input
+              prompt — perfect voor extract → translate → publish chains.
+            </p>
+          </div>
+        )}
 
         {(telegramTargets.length > 0 || customIntegrations.length > 0) && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>

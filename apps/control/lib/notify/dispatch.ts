@@ -13,6 +13,7 @@
 import "server-only";
 
 import { sendCustom } from "./custom-integration";
+import { isEmailConfigured, parseRecipients, sendEmail } from "./email";
 import { sendTelegram } from "./telegram";
 import { createSupabaseServerClient } from "../supabase/server";
 
@@ -34,6 +35,7 @@ type AgentLite = {
   name: string;
   telegram_target_id: string | null;
   custom_integration_id: string | null;
+  notify_email?: string | null;
 };
 
 type ScheduleLite = {
@@ -46,7 +48,7 @@ type ScheduleLite = {
 export async function dispatchRunEvent(
   run: RunRow,
   event: "done" | "failed",
-): Promise<{ telegram: boolean; custom: boolean }> {
+): Promise<{ telegram: boolean; custom: boolean; email: boolean }> {
   const supabase = await createSupabaseServerClient();
 
   // 1. Look up the agent + schedule (if any) so we know which target
@@ -55,7 +57,9 @@ export async function dispatchRunEvent(
   if (run.agent_id) {
     const { data } = await supabase
       .from("agents")
-      .select("id, name, telegram_target_id, custom_integration_id")
+      .select(
+        "id, name, telegram_target_id, custom_integration_id, notify_email",
+      )
       .eq("id", run.agent_id)
       .maybeSingle();
     agent = (data as AgentLite | null) ?? null;
@@ -79,8 +83,9 @@ export async function dispatchRunEvent(
   // 3. If no specific target, fall back to ANY enabled workspace-scope row.
   const sentTelegram = await fireTelegram(supabase, run, agent, event, telegramId);
   const sentCustom = await fireCustom(supabase, run, agent, event, customId);
+  const sentEmail = await fireEmail(supabase, run, agent, event);
 
-  return { telegram: sentTelegram, custom: sentCustom };
+  return { telegram: sentTelegram, custom: sentCustom, email: sentEmail };
 }
 
 async function fireTelegram(
@@ -218,6 +223,74 @@ async function fireCustom(
     return false;
   }
   return true;
+}
+
+async function fireEmail(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  run: RunRow,
+  agent: AgentLite | null,
+  event: "done" | "failed",
+): Promise<boolean> {
+  if (!isEmailConfigured()) return false;
+
+  // Resolve recipients: agent.notify_email > business.notify_email >
+  // workspace.notify_email. First non-empty wins (we don't merge —
+  // agent override means "send only here").
+  const { data: business } = run.business_id
+    ? await supabase
+        .from("businesses")
+        .select("notify_email")
+        .eq("id", run.business_id)
+        .maybeSingle()
+    : { data: null };
+  const { data: workspace } = await supabase
+    .from("workspaces")
+    .select("notify_email, notify_email_on_done, notify_email_on_fail")
+    .eq("id", run.workspace_id)
+    .maybeSingle();
+
+  if (event === "done" && !workspace?.notify_email_on_done) return false;
+  if (event === "failed" && !workspace?.notify_email_on_fail) return false;
+
+  const list =
+    parseRecipients(agent?.notify_email ?? null).length > 0
+      ? parseRecipients(agent?.notify_email ?? null)
+      : parseRecipients(
+            (business as { notify_email?: string | null } | null)?.notify_email ??
+              null,
+          ).length > 0
+        ? parseRecipients(
+            (business as { notify_email?: string | null } | null)?.notify_email ??
+              null,
+          )
+        : parseRecipients(workspace?.notify_email ?? null);
+
+  if (list.length === 0) return false;
+
+  const subject =
+    event === "done"
+      ? `[AIO] ✓ ${agent?.name ?? "Agent"} run done`
+      : `[AIO] ✗ ${agent?.name ?? "Agent"} run failed`;
+
+  const body = formatRunMessage(run, agent, event)
+    // Strip Markdown markers for the plain-text email body.
+    .replace(/[*_`]/g, "");
+
+  const html = `<pre style="font-family:ui-monospace,monospace;white-space:pre-wrap">${escapeHtml(body)}</pre>`;
+
+  const res = await sendEmail({ to: list, subject, text: body, html });
+  if (!res.ok) {
+    console.error("Email send failed", res.error);
+    return false;
+  }
+  return true;
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 function formatRunMessage(

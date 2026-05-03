@@ -100,7 +100,7 @@ create or replace function aio_control.resolve_api_key(
 ) returns text
 language plpgsql
 security definer
-set search_path = public, aio_control
+set search_path = public, aio_control, extensions
 as $$
 declare
   _value text;
@@ -179,7 +179,7 @@ create or replace function aio_control.set_api_key(
 ) returns uuid
 language plpgsql
 security definer
-set search_path = public, aio_control
+set search_path = public, aio_control, extensions
 as $$
 declare
   _id uuid;
@@ -213,7 +213,7 @@ create or replace function aio_control.delete_api_key(
 ) returns boolean
 language plpgsql
 security definer
-set search_path = public, aio_control
+set search_path = public, aio_control, extensions
 as $$
 declare
   _row aio_control.api_keys;

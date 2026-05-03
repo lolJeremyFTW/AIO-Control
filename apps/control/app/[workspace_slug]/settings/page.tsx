@@ -11,7 +11,9 @@ import {
 import { signOutAction } from "../../(auth)/actions";
 import { listApiKeys } from "../../actions/api-keys";
 import { ApiKeysPanel } from "../../../components/ApiKeysPanel";
+import { EmailNotifsPanel } from "../../../components/EmailNotifsPanel";
 import { SpendLimitsPanel } from "../../../components/SpendLimitsPanel";
+import { isEmailConfigured } from "../../../lib/notify/email";
 import {
   CustomIntegrationsPanel,
   type CustomIntegrationRow,
@@ -37,6 +39,7 @@ const SECTIONS = [
   { id: "api-keys", label: "API Keys" },
   { id: "spend-limits", label: "Spend limits" },
   { id: "telegram", label: "Telegram" },
+  { id: "email", label: "Email" },
   { id: "custom-integrations", label: "Custom integrations" },
   { id: "notifications", label: "Notifications" },
   { id: "team", label: "Team & roles" },
@@ -68,7 +71,7 @@ export default async function SettingsPage({ params }: Props) {
     supabase
       .from("workspaces")
       .select(
-        "owner_id, weather_city, weather_lat, weather_lon, daily_spend_limit_cents, monthly_spend_limit_cents, auto_pause_on_limit",
+        "owner_id, weather_city, weather_lat, weather_lon, daily_spend_limit_cents, monthly_spend_limit_cents, auto_pause_on_limit, notify_email, notify_email_on_done, notify_email_on_fail",
       )
       .eq("id", workspace.id)
       .maybeSingle(),
@@ -213,6 +216,25 @@ export default async function SettingsPage({ params }: Props) {
               initialTargets={telegramTargets}
               businesses={businesses}
               navNodes={navNodes}
+            />
+          </SectionCard>
+
+          <SectionCard
+            id="email"
+            title="Email notifications"
+            desc="Run-rapporten via SMTP. Per-business / per-agent overrides via right-click."
+          >
+            <EmailNotifsPanel
+              workspaceSlug={workspace.slug}
+              workspaceId={workspace.id}
+              initial={{
+                email: (wsExtra?.notify_email as string | null) ?? null,
+                on_done:
+                  (wsExtra?.notify_email_on_done as boolean | null) ?? false,
+                on_fail:
+                  (wsExtra?.notify_email_on_fail as boolean | null) ?? true,
+              }}
+              smtpConfigured={isEmailConfigured()}
             />
           </SectionCard>
 

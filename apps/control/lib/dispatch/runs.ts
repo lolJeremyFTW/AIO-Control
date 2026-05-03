@@ -41,7 +41,7 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
     .from("runs")
     .select(
       `id, workspace_id, agent_id, business_id, input, status,
-       agents:agent_id ( id, name, provider, model, config, archived_at ),
+       agents:agent_id ( id, name, provider, model, config, archived_at, next_agent_on_done, next_agent_on_fail ),
        businesses:business_id ( id, status )`,
     )
     .eq("id", runId)
@@ -61,6 +61,8 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
     model: string | null;
     config: Record<string, unknown> | null;
     archived_at: string | null;
+    next_agent_on_done: string | null;
+    next_agent_on_fail: string | null;
   };
   type BizRow = { id: string; status: string };
 
@@ -141,6 +143,26 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
   const durationMs = endedAt.getTime() - new Date(startedAt).getTime();
   const finalStatus = errorText ? "failed" : "done";
 
+  // On failure, schedule the next retry with exponential backoff:
+  //   attempt 1 → 1 min, 2 → 4 min, 3 → 16 min (cap 1 hour)
+  // Only retry transient errors — explicit "permission denied" /
+  // "missing key" / "invalid model" failures get no retry because
+  // they'll just fail again.
+  let nextRetryAt: string | null = null;
+  if (errorText && isTransientError(errorText)) {
+    const { data: row } = await supabase
+      .from("runs")
+      .select("attempt, max_attempts")
+      .eq("id", runId)
+      .maybeSingle();
+    const attempt = (row?.attempt as number | undefined) ?? 1;
+    const maxAttempts = (row?.max_attempts as number | undefined) ?? 3;
+    if (attempt < maxAttempts) {
+      const delayMs = Math.min(60_000 * Math.pow(4, attempt - 1), 3_600_000);
+      nextRetryAt = new Date(Date.now() + delayMs).toISOString();
+    }
+  }
+
   await supabase
     .from("runs")
     .update({
@@ -150,8 +172,15 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
       cost_cents: cost,
       output: { text: output },
       error_text: errorText,
+      next_retry_at: nextRetryAt,
     })
     .eq("id", runId);
+
+  // Chain dispatch: queue the next agent with this run's output as
+  // the input prompt. We pull the next_agent_id from the agent row
+  // (which we already have in scope) and only queue when the run
+  // ended in the matching status (done/failed).
+  await maybeQueueChain(supabase, agent, business, finalStatus, output, errorText);
 
   return {
     ok: !errorText,
@@ -170,7 +199,97 @@ async function markFailed(runId: string, reason: string): Promise<DispatchResult
       status: "failed",
       ended_at: new Date().toISOString(),
       error_text: reason,
+      // Pre-flight failures (paused business, missing agent, spend
+      // limit hit) are NOT transient — never retry.
+      next_retry_at: null,
     })
     .eq("id", runId);
   return { ok: false, status: "failed", error: reason };
+}
+
+// Queues the next agent in a chain. The previous run's output (or
+// error_text on failure) becomes the new run's input prompt — so an
+// "extract → translate → publish" pipeline just connects the dots
+// via next_agent_on_done.
+async function maybeQueueChain(
+  supabase: ReturnType<typeof getServiceRoleSupabase>,
+  agent: {
+    id: string;
+    next_agent_on_done: string | null;
+    next_agent_on_fail: string | null;
+  },
+  business: { id: string } | null,
+  finalStatus: "done" | "failed",
+  output: string,
+  errorText: string | null,
+): Promise<void> {
+  const nextId =
+    finalStatus === "done"
+      ? agent.next_agent_on_done
+      : agent.next_agent_on_fail;
+  if (!nextId) return;
+
+  // Verify the next agent still exists and isn't archived.
+  const { data: nextAgent } = await supabase
+    .from("agents")
+    .select("id, workspace_id, business_id, archived_at")
+    .eq("id", nextId)
+    .maybeSingle();
+  if (!nextAgent || nextAgent.archived_at) return;
+
+  const promptText =
+    finalStatus === "done" ? output : (errorText ?? "(no error text)");
+
+  const { data: newRun } = await supabase
+    .from("runs")
+    .insert({
+      workspace_id: nextAgent.workspace_id,
+      agent_id: nextAgent.id,
+      business_id: nextAgent.business_id ?? business?.id ?? null,
+      triggered_by: "chain",
+      status: "queued",
+      input: { prompt: promptText, source: "chain", from_agent: agent.id },
+    })
+    .select("id")
+    .single();
+
+  if (newRun) {
+    void dispatchRun(newRun.id as string).catch((err) =>
+      console.error("chain dispatchRun failed", err),
+    );
+  }
+}
+
+// Heuristic: error messages that suggest a transient failure (worth
+// retrying) versus a permanent config issue (no retry).
+function isTransientError(msg: string): boolean {
+  const lc = msg.toLowerCase();
+  // Don't retry hard-config issues.
+  if (
+    lc.includes("missing key") ||
+    lc.includes("api key") ||
+    lc.includes("missing_key") ||
+    lc.includes("permission denied") ||
+    lc.includes("invalid model") ||
+    lc.includes("unauthorized") ||
+    lc.includes("not configured") ||
+    lc.includes("unsupported")
+  ) {
+    return false;
+  }
+  // Common transient signals.
+  return (
+    lc.includes("rate limit") ||
+    lc.includes("rate_limit") ||
+    lc.includes("timeout") ||
+    lc.includes("timed out") ||
+    lc.includes("network") ||
+    lc.includes("503") ||
+    lc.includes("502") ||
+    lc.includes("504") ||
+    lc.includes("econnreset") ||
+    lc.includes("etimedout") ||
+    // Default: retry unknown errors once or twice rather than give up.
+    true
+  );
 }

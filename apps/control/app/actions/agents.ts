@@ -32,6 +32,9 @@ export type AgentInput = {
   /** Optional notification routing — falls back to workspace defaults. */
   telegram_target_id?: string | null;
   custom_integration_id?: string | null;
+  /** Chain hooks: when this agent's run finishes, queue the next one. */
+  next_agent_on_done?: string | null;
+  next_agent_on_fail?: string | null;
 };
 
 export type ActionResult<T> =
@@ -90,6 +93,8 @@ export async function createAgent(
       },
       telegram_target_id: input.telegram_target_id ?? null,
       custom_integration_id: input.custom_integration_id ?? null,
+      next_agent_on_done: input.next_agent_on_done ?? null,
+      next_agent_on_fail: input.next_agent_on_fail ?? null,
     })
     .select("id")
     .single();
@@ -113,6 +118,9 @@ export async function updateAgent(input: {
     endpoint?: string | null;
     telegram_target_id?: string | null;
     custom_integration_id?: string | null;
+    next_agent_on_done?: string | null;
+    next_agent_on_fail?: string | null;
+    notify_email?: string | null;
   };
 }): Promise<ActionResult<null>> {
   const patch: Record<string, unknown> = {};
@@ -129,6 +137,12 @@ export async function updateAgent(input: {
     patch.telegram_target_id = input.patch.telegram_target_id ?? null;
   if (input.patch.custom_integration_id !== undefined)
     patch.custom_integration_id = input.patch.custom_integration_id ?? null;
+  if (input.patch.next_agent_on_done !== undefined)
+    patch.next_agent_on_done = input.patch.next_agent_on_done ?? null;
+  if (input.patch.next_agent_on_fail !== undefined)
+    patch.next_agent_on_fail = input.patch.next_agent_on_fail ?? null;
+  if (input.patch.notify_email !== undefined)
+    patch.notify_email = input.patch.notify_email?.toString().trim() || null;
 
   // Config fields are merged into the existing jsonb so we don't
   // clobber routing rules or temperature.
