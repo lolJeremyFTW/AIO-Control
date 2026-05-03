@@ -142,6 +142,9 @@ export async function POST(
             workspaceId: agent.workspace_id,
             businessId: agent.business_id,
           },
+          // Stable session id per chat thread → subprocess providers
+          // (openclaw, hermes) keep context across turns.
+          sessionId: threadId ?? undefined,
         })) {
           if (event.type === "token") assistantText += event.delta;
           if (event.type === "message_end") {

@@ -38,11 +38,19 @@ export async function* streamHermes(
   const extra = (process.env.HERMES_DEFAULT_ARGS ?? "")
     .split(/\s+/)
     .filter(Boolean);
+  // Stable session id per chat thread so Hermes can keep context
+  // across turns. Hermes uses --session for this in newer versions;
+  // older versions ignore it. Override via HERMES_DEFAULT_ARGS.
+  const sessionId = opts.sessionId
+    ? `aio-thread-${opts.sessionId.slice(0, 12)}`
+    : `aio-run-${(opts.runId ?? "single").slice(0, 8)}`;
   // The Hermes CLI currently exposes `chat` for one-shot prompts. If
   // the user is on a different version they can override the args via
   // HERMES_DEFAULT_ARGS.
   const args =
-    extra.length > 0 ? extra : ["chat", "--json", "--message", prompt];
+    extra.length > 0
+      ? extra
+      : ["chat", "--json", "--session", sessionId, "--message", prompt];
   if (extra.length > 0 && !extra.includes("--message")) {
     args.push("--message", prompt);
   }

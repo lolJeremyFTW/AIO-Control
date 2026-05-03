@@ -26,6 +26,10 @@ export async function* streamOpenclaw(
   opts: StreamChatOptions,
 ): AsyncIterable<AGUIEvent> {
   const messageId = randomUUID();
+  // Use the LAST user message as the new turn — earlier turns are
+  // remembered by OpenClaw via --session-id. When the session is
+  // brand-new we also flatten the conversation into the prompt so the
+  // first call has context too.
   const lastUser = [...opts.messages].reverse().find((m) => m.role === "user");
   const prompt = lastUser?.content ?? "";
   if (!prompt) {
@@ -43,7 +47,12 @@ export async function* streamOpenclaw(
   const extra = (process.env.OPENCLAW_DEFAULT_ARGS ?? "")
     .split(/\s+/)
     .filter(Boolean);
-  const sessionId = `aio-${(opts.runId ?? randomUUID()).slice(0, 8)}`;
+  // Stable session id per chat thread → OpenClaw remembers earlier
+  // turns in the same conversation. Falls back to per-run id when no
+  // thread is attached (e.g. cron / webhook runs).
+  const sessionId = opts.sessionId
+    ? `aio-thread-${opts.sessionId.slice(0, 12)}`
+    : `aio-run-${(opts.runId ?? randomUUID()).slice(0, 8)}`;
   const args = [
     "agent",
     "--local",

@@ -1,69 +1,56 @@
-// Profile page — minimal phase-2 stub. Hero card with the user's avatar +
-// stats placeholder; activity timeline lights up once we ship audit-log
-// rendering.
+// Profile page — full settings: identity / account / preferences /
+// security. Server-renders with the resolved profile + the active
+// workspace id (used as the upload-bucket prefix for avatar files).
 
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 import {
   getCurrentUser,
   getProfile,
+  getWorkspaceBySlug,
 } from "../../../lib/auth/workspace";
+import { ProfileEditor } from "../../../components/ProfileEditor";
+import { getLocale } from "../../../lib/i18n/server";
 
-export default async function ProfilePage() {
+type Props = { params: Promise<{ workspace_slug: string }> };
+
+export default async function ProfilePage({ params }: Props) {
+  const { workspace_slug } = await params;
   const user = await getCurrentUser();
   if (!user) redirect("/login");
-  const profile = await getProfile(user.id);
+
+  const [profile, workspace, locale] = await Promise.all([
+    getProfile(user.id),
+    getWorkspaceBySlug(workspace_slug),
+    getLocale(),
+  ]);
   if (!profile) redirect("/login");
+  if (!workspace) notFound();
 
   return (
     <div className="content">
       <div className="page-title-row">
         <h1>Profile</h1>
-        <span className="sub">Operator</span>
+        <span className="sub">Account · voorkeuren · sessions</span>
       </div>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "auto 1fr auto",
-          gap: 22,
-          alignItems: "center",
-          background: "var(--app-card)",
-          border: "1.5px solid var(--app-border)",
-          borderRadius: 16,
-          padding: 24,
-          marginBottom: 18,
+      <ProfileEditor
+        profile={{
+          id: profile.id,
+          display_name: profile.display_name,
+          email: profile.email ?? user.email ?? null,
+          avatar_letter: profile.avatar_letter,
+          avatar_variant: profile.avatar_variant,
+          avatar_url:
+            (profile as { avatar_url?: string | null }).avatar_url ?? null,
+          timezone:
+            (profile as { timezone?: string | null }).timezone ??
+            "Europe/Amsterdam",
+          is_admin: profile.is_admin,
         }}
-      >
-        <div
-          className={`node ${profile.avatar_variant ?? "orange"}`}
-          style={{
-            ["--size" as string]: "88px",
-            fontSize: 34,
-            boxShadow:
-              "0 0 0 4px var(--app-bg), 0 0 0 6px var(--tt-green)",
-          }}
-        >
-          {profile.avatar_letter ?? "U"}
-        </div>
-        <div>
-          <h2
-            style={{
-              fontFamily: "var(--hand)",
-              fontSize: 30,
-              fontWeight: 700,
-              margin: "0 0 4px",
-              letterSpacing: "-0.3px",
-            }}
-          >
-            {profile.display_name}
-          </h2>
-          <div style={{ color: "var(--app-fg-3)", fontSize: 13 }}>
-            {profile.email}
-          </div>
-        </div>
-        <div />
-      </div>
+        workspaceId={workspace.id}
+        uploadWorkspaceId={workspace.id}
+        currentLocale={locale}
+      />
     </div>
   );
 }

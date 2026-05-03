@@ -46,6 +46,7 @@ type Profile = {
   variant: string;
   displayName: string;
   email?: string;
+  avatarUrl?: string | null;
 };
 
 type Workspace = {
@@ -202,6 +203,7 @@ export function WorkspaceShell({
     sub: "Owner",
     letter: profile.letter,
     variant: (profile.variant ?? "orange") as RailItem["variant"],
+    logoUrl: profile.avatarUrl ?? null,
   };
 
   const railBusinesses: RailItem[] = businesses.map((b) => ({

@@ -108,6 +108,12 @@ export function SearchModal({ workspaceSlug }: Props) {
     <dialog
       ref={dialogRef}
       onClose={() => setOpen(false)}
+      onClick={(e) => {
+        // Native <dialog> reports the dialog itself as event target
+        // when the user clicks the backdrop (everything outside the
+        // dialog content). We bail when the click hit a child instead.
+        if (e.target === dialogRef.current) setOpen(false);
+      }}
       style={{
         background: "var(--app-card)",
         border: "1.5px solid var(--app-border)",

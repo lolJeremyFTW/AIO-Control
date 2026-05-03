@@ -74,6 +74,8 @@ export default async function WorkspaceLayout({ children, params }: Props) {
         variant: profile.avatar_variant ?? "orange",
         displayName: profile.display_name,
         email: profile.email ?? user.email ?? undefined,
+        avatarUrl:
+          (profile as { avatar_url?: string | null }).avatar_url ?? null,
       }}
       workspace={{
         id: workspace.id,

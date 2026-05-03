@@ -1325,6 +1325,13 @@ a {
   }
 }
 
+/* Native <dialog> backdrop dim — purely cosmetic so the click-outside
+   feels intentional. Also makes the dialog visually pop. */
+dialog::backdrop {
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+}
+
 /* Dialogs: use the full width on phones, give them headroom. */
 @media (max-width: 640px) {
   dialog {

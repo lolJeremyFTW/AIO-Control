@@ -107,6 +107,10 @@ export interface StreamChatOptions {
     businessId?: string | null;
     navNodeId?: string | null;
   };
+  /** Stable session id used by subprocess providers (openclaw, hermes)
+   *  to keep conversational context across turns within the same chat
+   *  thread. Pass the chat_thread_id when streaming from /api/chat. */
+  sessionId?: string;
 }
 
 export async function* streamChat(

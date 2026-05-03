@@ -75,7 +75,9 @@ export async function getProfile(userId: string) {
   const supabase = await createSupabaseServerClient();
   const { data } = await supabase
     .from("profiles")
-    .select("id, display_name, email, avatar_letter, avatar_variant, is_admin")
+    .select(
+      "id, display_name, email, avatar_letter, avatar_variant, avatar_url, timezone, is_admin",
+    )
     .eq("id", userId)
     .maybeSingle();
   return data;
