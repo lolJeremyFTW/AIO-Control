@@ -53,12 +53,13 @@ const nl: Dict = {
   "auth.oauth.google": "Doorgaan met Google",
   "auth.oauth.github": "Doorgaan met GitHub",
 
-  "nav.profile": "Profile",
-  "nav.settings": "Settings",
-  "nav.signOut": "Sign out",
-  "nav.newBusiness": "New business",
+  "nav.profile": "Profiel",
+  "nav.settings": "Instellingen",
+  "nav.signOut": "Uitloggen",
+  "nav.newBusiness": "Nieuwe business",
   "nav.newTopic": "Nieuw topic",
-  "nav.allBusinesses": "All businesses",
+  "nav.newSubtopic": "Nieuw subtopic",
+  "nav.allBusinesses": "Alle businesses",
   "nav.workspaceAgents": "Workspace agents",
 
   "rail.empty": "Geen businesses nog",
@@ -83,12 +84,12 @@ const nl: Dict = {
   "kpi.cost": "AI KOSTEN",
   "kpi.runs24h": "{count} runs · 24u",
 
-  "settings.title": "Settings",
-  "settings.section.general": "General",
-  "settings.section.notifications": "Notifications",
-  "settings.section.team": "Team & roles",
-  "settings.section.danger": "Danger zone",
-  "settings.section.appearance": "Appearance",
+  "settings.title": "Instellingen",
+  "settings.section.general": "Algemeen",
+  "settings.section.notifications": "Notificaties",
+  "settings.section.team": "Team & rollen",
+  "settings.section.danger": "Gevarenzone",
+  "settings.section.appearance": "Uiterlijk",
   "settings.section.language": "Taal",
   "settings.lang.desc":
     "Kies je interface-taal. Wijzigt direct na het submitten.",
@@ -120,8 +121,8 @@ const nl: Dict = {
   "integrations.section.new": "Nieuwe integratie",
   "integrations.section.connected": "Verbonden services",
 
-  "profile.title": "Profile",
-  "profile.sub": "Account · voorkeuren · sessions",
+  "profile.title": "Profiel",
+  "profile.sub": "Account · voorkeuren · sessies",
   "profile.section.identity": "Identiteit",
   "profile.section.identity.desc": "Naam en avatar zoals anderen je zien.",
   "profile.section.account": "Account",
@@ -131,7 +132,7 @@ const nl: Dict = {
     "Adres, telefoon, KvK-nummer en BTW-ID. Wordt gebruikt voor facturen en GDPR-correspondentie. Allemaal optioneel.",
   "profile.section.prefs": "Voorkeuren",
   "profile.section.prefs.desc": "Tijdzone + interface taal.",
-  "profile.section.history": "Login history",
+  "profile.section.history": "Login-historie",
   "profile.section.history.desc":
     "Recente logins op je account. Zie je iets verdachts? Wijzig je wachtwoord en log overal uit.",
   "profile.section.security": "Sessions / security",
@@ -144,7 +145,7 @@ const nl: Dict = {
   "profile.history.col.ip": "IP",
   "profile.history.col.method": "Methode",
   "profile.history.refresh": "Verversen",
-  "profile.security.signOutAll": "Sign out everywhere",
+  "profile.security.signOutAll": "Overal uitloggen",
   "profile.security.signOutAll.confirm":
     "Logt uit op ALLE apparaten + browsers waar je nu bent ingelogd. Doorgaan?",
 };
