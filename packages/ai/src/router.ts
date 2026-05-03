@@ -101,11 +101,17 @@ export interface StreamChatOptions {
    *  When omitted, providers fall back to process.env.<PROVIDER>_API_KEY. */
   apiKey?: string | null;
   /** Tenancy context — providers that need a re-resolve (e.g. routing
-   *  rule jumps to a different provider) can re-look up via this. */
+   *  rule jumps to a different provider) can re-look up via this.
+   *  Workspace-level resources like the local Ollama endpoint piggy-
+   *  back here so the provider doesn't need its own DB round-trip. */
   tenant?: {
     workspaceId: string;
     businessId?: string | null;
     navNodeId?: string | null;
+    /** Resolved Ollama endpoint for this workspace, e.g. http://192.168.0.42:11434.
+     *  Empty when the workspace hasn't configured one — providers fall
+     *  back to OLLAMA_BASE_URL / localhost. */
+    ollamaEndpoint?: string | null;
   };
   /** Stable session id used by subprocess providers (openclaw, hermes)
    *  to keep conversational context across turns within the same chat

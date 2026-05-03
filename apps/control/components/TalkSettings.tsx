@@ -49,8 +49,19 @@ type Props = {
   /** Masked + last-4 preview of the provider keys, looked up
    *  server-side per row. Shape: { elevenlabs: "sk_•••• 9c2a", … }. */
   keyPreviews: Record<string, string>;
+  /** Cached Ollama models scanned from the workspace's local server.
+   *  Shows up as a grouped section in the LLM picker so the user can
+   *  send their voice-chat through their own GPU. Empty = the picker
+   *  shows the helper "scan models in settings →" hint. */
+  ollamaModels?: { name: string; parameter_size?: string }[];
   log: TalkLogEntry[];
 };
+
+/** Sentinel value for the LLM picker meaning "use whichever agent is
+ *  selected in the header's mic-dropdown". Stored verbatim in
+ *  talk_settings.llm; the actual LLM is resolved at runtime from the
+ *  active agent. */
+const HEADER_AGENT_LLM = "__header_agent__";
 
 const VOICES = [
   { id: "rachel", name: "Rachel", lang: "EN", style: "warm, professional" },
@@ -98,6 +109,7 @@ export function TalkSettings({
   initial,
   workspaceSlug,
   keyPreviews,
+  ollamaModels = [],
   log,
 }: Props) {
   const router = useRouter();
@@ -237,16 +249,44 @@ export function TalkSettings({
         <div className="field">
           <div className="lbl">
             LLM
-            <small>Brein achter de antwoorden.</small>
+            <small>
+              Brein achter de antwoorden. Default = de agent die je in de
+              header microfoon selecteert; je kunt 'm hier overschrijven
+              met een specifiek model.
+            </small>
           </div>
           <div>
             <select value={llm} onChange={(e) => setLlm(e.target.value)}>
-              <option value="gpt-4o">OpenAI · gpt-4o</option>
-              <option value="claude-sonnet-4-5">
-                Anthropic · claude-sonnet-4-5
-              </option>
-              <option value="gemini-2.5-pro">Google · gemini-2.5-pro</option>
-              <option value="local-llama">Local · llama-3.3 70b</option>
+              <optgroup label="Volg header">
+                <option value={HEADER_AGENT_LLM}>
+                  Gebruik geselecteerde agent in de header
+                </option>
+              </optgroup>
+              <optgroup label="Cloud">
+                <option value="gpt-4o">OpenAI · gpt-4o</option>
+                <option value="claude-sonnet-4-5">
+                  Anthropic · claude-sonnet-4-5
+                </option>
+                <option value="gemini-2.5-pro">
+                  Google · gemini-2.5-pro
+                </option>
+              </optgroup>
+              {ollamaModels.length > 0 ? (
+                <optgroup label="Lokale Ollama">
+                  {ollamaModels.map((m) => (
+                    <option key={m.name} value={`ollama:${m.name}`}>
+                      {m.name}
+                      {m.parameter_size ? ` · ${m.parameter_size}` : ""}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : (
+                <optgroup label="Lokale Ollama">
+                  <option disabled value="__no_ollama__">
+                    Geen modellen — scan in /settings → Lokale Ollama
+                  </option>
+                </optgroup>
+              )}
             </select>
           </div>
           <div />

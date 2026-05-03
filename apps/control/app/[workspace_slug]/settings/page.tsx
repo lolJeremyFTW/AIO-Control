@@ -13,6 +13,7 @@ import { signOutAction } from "../../(auth)/actions";
 import { listApiKeys } from "../../actions/api-keys";
 import { ApiKeysPanel } from "../../../components/ApiKeysPanel";
 import { EmailNotifsPanel } from "../../../components/EmailNotifsPanel";
+import { OllamaPanel } from "../../../components/OllamaPanel";
 import { SpendLimitsPanel } from "../../../components/SpendLimitsPanel";
 import { WorkspaceDefaultsPanel } from "../../../components/WorkspaceDefaultsPanel";
 import { isEmailConfigured } from "../../../lib/notify/email";
@@ -43,6 +44,7 @@ const SECTIONS: SettingsNavEntry[] = [
   { kind: "anchor", id: "general", labelKey: "settings.section.general" },
   { kind: "anchor", id: "agent-defaults", labelKey: "settings.section.agentDefaults" },
   { kind: "anchor", id: "weather", labelKey: "settings.section.weather" },
+  { kind: "anchor", id: "ollama", labelKey: "settings.section.ollama" },
   { kind: "anchor", id: "api-keys", labelKey: "settings.section.apiKeys" },
   { kind: "anchor", id: "spend-limits", labelKey: "settings.section.spendLimits" },
   { kind: "anchor", id: "telegram", labelKey: "settings.section.telegram" },
@@ -82,7 +84,7 @@ export default async function SettingsPage({ params }: Props) {
     supabase
       .from("workspaces")
       .select(
-        "owner_id, weather_city, weather_lat, weather_lon, daily_spend_limit_cents, monthly_spend_limit_cents, auto_pause_on_limit, notify_email, notify_email_on_done, notify_email_on_fail, default_provider, default_model, default_system_prompt, telegram_topology",
+        "owner_id, weather_city, weather_lat, weather_lon, daily_spend_limit_cents, monthly_spend_limit_cents, auto_pause_on_limit, notify_email, notify_email_on_done, notify_email_on_fail, default_provider, default_model, default_system_prompt, telegram_topology, ollama_host, ollama_port, ollama_models_cached, ollama_last_scan_at",
       )
       .eq("id", workspace.id)
       .maybeSingle(),
@@ -208,6 +210,27 @@ export default async function SettingsPage({ params }: Props) {
               workspaceId={workspace.id}
               workspaceSlug={workspace.slug}
               initial={weatherInitial}
+            />
+          </SectionCard>
+
+          <SectionCard
+            id="ollama"
+            title={t("settings.section.ollama")}
+            desc={t("settings.section.ollama.desc")}
+          >
+            <OllamaPanel
+              workspaceId={workspace.id}
+              workspaceSlug={workspace.slug}
+              initial={{
+                host: (wsExtra?.ollama_host as string | null) ?? null,
+                port: (wsExtra?.ollama_port as number | null) ?? null,
+                models:
+                  (wsExtra?.ollama_models_cached as
+                    | { name: string; size: number; modified_at: string }[]
+                    | null) ?? [],
+                lastScanAt:
+                  (wsExtra?.ollama_last_scan_at as string | null) ?? null,
+              }}
             />
           </SectionCard>
 

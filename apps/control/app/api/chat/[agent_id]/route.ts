@@ -15,6 +15,7 @@ import type { AGUIEvent, ChatMessage } from "@aio/ai/ag-ui";
 import { AIO_TOOLS, defaultToolsForKind } from "@aio/ai/aio-tools";
 
 import { resolveApiKey } from "../../../../lib/api-keys/resolve";
+import { resolveOllamaEndpoint } from "../../../../lib/ollama/endpoint";
 import {
   buildAgentSystemPrompt,
   prependPreamble,
@@ -155,6 +156,12 @@ export async function POST(
     workspaceId: agent.workspace_id,
     businessId: agent.business_id,
   });
+
+  // Resolve the workspace's local Ollama endpoint once so any Ollama-
+  // backed turn (the agent's base provider OR a routing rule promoting
+  // to Ollama mid-stream) hits the same box. Empty/null = providers
+  // fall back to OLLAMA_BASE_URL → localhost.
+  const ollamaEndpoint = await resolveOllamaEndpoint(agent.workspace_id);
 
   const encoder = new TextEncoder();
   const finishedAt = { ts: 0 };
@@ -298,6 +305,7 @@ export async function POST(
             tenant: {
               workspaceId: agent.workspace_id,
               businessId: agent.business_id,
+              ollamaEndpoint,
             },
             sessionId: threadId ?? undefined,
             tools,

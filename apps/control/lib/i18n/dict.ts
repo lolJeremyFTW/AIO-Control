@@ -178,6 +178,9 @@ const nl: Dict = {
   "settings.section.weather": "Weather chip",
   "settings.section.weather.desc":
     "De rechterbovenhoek van de header toont een weer-chip per workspace.",
+  "settings.section.ollama": "Lokale Ollama",
+  "settings.section.ollama.desc":
+    "Vul host + poort van je eigen Ollama-server in. Klik \"Scan models\" om de beschikbare modellen op te halen — die zijn dan overal in de app selecteerbaar (chat-panel, talk-page, agents).",
   "settings.section.apiKeys": "API Keys",
   "settings.section.apiKeys.desc":
     "Workspace-defaults of overrides per business of topic. Encryptie via pgcrypto.",
@@ -440,6 +443,9 @@ const en: Partial<Dict> = {
   "settings.section.weather": "Weather chip",
   "settings.section.weather.desc":
     "The top-right corner of the header shows a per-workspace weather chip.",
+  "settings.section.ollama": "Local Ollama",
+  "settings.section.ollama.desc":
+    "Set host + port for your own Ollama server. Click \"Scan models\" to enumerate the models — they then become selectable everywhere in the app (chat panel, talk page, agents).",
   "settings.section.apiKeys": "API Keys",
   "settings.section.apiKeys.desc":
     "Workspace defaults or overrides per business or topic. Encrypted via pgcrypto.",
@@ -666,6 +672,9 @@ const de: Partial<Dict> = {
   "settings.section.weather": "Wetter-Chip",
   "settings.section.weather.desc":
     "Die rechte obere Ecke des Headers zeigt einen Wetter-Chip pro Workspace.",
+  "settings.section.ollama": "Lokales Ollama",
+  "settings.section.ollama.desc":
+    "Host + Port deines eigenen Ollama-Servers. Klick \"Scan models\" um die verfügbaren Modelle abzurufen — sie sind dann überall in der App auswählbar (Chat-Panel, Talk-Seite, Agents).",
   "settings.section.apiKeys": "API-Keys",
   "settings.section.apiKeys.desc":
     "Workspace-Defaults oder Overrides pro Business oder Topic. Verschlüsselung via pgcrypto.",

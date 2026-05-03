@@ -1,6 +1,13 @@
 // Ollama provider — talks to a local (or Tailscale-reachable) Ollama HTTP
 // server. Cheap to run, perfect for low-stakes classification or quick
 // lookup agents that shouldn't burn paid LLM credits.
+//
+// Endpoint resolution order:
+//   1. opts.config.endpoint            — agent-level override
+//   2. opts.tenant.ollamaEndpoint      — workspace setting (saved via the
+//                                         OllamaPanel in /[ws]/settings)
+//   3. process.env.OLLAMA_BASE_URL     — server default
+//   4. http://localhost:11434          — last-resort default
 
 import { randomUUID } from "node:crypto";
 
@@ -12,6 +19,7 @@ export async function* streamOllama(
 ): AsyncIterable<AGUIEvent> {
   const base =
     opts.config.endpoint ??
+    opts.tenant?.ollamaEndpoint ??
     process.env.OLLAMA_BASE_URL ??
     "http://localhost:11434";
   const model = opts.config.model ?? "llama3";

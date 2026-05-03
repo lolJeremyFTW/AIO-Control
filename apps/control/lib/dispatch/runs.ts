@@ -17,6 +17,7 @@ import {
 import type { ChatMessage } from "@aio/ai/ag-ui";
 
 import { resolveApiKey } from "../api-keys/resolve";
+import { resolveOllamaEndpoint } from "../ollama/endpoint";
 import {
   buildAgentSystemPrompt,
   prependPreamble,
@@ -147,12 +148,22 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
   let cost = 0;
   let errorText: string | null = null;
 
+  // Resolve workspace-level Ollama endpoint so a scheduled / webhook
+  // / manual run hits the same box as the chat panel does. Cheap;
+  // single row read, no-op when the workspace hasn't configured one.
+  const ollamaEndpoint = await resolveOllamaEndpoint(run.workspace_id);
+
   try {
     for await (const event of streamChat({
       provider: agent.provider as ProviderId,
       config,
       messages,
       runId,
+      tenant: {
+        workspaceId: run.workspace_id,
+        businessId: run.business_id,
+        ollamaEndpoint,
+      },
     })) {
       if (event.type === "token") output += event.delta;
       else if (event.type === "message_end") cost = event.usage.cost_cents;

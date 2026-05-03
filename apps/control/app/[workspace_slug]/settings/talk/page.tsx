@@ -42,18 +42,32 @@ export default async function TalkSettingsPage({ params }: Props) {
   const supabase = await createSupabaseServerClient();
 
   // Load (or seed) the workspace's talk_settings row + masked previews
-  // for the provider keys we know about.
-  const { data: row } = await supabase
-    .from("talk_settings")
-    .select(
-      "workspace_id, provider, model, llm, stt, voice, stability, similarity, push_to_talk, auto_stop, hotword",
-    )
-    .eq("workspace_id", workspace.id)
-    .maybeSingle();
+  // for the provider keys we know about. Pull the cached Ollama models
+  // in the same trip so the LLM picker can group them as a separate
+  // option-set without an extra round-trip.
+  const [{ data: row }, { data: wsRow }] = await Promise.all([
+    supabase
+      .from("talk_settings")
+      .select(
+        "workspace_id, provider, model, llm, stt, voice, stability, similarity, push_to_talk, auto_stop, hotword",
+      )
+      .eq("workspace_id", workspace.id)
+      .maybeSingle(),
+    supabase
+      .from("workspaces")
+      .select("ollama_models_cached")
+      .eq("id", workspace.id)
+      .maybeSingle(),
+  ]);
 
   const initial: TalkSettingsRow = row
     ? (row as TalkSettingsRow)
     : { workspace_id: workspace.id, ...DEFAULT_ROW };
+
+  const ollamaModels =
+    (wsRow?.ollama_models_cached as
+      | { name: string; parameter_size?: string }[]
+      | null) ?? [];
 
   // Masked previews. resolveApiKey returns the plaintext (we're
   // server-side); we mask everything except the last 4 chars so the
@@ -87,6 +101,7 @@ export default async function TalkSettingsPage({ params }: Props) {
         initial={initial}
         workspaceSlug={workspace.slug}
         keyPreviews={previews}
+        ollamaModels={ollamaModels}
         log={log}
       />
     </div>
