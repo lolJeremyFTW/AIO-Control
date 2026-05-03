@@ -43,8 +43,8 @@ const PROVIDERS: { id: Provider; label: string; defaultModel?: string }[] = [
   { id: "openrouter", label: "OpenRouter", defaultModel: "openrouter/auto" },
   { id: "minimax", label: "MiniMax (Coder Plan)", defaultModel: "MiniMax-M2.7-Highspeed" },
   { id: "ollama", label: "Ollama (lokaal/VPS)", defaultModel: "llama3" },
-  { id: "openclaw", label: "OpenClaw (eigen VPS-service)" },
-  { id: "hermes", label: "Hermes-agent (eigen VPS-service)" },
+  { id: "openclaw", label: "OpenClaw (CLI subprocess op VPS)" },
+  { id: "hermes", label: "Hermes-agent (CLI subprocess op VPS)" },
   { id: "codex", label: "Codex / OpenAI" },
 ];
 

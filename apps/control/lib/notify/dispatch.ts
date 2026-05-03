@@ -231,7 +231,7 @@ async function fireEmail(
   agent: AgentLite | null,
   event: "done" | "failed",
 ): Promise<boolean> {
-  if (!isEmailConfigured()) return false;
+  if (!(await isEmailConfigured(run.workspace_id))) return false;
 
   // Resolve recipients: agent.notify_email > business.notify_email >
   // workspace.notify_email. First non-empty wins (we don't merge —
@@ -278,7 +278,13 @@ async function fireEmail(
 
   const html = `<pre style="font-family:ui-monospace,monospace;white-space:pre-wrap">${escapeHtml(body)}</pre>`;
 
-  const res = await sendEmail({ to: list, subject, text: body, html });
+  const res = await sendEmail({
+    workspace_id: run.workspace_id,
+    to: list,
+    subject,
+    text: body,
+    html,
+  });
   if (!res.ok) {
     console.error("Email send failed", res.error);
     return false;

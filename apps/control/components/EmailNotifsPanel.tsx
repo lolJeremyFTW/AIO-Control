@@ -5,6 +5,7 @@
 
 import { useState, useTransition } from "react";
 
+import { saveSmtpCreds } from "../app/actions/smtp";
 import { updateWorkspaceEmailNotifs } from "../app/actions/workspace-settings";
 
 type Props = {
@@ -31,6 +32,40 @@ export function EmailNotifsPanel({
   const [info, setInfo] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
+  // ── SMTP form state (workspace-scope, encrypted via api_keys) ──
+  const [showSmtpForm, setShowSmtpForm] = useState(false);
+  const [smtpHost, setSmtpHost] = useState("");
+  const [smtpPort, setSmtpPort] = useState("587");
+  const [smtpUser, setSmtpUser] = useState("");
+  const [smtpPass, setSmtpPass] = useState("");
+  const [smtpFrom, setSmtpFrom] = useState("");
+  const [smtpInfo, setSmtpInfo] = useState<string | null>(null);
+  const [smtpError, setSmtpError] = useState<string | null>(null);
+
+  const submitSmtp = () => {
+    setSmtpError(null);
+    setSmtpInfo(null);
+    startTransition(async () => {
+      const res = await saveSmtpCreds({
+        workspace_slug: workspaceSlug,
+        workspace_id: workspaceId,
+        host: smtpHost,
+        port: smtpPort,
+        user: smtpUser,
+        pass: smtpPass,
+        from: smtpFrom,
+      });
+      if (!res.ok) setSmtpError(res.error);
+      else {
+        setSmtpInfo(
+          "SMTP creds opgeslagen + encrypted. Reload de pagina om de status-pill te updaten.",
+        );
+        setSmtpPass("");
+        setShowSmtpForm(false);
+      }
+    });
+  };
+
   const submit = () => {
     setError(null);
     setInfo(null);
@@ -49,24 +84,150 @@ export function EmailNotifsPanel({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      {!smtpConfigured && (
-        <p
-          style={{
-            fontSize: 12,
-            color: "var(--amber)",
-            background: "rgba(240, 179, 64, 0.08)",
-            border: "1px solid rgba(240, 179, 64, 0.4)",
-            padding: 10,
-            borderRadius: 8,
-            margin: 0,
-          }}
-        >
-          SMTP nog niet geconfigureerd. Zet <code>SMTP_HOST</code> /{" "}
-          <code>SMTP_PORT</code> / <code>SMTP_USER</code> /{" "}
-          <code>SMTP_PASS</code> / <code>SMTP_FROM</code> in <code>.env.production</code>{" "}
-          op de VPS en redeploy. Daarna verstuurt deze panel echte mails.
-        </p>
-      )}
+      <div
+        style={{
+          border: `1.5px solid ${
+            smtpConfigured ? "var(--tt-green)" : "var(--amber)"
+          }`,
+          background: smtpConfigured
+            ? "rgba(57,178,85,0.08)"
+            : "rgba(240,179,64,0.08)",
+          borderRadius: 10,
+          padding: 12,
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700 }}>
+            SMTP server: {smtpConfigured ? "✓ Configured" : "⚠ Not configured"}
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowSmtpForm((v) => !v)}
+            style={{
+              padding: "5px 10px",
+              border: "1.5px solid var(--app-border)",
+              background: "var(--app-card-2)",
+              color: "var(--app-fg)",
+              borderRadius: 8,
+              fontSize: 11.5,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            {showSmtpForm
+              ? "Verberg"
+              : smtpConfigured
+                ? "Wijzig"
+                : "Configureer"}
+          </button>
+        </div>
+
+        {showSmtpForm && (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+              padding: "8px 0 0",
+              borderTop: "1px solid var(--app-border-2)",
+            }}
+          >
+            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 8 }}>
+              <Field label="Host">
+                <input
+                  value={smtpHost}
+                  onChange={(e) => setSmtpHost(e.target.value)}
+                  placeholder="smtp.postmarkapp.com"
+                  style={inp}
+                />
+              </Field>
+              <Field label="Port">
+                <input
+                  value={smtpPort}
+                  onChange={(e) => setSmtpPort(e.target.value)}
+                  placeholder="587"
+                  style={inp}
+                />
+              </Field>
+            </div>
+            <Field label="User">
+              <input
+                value={smtpUser}
+                onChange={(e) => setSmtpUser(e.target.value)}
+                autoComplete="off"
+                style={inp}
+              />
+            </Field>
+            <Field label="Password (encrypted opgeslagen)">
+              <input
+                type="password"
+                value={smtpPass}
+                onChange={(e) => setSmtpPass(e.target.value)}
+                autoComplete="new-password"
+                placeholder={smtpConfigured ? "•••••• (laat leeg om bestaande te houden)" : ""}
+                style={inp}
+              />
+            </Field>
+            <Field label="From (optioneel — default = user)">
+              <input
+                value={smtpFrom}
+                onChange={(e) => setSmtpFrom(e.target.value)}
+                placeholder='"AIO Control <noreply@tromptech.life>"'
+                style={inp}
+              />
+            </Field>
+            {smtpError && (
+              <p style={{ color: "var(--rose)", fontSize: 12, margin: 0 }}>
+                {smtpError}
+              </p>
+            )}
+            {smtpInfo && (
+              <p style={{ color: "var(--tt-green)", fontSize: 12, margin: 0 }}>
+                {smtpInfo}
+              </p>
+            )}
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                type="button"
+                onClick={submitSmtp}
+                disabled={pending || !smtpHost.trim() || !smtpUser.trim() || !smtpPass.trim()}
+                style={{
+                  padding: "7px 12px",
+                  border: "1.5px solid var(--tt-green)",
+                  background: "var(--tt-green)",
+                  color: "#fff",
+                  borderRadius: 8,
+                  fontWeight: 700,
+                  fontSize: 12,
+                  cursor: pending ? "wait" : "pointer",
+                  opacity: pending ? 0.7 : 1,
+                }}
+              >
+                {pending ? "Opslaan…" : "SMTP opslaan"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowSmtpForm(false)}
+                style={{
+                  padding: "7px 12px",
+                  border: "1.5px solid var(--app-border)",
+                  background: "transparent",
+                  color: "var(--app-fg)",
+                  borderRadius: 8,
+                  fontWeight: 700,
+                  fontSize: 12,
+                  cursor: "pointer",
+                }}
+              >
+                Annuleer
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
       <p
         style={{

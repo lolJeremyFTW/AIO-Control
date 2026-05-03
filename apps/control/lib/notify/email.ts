@@ -1,37 +1,71 @@
-// SMTP email sender. Uses nodemailer; transport is built once per
-// process and reused across requests. Returns { ok: false, ... } when
-// SMTP isn't configured so the dispatcher can quietly skip without
-// logging an error every run.
+// SMTP email sender. Resolves credentials per-workspace via the
+// tiered api_keys system (providers "smtp_host", "smtp_port",
+// "smtp_user", "smtp_pass", "smtp_from") with env-var fallback.
 //
-// Required env vars:
-//   SMTP_HOST     e.g. smtp.postmarkapp.com
-//   SMTP_PORT     587 (STARTTLS) or 465 (SSL)
-//   SMTP_USER
-//   SMTP_PASS
-//   SMTP_FROM     "AIO Control <noreply@tromptech.life>"
+// Cache key is the workspace_id so multi-tenant configs don't bleed.
 
 import "server-only";
 import nodemailer, { type Transporter } from "nodemailer";
 
-let cached: Transporter | null = null;
+import { resolveApiKey } from "../api-keys/resolve";
 
-function getTransport(): Transporter | null {
+const cachedByWorkspace = new Map<
+  string,
+  { transport: Transporter; from: string }
+>();
+
+async function getTransport(
+  workspaceId: string,
+): Promise<{ transport: Transporter; from: string } | null> {
+  const cached = cachedByWorkspace.get(workspaceId);
   if (cached) return cached;
-  const host = process.env.SMTP_HOST;
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
+
+  // Try each credential from api_keys first, fall back to env.
+  const [host, portStr, user, pass, from] = await Promise.all([
+    resolveApiKey("smtp_host", { workspaceId }).then(
+      (v) => v ?? process.env.SMTP_HOST ?? null,
+    ),
+    resolveApiKey("smtp_port", { workspaceId }).then(
+      (v) => v ?? process.env.SMTP_PORT ?? "587",
+    ),
+    resolveApiKey("smtp_user", { workspaceId }).then(
+      (v) => v ?? process.env.SMTP_USER ?? null,
+    ),
+    resolveApiKey("smtp_pass", { workspaceId }).then(
+      (v) => v ?? process.env.SMTP_PASS ?? null,
+    ),
+    resolveApiKey("smtp_from", { workspaceId }).then(
+      (v) =>
+        v ??
+        process.env.SMTP_FROM ??
+        process.env.SMTP_USER ??
+        "noreply@example.com",
+    ),
+  ]);
+
   if (!host || !user || !pass) return null;
-  const port = Number(process.env.SMTP_PORT ?? 587);
-  cached = nodemailer.createTransport({
+
+  const port = Number(portStr) || 587;
+  const transport = nodemailer.createTransport({
     host,
     port,
     secure: port === 465,
     auth: { user, pass },
   });
-  return cached;
+  const entry = { transport, from };
+  cachedByWorkspace.set(workspaceId, entry);
+  return entry;
+}
+
+/** Public helper for the Settings UI — flushes cache after the user
+ *  edits creds so the next send picks up the new values. */
+export function clearEmailTransportCache(workspaceId?: string) {
+  if (workspaceId) cachedByWorkspace.delete(workspaceId);
+  else cachedByWorkspace.clear();
 }
 
 export type EmailPayload = {
+  workspace_id: string;
   to: string | string[];
   subject: string;
   text: string;
@@ -41,14 +75,13 @@ export type EmailPayload = {
 export async function sendEmail(
   payload: EmailPayload,
 ): Promise<{ ok: boolean; error?: string }> {
-  const transport = getTransport();
-  if (!transport) {
+  const conf = await getTransport(payload.workspace_id);
+  if (!conf) {
     return { ok: false, error: "SMTP not configured" };
   }
-  const from = process.env.SMTP_FROM ?? process.env.SMTP_USER ?? "noreply@example.com";
   try {
-    await transport.sendMail({
-      from,
+    await conf.transport.sendMail({
+      from: conf.from,
       to: Array.isArray(payload.to) ? payload.to.join(",") : payload.to,
       subject: payload.subject,
       text: payload.text,
@@ -63,12 +96,9 @@ export async function sendEmail(
   }
 }
 
-export function isEmailConfigured(): boolean {
-  return !!(
-    process.env.SMTP_HOST &&
-    process.env.SMTP_USER &&
-    process.env.SMTP_PASS
-  );
+export async function isEmailConfigured(workspaceId: string): Promise<boolean> {
+  const conf = await getTransport(workspaceId);
+  return !!conf;
 }
 
 /** Parse comma/semicolon/whitespace-separated emails into a clean array. */

@@ -83,6 +83,13 @@ body {
 
 .rail {
   height: 100vh;
+  /* Grid items default to align-self:stretch which makes the rail
+     match the row height (= main content height). That breaks the
+     sticky behaviour because the element fills the entire scroll
+     container — there's nothing to "stick" to. align-self:start +
+     a fixed 100vh height keeps the rail viewport-sized so it can
+     pin to top:0 as the page scrolls. */
+  align-self: start;
   position: sticky;
   top: 0;
   background: var(--rail-dark);
@@ -93,6 +100,7 @@ body {
   border-right: 1.5px solid #000;
   overflow: hidden;
   transition: width 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+  z-index: 5;
 }
 body[data-theme="light"] .rail {
   background: var(--rail-light);

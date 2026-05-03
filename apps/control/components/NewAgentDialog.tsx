@@ -30,8 +30,8 @@ const PROVIDERS: { id: Provider; label: string; defaultModel?: string }[] = [
   { id: "openrouter", label: "OpenRouter", defaultModel: "openrouter/auto" },
   { id: "minimax", label: "MiniMax (Coder Plan)", defaultModel: "MiniMax-M2.7-Highspeed" },
   { id: "ollama", label: "Ollama (lokaal/VPS)", defaultModel: "llama3" },
-  { id: "openclaw", label: "OpenClaw (eigen VPS-service)" },
-  { id: "hermes", label: "Hermes-agent (eigen VPS-service)" },
+  { id: "openclaw", label: "OpenClaw (CLI subprocess op VPS)" },
+  { id: "hermes", label: "Hermes-agent (CLI subprocess op VPS)" },
   { id: "codex", label: "Codex / OpenAI" },
 ];
 
@@ -70,7 +70,9 @@ export function NewAgentDialog({
   }, []);
 
   const providerSpec = PROVIDERS.find((p) => p.id === provider)!;
-  const needsEndpoint = provider === "openclaw" || provider === "hermes";
+  // openclaw + hermes are CLI subprocesses (binary path via env), not
+  // HTTP — no per-agent endpoint needed.
+  const needsEndpoint = false;
 
   const submit = async () => {
     setError(null);
@@ -212,23 +214,29 @@ export function NewAgentDialog({
         )}
 
         {provider === "claude_cli" && (
-          <p
-            style={{
-              fontSize: 11.5,
-              color: "var(--app-fg-3)",
-              background: "var(--app-card-2)",
-              border: "1px solid var(--app-border-2)",
-              borderRadius: 8,
-              padding: "8px 10px",
-              margin: "0 0 12px",
-              lineHeight: 1.45,
-            }}
-          >
+          <Hint>
             Gebruikt de <code>claude</code> CLI op de VPS. Geen API key nodig
             — quotum komt uit je Claude Pro/Max/Team abonnement. Model-veld
-            accepteert <code>sonnet</code>, <code>opus</code>, <code>haiku</code>{" "}
-            of een full model id.
-          </p>
+            accepteert <code>sonnet</code>, <code>opus</code>,{" "}
+            <code>haiku</code> of een full model id.
+          </Hint>
+        )}
+        {provider === "openclaw" && (
+          <Hint>
+            Roept <code>openclaw agent --local --json -m &lt;prompt&gt;</code> aan op de
+            VPS. Override binary via <code>OPENCLAW_BIN</code> env als{" "}
+            <code>openclaw</code> niet in PATH staat. Geen API key nodig in
+            AIO Control — OpenClaw regelt zijn eigen provider keys.
+          </Hint>
+        )}
+        {provider === "hermes" && (
+          <Hint>
+            Roept <code>hermes chat --json --message &lt;prompt&gt;</code> aan op de
+            VPS. Set <code>HERMES_BIN</code> in env naar het absolute pad
+            (b.v. <code>/root/.hermes/hermes-agent/hermes</code>). Let op
+            user-permissies — de aio-control service draait als{" "}
+            <code>jeremy</code>.
+          </Hint>
         )}
 
         <Field label="System prompt (optioneel)">
@@ -388,6 +396,25 @@ const btnPrimary = (pending: boolean): React.CSSProperties => ({
   cursor: pending ? "wait" : "pointer",
   opacity: pending ? 0.8 : 1,
 });
+
+function Hint({ children }: { children: React.ReactNode }) {
+  return (
+    <p
+      style={{
+        fontSize: 11.5,
+        color: "var(--app-fg-3)",
+        background: "var(--app-card-2)",
+        border: "1px solid var(--app-border-2)",
+        borderRadius: 8,
+        padding: "8px 10px",
+        margin: "0 0 12px",
+        lineHeight: 1.45,
+      }}
+    >
+      {children}
+    </p>
+  );
+}
 
 function Field({
   label,

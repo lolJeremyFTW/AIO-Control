@@ -28,6 +28,11 @@ const PROVIDERS = [
   { id: "openai", label: "OpenAI" },
   { id: "telegram", label: "Telegram bot token" },
   { id: "custom_webhook", label: "Custom webhook secret" },
+  // SMTP creds zijn een speciale set; meestal config je ze via de
+  // Email Settings panel maar je kunt 'm hier handmatig overschrijven.
+  { id: "smtp_host", label: "SMTP host (auto via Email panel)" },
+  { id: "smtp_user", label: "SMTP user" },
+  { id: "smtp_pass", label: "SMTP password" },
 ];
 
 type Props = {

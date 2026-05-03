@@ -9,7 +9,10 @@ import { streamOpenRouter } from "./providers/openrouter";
 import { streamOllama } from "./providers/ollama";
 import { streamMinimax } from "./providers/minimax";
 import { streamMinimaxViaClaude } from "./providers/minimax-mcp";
-import { streamGenericHttp } from "./providers/generic-http";
+// streamGenericHttp is kept for future custom HTTP providers; not
+// currently routed since openclaw + hermes moved to subprocess.
+import { streamHermes } from "./providers/hermes";
+import { streamOpenclaw } from "./providers/openclaw";
 import { streamNotConfigured } from "./providers/stub";
 
 export type ProviderId =
@@ -142,9 +145,14 @@ export async function* streamChat(
       yield* streamOllama(opts);
       return;
     case "openclaw":
+      // CLI subprocess — runs `openclaw agent --local --json -m …`
+      // Not HTTP (despite the name). See providers/openclaw.ts.
+      yield* streamOpenclaw(opts);
+      return;
     case "hermes":
-      // user's own services — generic HTTP relay, OpenAI-ish wire format
-      yield* streamGenericHttp(opts);
+      // CLI subprocess — runs `hermes chat --json --message …`
+      // Set HERMES_BIN in env to the absolute path on the VPS.
+      yield* streamHermes(opts);
       return;
     case "minimax":
       // Two-track: when the agent declares MCP servers (config.mcpServers

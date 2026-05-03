@@ -234,7 +234,7 @@ export default async function SettingsPage({ params }: Props) {
                 on_fail:
                   (wsExtra?.notify_email_on_fail as boolean | null) ?? true,
               }}
-              smtpConfigured={isEmailConfigured()}
+              smtpConfigured={await isEmailConfigured(workspace.id)}
             />
           </SectionCard>
 
