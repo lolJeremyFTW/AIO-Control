@@ -795,6 +795,15 @@ button.crumb-cta,
   border: 1.5px solid #d8620c;
   flex-shrink: 0;
   cursor: pointer;
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+.avatar-btn:hover {
+  transform: translateY(-1px);
+  border-color: var(--tt-green);
+  box-shadow: 0 6px 16px -8px rgba(57, 178, 85, 0.55);
 }
 .avatar-btn.is-active {
   box-shadow:

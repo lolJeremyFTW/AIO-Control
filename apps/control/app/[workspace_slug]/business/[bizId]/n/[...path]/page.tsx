@@ -94,10 +94,10 @@ export default async function NavNodePage({ params }: Props) {
       </div>
 
       <div className="page-title-row">
-        <h1>
-          {current?.icon ? `${current.icon} ` : ""}
-          {current?.name}
-        </h1>
+        {/* Same reasoning as the business root page: icon is a
+            registry-key string, not a glyph — render only the name
+            so we don't leak "video Faceless YouTube" into the h1. */}
+        <h1>{current?.name}</h1>
         <span className="sub">{current?.sub ?? "Sub-navigation"}</span>
       </div>
 

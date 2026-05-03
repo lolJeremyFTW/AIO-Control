@@ -45,7 +45,11 @@ export default async function BusinessPage({ params }: Props) {
   return (
     <div className="content">
       <div className="page-title-row">
-        <h1>{biz.icon ? `${biz.icon} ` : ""}{biz.name}</h1>
+        {/* Just the business name. The icon is a registry-key string
+            (e.g. "video"), not an emoji — concatenating it leaks the
+            literal "video " prefix into the heading. The actual SVG
+            icon is already rendered in the rail row + breadcrumb. */}
+        <h1>{biz.name}</h1>
         <span className="sub">{biz.sub ?? "Per-business overzicht"}</span>
       </div>
 
