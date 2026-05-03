@@ -11,7 +11,6 @@ import {
 } from "../../../../../lib/auth/workspace";
 import { listAgentsForWorkspace } from "../../../../../lib/queries/agents";
 import { listBusinesses } from "../../../../../lib/queries/businesses";
-import { BusinessTabs } from "../../../../../components/BusinessTabs";
 import { RunsPage } from "../../../../../components/RunsPage";
 
 type Props = {
@@ -42,7 +41,6 @@ export default async function BusinessRunsPage({ params, searchParams }: Props) 
         <h1>{biz.name} — runs</h1>
         <span className="sub">Volledige run-historie van alle agents</span>
       </div>
-      <BusinessTabs workspaceSlug={workspace_slug} businessId={biz.id} />
       <RunsPage
         workspaceSlug={workspace_slug}
         workspaceId={workspace.id}

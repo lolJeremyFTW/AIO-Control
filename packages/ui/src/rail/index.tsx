@@ -66,6 +66,13 @@ type Props = {
   expandOnHover?: boolean;
   /** When set, the rail shows this business's topics + a back row. */
   drilledInto?: RailItem | null;
+  /** Optional breadcrumb chain of nav-nodes the user has drilled into,
+   *  ordered shallow → deep. Rendered as clickable rows under the
+   *  business header so the user can hop back to any level. The
+   *  deepest item is highlighted as the current context. When this
+   *  is empty, only the business header chip shows (i.e. user is at
+   *  business root). */
+  drillChain?: Array<RailItem & { onClick?: () => void }>;
   topics?: Topic[];
   /** Which topic id is currently active (highlights the row). */
   selectedTopicId?: string | null;
@@ -93,6 +100,9 @@ type Props = {
   /** "+ Topic" / "+ Subtopic" button at the bottom of the topic list
    *  when drilled in. Optional — when omitted the row hides. */
   onCreateTopic?: () => void;
+  /** Empty-state copy shown in drilled mode when topics.length === 0.
+   *  Defaults to a sensible NL string. */
+  emptyTopicsLabel?: string;
   /** Localised labels — fall back to the NL/EN defaults baked in here.
    *  The shell passes the result of t() so the rail follows the user's
    *  language preference without the rail itself depending on the
@@ -103,6 +113,7 @@ type Props = {
     newTopic?: string;
     newBusiness?: string;
     settings?: string;
+    emptyTopics?: string;
   };
 };
 
@@ -112,6 +123,7 @@ export function Rail({
   selectedBusinessId,
   expandOnHover = true,
   drilledInto = null,
+  drillChain = [],
   topics = [],
   selectedTopicId = null,
   mobileOpen = false,
@@ -127,6 +139,7 @@ export function Rail({
   onReorderTopic,
   onReorderBusiness,
   onCreateTopic,
+  emptyTopicsLabel,
   labels,
 }: Props) {
   const L = {
@@ -135,6 +148,10 @@ export function Rail({
     newTopic: labels?.newTopic ?? "Nieuw topic",
     newBusiness: labels?.newBusiness ?? "New business",
     settings: labels?.settings ?? "Settings",
+    emptyTopics:
+      labels?.emptyTopics ??
+      emptyTopicsLabel ??
+      "Nog geen subtopics — maak er een aan ↓",
   };
   const [hover, setHover] = useState(false);
 
@@ -278,14 +295,16 @@ export function Rail({
           )
         ) : (
           <>
-            {/* Drilled-in: show the business itself as a header chip, then
-                the topics list. The header chip uses the business's
-                colour so the user always sees which context they're in. */}
-            <div style={{ marginBottom: 8 }}>
+            {/* Drilled-in: show the business header chip, then the
+                breadcrumb chain (topic → subtopic → …), then the
+                children of the deepest node. Each chain item is
+                clickable so the user can hop back to any level. */}
+            <div style={{ marginBottom: 6 }}>
               <NavRow
                 item={drilledInto!}
                 expanded={expanded}
-                selected
+                selected={drillChain.length === 0}
+                onClick={drillChain.length > 0 ? onBack : undefined}
                 onContextMenu={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -296,25 +315,72 @@ export function Rail({
                 }}
               />
             </div>
-            {topics.map((t) => (
-              <TopicRow
-                key={t.id}
-                topic={t}
-                expanded={expanded}
-                selected={selectedTopicId === t.id}
-                onClick={() => onSelectTopic?.(t)}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onContextMenuRail?.(e, { kind: "topic", id: t.id });
+            {drillChain.length > 0 && (
+              <div
+                style={{
+                  marginBottom: 6,
+                  marginLeft: 6,
+                  borderLeft: "2px solid var(--app-border-2)",
+                  paddingLeft: 4,
                 }}
-                onDropOn={
-                  onReorderTopic
-                    ? (sourceId) => onReorderTopic(sourceId, t.id)
-                    : undefined
-                }
-              />
-            ))}
+              >
+                {drillChain.map((node, i) => {
+                  const isDeepest = i === drillChain.length - 1;
+                  return (
+                    <NavRow
+                      key={node.id}
+                      item={node}
+                      expanded={expanded}
+                      selected={isDeepest}
+                      onClick={node.onClick}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onContextMenuRail?.(e, {
+                          kind: "topic",
+                          id: node.id,
+                        });
+                      }}
+                    />
+                  );
+                })}
+              </div>
+            )}
+            {topics.length === 0 ? (
+              expanded && (
+                <div
+                  style={{
+                    padding: "12px 8px",
+                    fontSize: 11,
+                    lineHeight: 1.4,
+                    color: "var(--app-fg-3)",
+                    textAlign: "center",
+                  }}
+                >
+                  {L.emptyTopics}
+                </div>
+              )
+            ) : (
+              topics.map((t) => (
+                <TopicRow
+                  key={t.id}
+                  topic={t}
+                  expanded={expanded}
+                  selected={selectedTopicId === t.id}
+                  onClick={() => onSelectTopic?.(t)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onContextMenuRail?.(e, { kind: "topic", id: t.id });
+                  }}
+                  onDropOn={
+                    onReorderTopic
+                      ? (sourceId) => onReorderTopic(sourceId, t.id)
+                      : undefined
+                  }
+                />
+              ))
+            )}
             {/* Visible "+ Topic" button so the user doesn't have to
                 discover the right-click menu. Stays at the bottom of
                 the topic list when drilled in. */}

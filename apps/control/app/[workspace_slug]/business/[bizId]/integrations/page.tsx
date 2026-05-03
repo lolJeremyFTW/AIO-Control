@@ -7,7 +7,6 @@ import { notFound, redirect } from "next/navigation";
 import { getCurrentUser, getWorkspaceBySlug } from "../../../../../lib/auth/workspace";
 import { listBusinesses } from "../../../../../lib/queries/businesses";
 import { listIntegrationsForBusiness } from "../../../../../lib/queries/integrations";
-import { BusinessTabs } from "../../../../../components/BusinessTabs";
 import { IntegrationsList } from "../../../../../components/IntegrationsList";
 
 type Props = {
@@ -35,7 +34,6 @@ export default async function BusinessIntegrationsPage({ params }: Props) {
         <h1>{biz.name} — integraties</h1>
         <span className="sub">External services this business uses</span>
       </div>
-      <BusinessTabs workspaceSlug={workspace_slug} businessId={biz.id} />
       <IntegrationsList
         workspaceSlug={workspace.slug}
         workspaceId={workspace.id}

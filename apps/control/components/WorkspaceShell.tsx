@@ -254,6 +254,33 @@ export function WorkspaceShell({
       }
     : null;
 
+  // Breadcrumb chain of nav nodes the user has drilled into
+  // (Tromptech → Instagram → Reels → ...). Each item carries its own
+  // click handler that navigates back to that level. The deepest item
+  // gets the "selected" highlight in the rail.
+  const drillChainRail = useMemo(() => {
+    if (!drilledBiz || !navContext) return [];
+    return navContext.chain.map((node, i) => {
+      const navPathToHere = drilledBiz.navPath.slice(0, i + 1);
+      return {
+        id: node.id,
+        name: node.name,
+        sub: node.sub ?? undefined,
+        letter: node.letter,
+        icon: renderNodeIcon(node.icon, 16),
+        variant: (node.variant as RailItem["variant"]) ?? "dashed",
+        colorHex: node.color_hex ?? null,
+        logoUrl: node.logo_url ?? null,
+        onClick: () => {
+          closeRail();
+          router.push(
+            `/${workspace.slug}/business/${drilledBiz.biz.id}/n/${navPathToHere.join("/")}`,
+          );
+        },
+      };
+    });
+  }, [drilledBiz, navContext, router, workspace.slug]);
+
   // Build the right-click menu items based on which row the user
   // clicked. The Rail surfaces (x, y) + a typed origin descriptor; we
   // turn that into a list of actions specific to that row.
@@ -540,14 +567,19 @@ export function WorkspaceShell({
         selectedBusinessId={drilledBiz?.biz.id ?? null}
         page={page}
         drilledInto={drilledRailItem}
+        drillChain={drillChainRail}
         topics={drilledBiz ? railTopics : []}
         selectedTopicId={selectedTopicId}
         labels={{
           allBusinesses: t("nav.allBusinesses"),
           emptyBusinesses: t("rail.empty"),
-          newTopic: t("nav.newTopic"),
+          newTopic:
+            drilledBiz && drilledBiz.navPath.length > 0
+              ? t("nav.newSubtopic")
+              : t("nav.newTopic"),
           newBusiness: t("nav.newBusiness"),
           settings: t("nav.settings"),
+          emptyTopics: t("rail.emptyTopics"),
         }}
         onBack={() => {
           if (!drilledBiz) return;

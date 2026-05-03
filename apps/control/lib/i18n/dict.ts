@@ -61,6 +61,7 @@ const nl: Dict = {
   "nav.allBusinesses": "All businesses",
 
   "rail.empty": "Geen businesses nog",
+  "rail.emptyTopics": "Nog geen subtopics — maak er een aan ↓",
 
   "topic.queue": "Wachtrij",
   "topic.agents": "Agents",
@@ -177,6 +178,7 @@ const en: Partial<Dict> = {
   "auth.oauth.github": "Continue with GitHub",
 
   "rail.empty": "No businesses yet",
+  "rail.emptyTopics": "No subtopics yet — create one below ↓",
 
   "topic.queue": "Queue",
   "topic.agents": "Agents",
@@ -238,6 +240,7 @@ const en: Partial<Dict> = {
   "nav.signOut": "Sign out",
   "nav.newBusiness": "New business",
   "nav.newTopic": "New topic",
+  "nav.newSubtopic": "New subtopic",
 
   "profile.title": "Profile",
   "profile.sub": "Account · preferences · sessions",
@@ -359,8 +362,10 @@ const de: Partial<Dict> = {
   "nav.profile": "Profil",
   "nav.settings": "Einstellungen",
   "nav.signOut": "Abmelden",
+  "rail.emptyTopics": "Noch keine Subtopics — unten anlegen ↓",
   "nav.newBusiness": "Neues Business",
   "nav.newTopic": "Neues Topic",
+  "nav.newSubtopic": "Neues Subtopic",
 
   "profile.title": "Profil",
   "profile.sub": "Konto · Einstellungen · Sitzungen",

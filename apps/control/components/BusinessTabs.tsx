@@ -1,5 +1,8 @@
-// Sub-nav for a single business — sits under the page title and links to
-// queue, agents, and (later) integrations + settings tabs.
+// Sub-nav for a single business — sits under the page title and links
+// to the business's CRUD-pages (Overzicht, Agents, Schedules, Runs,
+// Integrations). Also shows a "Topics" pseudo-tab that lights up when
+// the user is drilled into a nav-node tree under this business
+// (`/business/<id>/n/...`).
 
 "use client";
 
@@ -11,14 +14,53 @@ type Props = {
 };
 
 export function BusinessTabs({ workspaceSlug, businessId }: Props) {
-  const path = usePathname();
+  const path = usePathname() ?? "";
   const base = `/${workspaceSlug}/business/${businessId}`;
-  const tabs: { href: string; label: string; match: (p: string) => boolean }[] = [
-    { href: base, label: "Wachtrij", match: (p) => p === base },
-    { href: `${base}/agents`, label: "Agents", match: (p) => p.startsWith(`${base}/agents`) },
-    { href: `${base}/schedules`, label: "Schedules", match: (p) => p.startsWith(`${base}/schedules`) },
-    { href: `${base}/runs`, label: "Runs", match: (p) => p.startsWith(`${base}/runs`) },
-    { href: `${base}/integrations`, label: "Integrations", match: (p) => p.startsWith(`${base}/integrations`) },
+
+  type Tab = {
+    href: string;
+    label: string;
+    match: (p: string) => boolean;
+  };
+  const tabs: Tab[] = [
+    {
+      href: base,
+      label: "Overzicht",
+      // The root URL OR an explicit /overview/queue/etc. tab name. We
+      // do NOT match /n/... here — that's the dedicated Topics tab.
+      match: (p) =>
+        p === base ||
+        p === `${base}/queue` ||
+        p === `${base}/overview`,
+    },
+    {
+      href: `${base}/agents`,
+      label: "Agents",
+      match: (p) => p.startsWith(`${base}/agents`),
+    },
+    {
+      href: `${base}/schedules`,
+      label: "Schedules",
+      match: (p) => p.startsWith(`${base}/schedules`),
+    },
+    {
+      href: `${base}/runs`,
+      label: "Runs",
+      match: (p) => p.startsWith(`${base}/runs`),
+    },
+    {
+      href: `${base}/integrations`,
+      label: "Integrations",
+      match: (p) => p.startsWith(`${base}/integrations`),
+    },
+    {
+      // Topics doesn't have its own root — clicking it routes back to
+      // the business root where the user can pick a topic from the
+      // rail. The tab lights up when the URL is /n/...
+      href: base,
+      label: "Topics",
+      match: (p) => p.startsWith(`${base}/n/`),
+    },
   ];
   return (
     <div
@@ -27,13 +69,14 @@ export function BusinessTabs({ workspaceSlug, businessId }: Props) {
         gap: 4,
         marginBottom: 16,
         borderBottom: "1px solid var(--app-border-2)",
+        flexWrap: "wrap",
       }}
     >
       {tabs.map((t) => {
         const active = t.match(path);
         return (
           <a
-            key={t.href}
+            key={t.label}
             href={t.href}
             style={{
               padding: "8px 14px",

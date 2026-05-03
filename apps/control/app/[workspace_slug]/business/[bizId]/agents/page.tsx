@@ -11,7 +11,6 @@ import { resolveApiKey } from "../../../../../lib/api-keys/resolve";
 import { listAgentsForWorkspace } from "../../../../../lib/queries/agents";
 import { listBusinesses } from "../../../../../lib/queries/businesses";
 import { AgentsList } from "../../../../../components/AgentsList";
-import { BusinessTabs } from "../../../../../components/BusinessTabs";
 import { createSupabaseServerClient } from "../../../../../lib/supabase/server";
 
 type Props = {
@@ -77,7 +76,6 @@ export default async function BusinessAgentsPage({ params }: Props) {
         <h1>{biz.name} — agents</h1>
         <span className="sub">Providers · prompts · schedules</span>
       </div>
-      <BusinessTabs workspaceSlug={workspace_slug} businessId={biz.id} />
       <AgentsList
         workspaceSlug={workspace.slug}
         workspaceId={workspace.id}

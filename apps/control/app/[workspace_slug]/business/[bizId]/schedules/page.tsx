@@ -14,7 +14,6 @@ import {
   listSchedulesForBusiness,
   listRecentRunsForBusiness,
 } from "../../../../../lib/queries/schedules";
-import { BusinessTabs } from "../../../../../components/BusinessTabs";
 import { RunsTimeline } from "../../../../../components/RunsTimeline";
 import { ScheduleBuilder } from "../../../../../components/ScheduleBuilder";
 import { SchedulesPanel } from "../../../../../components/SchedulesPanel";
@@ -78,8 +77,6 @@ export default async function BusinessSchedulesPage({ params }: Props) {
         <h1>{biz.name} — schedules</h1>
         <span className="sub">Cron · webhooks · run history</span>
       </div>
-      <BusinessTabs workspaceSlug={workspace_slug} businessId={biz.id} />
-
       {agents.length > 0 && (
         <div style={{ marginBottom: 22 }}>
           <ScheduleBuilder
