@@ -18,7 +18,8 @@ type Target = { id: string; name: string };
 type Props = {
   workspaceSlug: string;
   workspaceId: string;
-  businessId: string;
+  /** null = workspace-global agent (business_id IS NULL). */
+  businessId: string | null;
   telegramTargets?: Target[];
   customIntegrations?: Target[];
   /** Workspace-level defaults applied when the user opens a fresh
@@ -160,8 +161,16 @@ export function NewAgentDialog({
             margin: "0 0 16px",
           }}
         >
-          Een agent verbindt een provider (Claude, MiniMax, …) aan deze
-          business. Schedule en secrets stellen we in fase 6 in.
+          {businessId === null ? (
+            <>
+              <strong>Workspace-global agent</strong> — niet aan een
+              specifieke business gekoppeld. Beschikbaar vanuit de chat
+              en als hop in agent-chains over de hele workspace.
+            </>
+          ) : (
+            <>Een agent verbindt een provider (Claude, MiniMax, …) aan
+            deze business.</>
+          )}
         </p>
 
         <Field label="Naam">

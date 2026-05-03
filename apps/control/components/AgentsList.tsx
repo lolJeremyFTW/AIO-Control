@@ -25,7 +25,10 @@ type Target = { id: string; name: string };
 type Props = {
   workspaceSlug: string;
   workspaceId: string;
-  businessId: string;
+  /** When null, this list manages WORKSPACE-GLOBAL agents (business_id
+   *  IS NULL). The new-agent dialog sets business_id=null in that case
+   *  and the rail/menu paths swap to the workspace-level URLs. */
+  businessId: string | null;
   agents: AgentRow[];
   /** Per-provider key resolution status — when an agent's provider isn't
    *  in this set we show "key missing" so the user knows why chat won't

@@ -47,9 +47,10 @@ export async function getAgentById(id: string): Promise<AgentRow | null> {
 
 export async function listAgentsForWorkspace(
   workspaceId: string,
+  scope: "all" | "global" | "business" = "all",
 ): Promise<AgentRow[]> {
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
+  let q = supabase
     .from("agents")
     .select(
       "id, workspace_id, business_id, name, kind, provider, model, config, telegram_target_id, custom_integration_id, next_agent_on_done, next_agent_on_fail, notify_email",
@@ -57,9 +58,22 @@ export async function listAgentsForWorkspace(
     .eq("workspace_id", workspaceId)
     .is("archived_at", null)
     .order("created_at", { ascending: true });
+  // Workspace-global agents have business_id IS NULL. Business-scoped
+  // ones have a real business_id. The schema already supports both;
+  // the UI just hadn't surfaced "global" until v3 workstream F.
+  if (scope === "global") q = q.is("business_id", null);
+  if (scope === "business") q = q.not("business_id", "is", null);
+  const { data, error } = await q;
   if (error) {
     console.error("listAgentsForWorkspace failed", error);
     return [];
   }
   return (data ?? []) as AgentRow[];
+}
+
+/** Convenience wrapper: workspace-global (business_id IS NULL) only. */
+export async function listGlobalAgents(
+  workspaceId: string,
+): Promise<AgentRow[]> {
+  return listAgentsForWorkspace(workspaceId, "global");
 }

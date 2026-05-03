@@ -59,6 +59,7 @@ const nl: Dict = {
   "nav.newBusiness": "New business",
   "nav.newTopic": "Nieuw topic",
   "nav.allBusinesses": "All businesses",
+  "nav.workspaceAgents": "Workspace agents",
 
   "rail.empty": "Geen businesses nog",
   "rail.emptyTopics": "Nog geen subtopics — maak er een aan ↓",
@@ -241,6 +242,7 @@ const en: Partial<Dict> = {
   "nav.newBusiness": "New business",
   "nav.newTopic": "New topic",
   "nav.newSubtopic": "New subtopic",
+  "nav.workspaceAgents": "Workspace agents",
 
   "profile.title": "Profile",
   "profile.sub": "Account · preferences · sessions",
@@ -366,6 +368,7 @@ const de: Partial<Dict> = {
   "nav.newBusiness": "Neues Business",
   "nav.newTopic": "Neues Topic",
   "nav.newSubtopic": "Neues Subtopic",
+  "nav.workspaceAgents": "Workspace-Agents",
 
   "profile.title": "Profil",
   "profile.sub": "Konto · Einstellungen · Sitzungen",

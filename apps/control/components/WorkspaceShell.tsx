@@ -67,7 +67,7 @@ type Props = {
    *  filters per-business client-side as the user drills in. */
   navNodes: NavNode[];
   weather?: { city: string; date: string; temp: string };
-  page?: "dashboard" | "settings" | "profile";
+  page?: "dashboard" | "settings" | "profile" | "agents";
   /** Active UI locale — translates client-side via the dict module. */
   locale: Locale;
   children: ReactNode;
@@ -215,9 +215,23 @@ export function WorkspaceShell({
     return drilledBiz.tab;
   }, [drilledBiz]);
 
-  // The page prop only matters for the top-level rail (settings vs profile vs
-  // dashboard). When drilled in, we don't apply the prop styling.
-  const page = drilledBiz ? "dashboard" : pageProp;
+  // Derive the active rail-item from the URL when drilled in we always
+  // show "dashboard" highlight. When NOT drilled in, prefer the prop
+  // (in case a page wants to force a specific section) but fall back
+  // to deducing from the pathname so /agents / /settings / /profile
+  // automatically light up the right rail row without the page having
+  // to explicitly pass `page=`.
+  const page: "dashboard" | "settings" | "profile" | "agents" = drilledBiz
+    ? "dashboard"
+    : pageProp !== "dashboard"
+      ? pageProp
+      : pathname.startsWith(`/${workspace.slug}/agents`)
+        ? "agents"
+        : pathname.startsWith(`/${workspace.slug}/settings`)
+          ? "settings"
+          : pathname.startsWith(`/${workspace.slug}/profile`)
+            ? "profile"
+            : "dashboard";
 
   const profileItem: RailItem = {
     id: "me",
@@ -579,6 +593,7 @@ export function WorkspaceShell({
               : t("nav.newTopic"),
           newBusiness: t("nav.newBusiness"),
           settings: t("nav.settings"),
+          workspaceAgents: t("nav.workspaceAgents"),
           emptyTopics: t("rail.emptyTopics"),
         }}
         onBack={() => {
@@ -613,6 +628,10 @@ export function WorkspaceShell({
         onOpenSettings={() => {
           closeRail();
           router.push(`/${workspace.slug}/settings`);
+        }}
+        onOpenWorkspaceAgents={() => {
+          closeRail();
+          router.push(`/${workspace.slug}/agents`);
         }}
         onCreateBusiness={() => {
           closeRail();

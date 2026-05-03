@@ -21,7 +21,8 @@ type Target = { id: string; name: string };
 
 type Props = {
   workspaceSlug: string;
-  businessId: string;
+  /** null = workspace-global agent (business_id IS NULL). */
+  businessId: string | null;
   agent: AgentRow & {
     telegram_target_id?: string | null;
     custom_integration_id?: string | null;

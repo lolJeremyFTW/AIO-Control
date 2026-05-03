@@ -86,7 +86,10 @@ type Props = {
   onBack?: () => void;
   onCreateBusiness?: () => void;
   onOpenSettings?: () => void;
-  page?: "dashboard" | "settings" | "profile";
+  /** Optional handler for the "Workspace agents" rail-bottom row.
+   *  When omitted the row hides — used in early phases. */
+  onOpenWorkspaceAgents?: () => void;
+  page?: "dashboard" | "settings" | "profile" | "agents";
   /** Right-click handlers — surface a custom context menu in the shell. */
   onContextMenuRail?: (
     e: ReactMouseEvent,
@@ -113,6 +116,7 @@ type Props = {
     newTopic?: string;
     newBusiness?: string;
     settings?: string;
+    workspaceAgents?: string;
     emptyTopics?: string;
   };
 };
@@ -139,6 +143,7 @@ export function Rail({
   onReorderTopic,
   onReorderBusiness,
   onCreateTopic,
+  onOpenWorkspaceAgents,
   emptyTopicsLabel,
   labels,
 }: Props) {
@@ -148,6 +153,7 @@ export function Rail({
     newTopic: labels?.newTopic ?? "Nieuw topic",
     newBusiness: labels?.newBusiness ?? "New business",
     settings: labels?.settings ?? "Settings",
+    workspaceAgents: labels?.workspaceAgents ?? "Workspace agents",
     emptyTopics:
       labels?.emptyTopics ??
       emptyTopicsLabel ??
@@ -403,6 +409,32 @@ export function Rail({
           expanded={expanded}
           onClick={onCreateBusiness}
         />
+        {onOpenWorkspaceAgents && (
+          <ActionRow
+            icon={
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <rect x="4" y="7" width="16" height="13" rx="2" />
+                <line x1="12" y1="2" x2="12" y2="7" />
+                <circle cx="9" cy="13" r="1.2" />
+                <circle cx="15" cy="13" r="1.2" />
+                <line x1="9" y1="17" x2="15" y2="17" />
+              </svg>
+            }
+            label={L.workspaceAgents}
+            expanded={expanded}
+            selected={page === "agents"}
+            onClick={onOpenWorkspaceAgents}
+          />
+        )}
         <ActionRow
           icon={<SettingsIcon size={16} />}
           label={L.settings}

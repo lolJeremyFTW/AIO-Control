@@ -134,7 +134,8 @@ export async function createAgent(
 
 export async function updateAgent(input: {
   workspace_slug: string;
-  business_id: string;
+  /** null = workspace-global agent (revalidates the global page). */
+  business_id: string | null;
   id: string;
   patch: {
     name?: string;
@@ -199,14 +200,18 @@ export async function updateAgent(input: {
     .update(patch)
     .eq("id", input.id);
   if (error) return { ok: false, error: error.message };
-  revalidatePath(`/${input.workspace_slug}/business/${input.business_id}`);
+  if (input.business_id) {
+    revalidatePath(`/${input.workspace_slug}/business/${input.business_id}`);
+  } else {
+    revalidatePath(`/${input.workspace_slug}/agents`);
+  }
   return { ok: true, data: null };
 }
 
 export async function duplicateAgent(input: {
   workspace_slug: string;
   workspace_id: string;
-  business_id: string;
+  business_id: string | null;
   source_id: string;
 }): Promise<ActionResult<{ id: string }>> {
   const supabase = await createSupabaseServerClient();
@@ -236,13 +241,17 @@ export async function duplicateAgent(input: {
     .single();
   if (error || !data) return { ok: false, error: error?.message ?? "Insert faalde." };
 
-  revalidatePath(`/${input.workspace_slug}/business/${input.business_id}`);
+  if (input.business_id) {
+    revalidatePath(`/${input.workspace_slug}/business/${input.business_id}`);
+  } else {
+    revalidatePath(`/${input.workspace_slug}/agents`);
+  }
   return { ok: true, data: { id: data.id } };
 }
 
 export async function archiveAgent(input: {
   workspace_slug: string;
-  business_id: string;
+  business_id: string | null;
   id: string;
 }): Promise<ActionResult<null>> {
   const supabase = await createSupabaseServerClient();
@@ -251,6 +260,10 @@ export async function archiveAgent(input: {
     .update({ archived_at: new Date().toISOString() })
     .eq("id", input.id);
   if (error) return { ok: false, error: error.message };
-  revalidatePath(`/${input.workspace_slug}/business/${input.business_id}`);
+  if (input.business_id) {
+    revalidatePath(`/${input.workspace_slug}/business/${input.business_id}`);
+  } else {
+    revalidatePath(`/${input.workspace_slug}/agents`);
+  }
   return { ok: true, data: null };
 }
