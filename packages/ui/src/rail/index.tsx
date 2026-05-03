@@ -328,15 +328,27 @@ export function Rail({
              lives in rail-top above the divider. */
           (() => {
             const INDENT = 12;
-            const baseDepth = drillChain.length; // topics live below the last chain entry
+            const baseDepth = drillChain.length;
+            // Indent guides + per-row indent only make sense when the
+            // rail is wide enough to show them. When it's collapsed
+            // (icon-only width) the children would push their dots
+            // off-center to the right; instead we just stack them
+            // flush-left and rely on the selected-state ring to mark
+            // the active row.
+            const indentFor = (depth: number) =>
+              expanded ? depth * INDENT : 0;
             return (
-              <div className={baseDepth > 0 ? "rail-drill-stack" : undefined}>
+              <div
+                className={
+                  expanded && baseDepth > 0 ? "rail-drill-stack" : undefined
+                }
+              >
                 {drillChain.map((node, i) => {
                   const isDeepest = i === drillChain.length - 1;
                   return (
                     <div
                       key={node.id}
-                      style={{ paddingLeft: i * INDENT }}
+                      style={{ paddingLeft: indentFor(i) }}
                       className="rail-drill-row"
                     >
                       <NavRow
@@ -360,9 +372,7 @@ export function Rail({
                   ? expanded && (
                       <div
                         className="rail-drill-row"
-                        style={{
-                          paddingLeft: baseDepth * INDENT,
-                        }}
+                        style={{ paddingLeft: indentFor(baseDepth) }}
                       >
                         <div
                           style={{
@@ -380,7 +390,7 @@ export function Rail({
                       <div
                         key={t.id}
                         className="rail-drill-row"
-                        style={{ paddingLeft: baseDepth * INDENT }}
+                        style={{ paddingLeft: indentFor(baseDepth) }}
                       >
                         <TopicRow
                           topic={t}
@@ -406,7 +416,7 @@ export function Rail({
                 {onCreateTopic && (
                   <div
                     className="rail-drill-row"
-                    style={{ paddingLeft: baseDepth * INDENT }}
+                    style={{ paddingLeft: indentFor(baseDepth) }}
                   >
                     <ActionRow
                       icon={<PlusIcon size={14} />}

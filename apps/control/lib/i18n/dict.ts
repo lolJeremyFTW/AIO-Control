@@ -70,6 +70,14 @@ const nl: Dict = {
   "topic.schedules": "Schedules",
   "topic.integrations": "Integrations",
 
+  "biztabs.overview": "Overzicht",
+  "biztabs.agents": "Agents",
+  "biztabs.routines": "Routines",
+  "biztabs.runs": "Runs",
+  "biztabs.integrations": "Integraties",
+  "biztabs.topics": "Topics",
+  "biztabs.lastRun": "Laatste run",
+
   "dashboard.title": "{workspace} — overzicht",
   "dashboard.sub": "Marge per business · auto + HITL",
   "dashboard.empty.title": "Maak je eerste business →",
@@ -186,6 +194,14 @@ const en: Partial<Dict> = {
   "topic.agents": "Agents",
   "topic.schedules": "Schedules",
   "topic.integrations": "Integrations",
+
+  "biztabs.overview": "Overview",
+  "biztabs.agents": "Agents",
+  "biztabs.routines": "Routines",
+  "biztabs.runs": "Runs",
+  "biztabs.integrations": "Integrations",
+  "biztabs.topics": "Topics",
+  "biztabs.lastRun": "Last run",
 
   "dashboard.title": "{workspace} — overview",
   "dashboard.sub": "Margin per business · auto + HITL",
@@ -309,6 +325,14 @@ const de: Partial<Dict> = {
   "topic.agents": "Agents",
   "topic.schedules": "Zeitpläne",
   "topic.integrations": "Integrationen",
+
+  "biztabs.overview": "Übersicht",
+  "biztabs.agents": "Agents",
+  "biztabs.routines": "Routinen",
+  "biztabs.runs": "Runs",
+  "biztabs.integrations": "Integrationen",
+  "biztabs.topics": "Topics",
+  "biztabs.lastRun": "Letzter Run",
 
   "dashboard.title": "{workspace} — Übersicht",
   "dashboard.sub": "Marge pro Business · auto + HITL",
