@@ -9,6 +9,7 @@ import { useMemo, useState, type ReactNode } from "react";
 
 import { ContextMenu, type ContextMenuItem } from "@aio/ui/context-menu";
 import { Header } from "@aio/ui/header";
+import { getAppIcon } from "@aio/ui/icon";
 import {
   Rail,
   type ContextMenuOrigin,
@@ -77,6 +78,23 @@ type Props = {
 // removed that fallback so the rail shows only what the user explicitly
 // created. The translation keys are kept around for the right-click
 // "Agents" / "Schedules" menu items elsewhere in the app.)
+
+/** Resolve a stored icon value to a ReactNode usable by Rail's Node.
+ *  - null/empty → undefined (Node falls back to the letter glyph)
+ *  - registered name (e.g. "video") → the SVG component
+ *  - anything else (legacy emoji rows from before the picker switch)
+ *    → kept as a small text span so existing data still renders. */
+function renderNodeIcon(
+  value: string | null | undefined,
+  size: number,
+): ReactNode | undefined {
+  if (!value) return undefined;
+  const svg = getAppIcon(value, size);
+  if (svg) return svg;
+  // Legacy emoji or stray text — render with the right line-height so
+  // it sits centered in the circular node.
+  return <span style={{ fontSize: size }}>{value}</span>;
+}
 
 export function WorkspaceShell({
   profile,
@@ -173,7 +191,10 @@ export function WorkspaceShell({
       // under /n/, with all currently-selected ids preserved.
       path: `/n/${[...drilledBiz.navPath, n.id].join("/")}`,
       variant: (n.variant as Topic["variant"]) ?? "dashed",
-      icon: n.icon ? <span style={{ fontSize: 16 }}>{n.icon}</span> : undefined,
+      // Prefer a registered SVG icon (icon name like "video"). Old
+      // emoji rows still render via the legacy span fallback so we
+      // don't break existing data.
+      icon: renderNodeIcon(n.icon, 16),
       colorHex: n.color_hex ?? null,
       logoUrl: n.logo_url ?? null,
     }));
@@ -204,9 +225,9 @@ export function WorkspaceShell({
     name: b.name,
     sub: b.sub ?? undefined,
     letter: b.letter,
-    // Emoji rides as the rail node's icon when set; the Node falls back to
-    // letter when icon is null/undefined.
-    icon: b.icon ? <span style={{ fontSize: 18 }}>{b.icon}</span> : undefined,
+    // Resolved via renderNodeIcon: SVG when icon is a known registry
+    // name, legacy emoji span when it isn't, undefined when empty.
+    icon: renderNodeIcon(b.icon, 18),
     variant: b.variant as RailItem["variant"],
     colorHex: b.color_hex ?? null,
     logoUrl: b.logo_url ?? null,
@@ -218,9 +239,7 @@ export function WorkspaceShell({
         name: drilledBiz.biz.name,
         sub: drilledBiz.biz.sub ?? undefined,
         letter: drilledBiz.biz.letter,
-        icon: drilledBiz.biz.icon ? (
-          <span style={{ fontSize: 18 }}>{drilledBiz.biz.icon}</span>
-        ) : undefined,
+        icon: renderNodeIcon(drilledBiz.biz.icon, 18),
         variant: drilledBiz.biz.variant as RailItem["variant"],
         colorHex: drilledBiz.biz.color_hex ?? null,
         logoUrl: drilledBiz.biz.logo_url ?? null,

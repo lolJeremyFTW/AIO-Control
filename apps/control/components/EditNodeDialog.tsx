@@ -193,7 +193,7 @@ export function EditNodeDialog({ workspaceSlug, target, onClose }: Props) {
             margin: "0 0 16px",
           }}
         >
-          Pas naam, kleur, logo en emoji aan. Wijzigingen zijn direct zichtbaar.
+          Pas naam, kleur, logo en icoon aan. Wijzigingen zijn direct zichtbaar.
         </p>
 
         <Field label="Naam">

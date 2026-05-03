@@ -5,24 +5,28 @@
 //   - 14 preset palette swatches
 //   - <input type="color"> + matching #hex text field
 //   - File upload → Supabase Storage 'node-logos' → returns public URL
-//   - Emoji picker + free-text icon
+//   - Curated SVG icon picker (NO emojis — every glyph is a hand-tuned
+//     SVG from packages/ui/src/icon to match the design language)
 //
 // State is fully controlled by the parent — this component just emits
-// onChange whenever any of the four fields changes.
+// onChange whenever any of the four fields changes. The persisted
+// `icon` value is now an icon NAME ("video", "rocket", …) rather than
+// an emoji codepoint; the renderer (Node + WorkspaceShell helpers)
+// looks the name up in the registry and falls back to the letter glyph
+// when an unknown value comes back from the DB (older emoji rows).
 
 "use client";
 
 import { useEffect, useRef, useState } from "react";
 
+import {
+  APP_ICON_PICKER_NAMES,
+  getAppIcon,
+  isAppIconName,
+} from "@aio/ui/icon";
 import { ALL_VARIANTS, Node } from "@aio/ui/rail/Node";
 
 import { getSupabaseBrowserClient } from "../lib/supabase/client";
-
-const QUICK_EMOJIS = [
-  "🎬", "🎙️", "📺", "🛍️", "📈", "💬", "🤖", "🧠", "✏️", "🎨",
-  "🛠️", "📱", "🌍", "📦", "💼", "🚀", "🪙", "📚", "📰", "🧩",
-  "🎯", "📊", "🧪", "🎵", "📁", "🔍",
-];
 
 const HEX_RE = /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
 
@@ -121,9 +125,12 @@ export function AppearancePicker({
           colorHex={value.colorHex}
           logoUrl={value.logoUrl}
           icon={
-            value.icon ? (
+            getAppIcon(value.icon, 22) ??
+            (value.icon ? (
+              // Legacy fallback so existing emoji-based rows still
+              // render — the picker below no longer offers emojis.
               <span style={{ fontSize: 18 }}>{value.icon}</span>
-            ) : undefined
+            ) : undefined)
           }
           letter={value.icon || value.logoUrl ? undefined : letter}
           size={48}
@@ -164,7 +171,7 @@ export function AppearancePicker({
                 ["--size" as string]: "30px",
               }}
             >
-              {value.icon || letter}
+              {getAppIcon(value.icon, 14) ?? value.icon ?? letter}
             </button>
           ))}
         </div>
@@ -302,66 +309,70 @@ export function AppearancePicker({
         )}
       </div>
 
-      {/* ── Emoji + text icon ─────────────────────────────────── */}
+      {/* ── Icon picker ───────────────────────────────────────── */}
       <div>
-        <FieldLabel>Emoji of letter (alternatief voor logo)</FieldLabel>
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <input
-            value={value.icon}
-            onChange={(e) => set({ icon: e.target.value.slice(0, 4) })}
-            placeholder="🎬"
-            style={{
-              width: 90,
-              background: "var(--app-card-2)",
-              border: "1.5px solid var(--app-border)",
-              color: "var(--app-fg)",
-              padding: "7px 10px",
-              borderRadius: 8,
-              fontFamily: "var(--type)",
-              fontSize: 14,
-            }}
-          />
-          {value.icon && (
-            <button
-              type="button"
-              onClick={() => set({ icon: "" })}
-              style={btnGhost}
-            >
-              ✕
-            </button>
-          )}
-        </div>
+        <FieldLabel>Icoon (optioneel — overschrijft de letter)</FieldLabel>
         <div
           style={{
-            display: "flex",
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(34px, 1fr))",
             gap: 6,
-            marginTop: 8,
-            flexWrap: "wrap",
           }}
         >
-          {QUICK_EMOJIS.map((e) => (
-            <button
-              key={e}
-              type="button"
-              onClick={() => set({ icon: e })}
-              style={{
-                width: 28,
-                height: 28,
-                border: `1.5px solid ${
-                  value.icon === e ? "var(--tt-green)" : "var(--app-border)"
-                }`,
-                background: "var(--app-card-2)",
-                borderRadius: 8,
-                cursor: "pointer",
-                fontSize: 15,
-                lineHeight: 1,
-                padding: 0,
-              }}
-            >
-              {e}
-            </button>
-          ))}
+          {APP_ICON_PICKER_NAMES.map((name) => {
+            const active = value.icon === name;
+            return (
+              <button
+                key={name}
+                type="button"
+                aria-label={name}
+                aria-pressed={active}
+                onClick={() => set({ icon: active ? "" : name })}
+                style={{
+                  width: 34,
+                  height: 34,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  border: `1.5px solid ${
+                    active ? "var(--tt-green)" : "var(--app-border)"
+                  }`,
+                  background: active
+                    ? "rgba(57,178,85,0.10)"
+                    : "var(--app-card-2)",
+                  color: "var(--app-fg)",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                  padding: 0,
+                  lineHeight: 0,
+                }}
+              >
+                {getAppIcon(name, 16)}
+              </button>
+            );
+          })}
         </div>
+        {value.icon && !isAppIconName(value.icon) && (
+          <p
+            style={{
+              fontSize: 11,
+              color: "var(--app-fg-3)",
+              marginTop: 8,
+            }}
+          >
+            Huidige waarde &quot;{value.icon}&quot; is een oude emoji — kies
+            hierboven een icoon om te vervangen.
+          </p>
+        )}
+        {value.icon && (
+          <button
+            type="button"
+            onClick={() => set({ icon: "" })}
+            style={{ ...btnGhost, marginTop: 8 }}
+          >
+            ✕ Wis icoon (val terug op letter)
+          </button>
+        )}
       </div>
     </div>
   );

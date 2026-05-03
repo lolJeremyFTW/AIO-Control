@@ -14,6 +14,16 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { ContextMenu, type ContextMenuItem } from "@aio/ui/context-menu";
+import {
+  ChatIcon,
+  CoinIcon,
+  GridIcon,
+  InboxIcon,
+  ListIcon,
+  RefreshIcon,
+  SearchIcon,
+  SettingsIcon,
+} from "@aio/ui/icon";
 
 type Props = {
   workspaceSlug: string;
@@ -59,16 +69,17 @@ export function AppContextMenu({ workspaceSlug }: Props) {
 
   const items: ContextMenuItem[] = [
     {
-      label: "🔍 Zoeken (⌘K)",
+      label: "Zoeken",
+      icon: <SearchIcon size={14} />,
+      shortcut: "⌘K",
       onClick: () => {
-        const el = document.querySelector(
-          ".search",
-        ) as HTMLElement | null;
+        const el = document.querySelector(".search") as HTMLElement | null;
         if (el) el.click();
       },
     },
     {
-      label: "💬 Open chat",
+      label: "Open chat",
+      icon: <ChatIcon size={14} />,
       onClick: () => {
         const ev = new CustomEvent("aio:open-chat");
         window.dispatchEvent(ev);
@@ -76,28 +87,34 @@ export function AppContextMenu({ workspaceSlug }: Props) {
     },
     { kind: "separator" },
     {
-      label: "📊 Dashboard",
+      label: "Dashboard",
+      icon: <GridIcon size={14} />,
       onClick: () => router.push(`/${workspaceSlug}/dashboard`),
     },
     {
-      label: "📋 Wachtrij",
+      label: "Wachtrij",
+      icon: <InboxIcon size={14} />,
       onClick: () => router.push(`/${workspaceSlug}/queue`),
     },
     {
-      label: "📜 Runs",
+      label: "Runs",
+      icon: <ListIcon size={14} />,
       onClick: () => router.push(`/${workspaceSlug}/runs`),
     },
     {
-      label: "💰 Cost & spend",
+      label: "Cost & spend",
+      icon: <CoinIcon size={14} />,
       onClick: () => router.push(`/${workspaceSlug}/cost`),
     },
     { kind: "separator" },
     {
-      label: "⚙️ Settings",
+      label: "Settings",
+      icon: <SettingsIcon size={14} />,
       onClick: () => router.push(`/${workspaceSlug}/settings`),
     },
     {
-      label: "🔄 Pagina herladen",
+      label: "Pagina herladen",
+      icon: <RefreshIcon size={14} />,
       onClick: () => router.refresh(),
     },
   ];

@@ -1,7 +1,7 @@
 // Multi-step setup wizard for new businesses. Replaces the single
 // NewBusinessDialog with a guided flow:
 //
-//   Step 1  Identity      name + sub + appearance (variant + emoji + logo)
+//   Step 1  Identity      name + sub + appearance (variant + icon + logo)
 //   Step 2  Intent        description + mission + first targets
 //   Step 3  Topics        seed initial nav-nodes ("Content / Marketing /…")
 //   Step 4  Isolation     standalone vs inherits-from-workspace
@@ -107,18 +107,16 @@ export function BusinessSetupWizard({
         setError(res.error);
         return;
       }
-      // Topics — best-effort, sequentially.
+      // Topics — best-effort, sequentially. We no longer parse out a
+      // leading emoji from the input; the appearance picker on the
+      // topic-edit dialog is the right place to choose an SVG icon.
       for (const t of topicNames) {
-        const matchEmoji = t.match(/^(\p{Emoji}+)\s+(.+)$/u);
-        const icon = matchEmoji?.[1] ?? "";
-        const tName = matchEmoji?.[2] ?? t;
         await createNavNode({
           workspace_slug: workspaceSlug,
           workspace_id: workspaceId,
           business_id: res.data.id,
           parent_id: null,
-          name: tName,
-          icon: icon || undefined,
+          name: t,
         });
       }
       // Targets aren't on createBusiness — push them via updateBusiness
@@ -284,7 +282,7 @@ export function BusinessSetupWizard({
                     addTopic();
                   }
                 }}
-                placeholder="Bijv. 📝 Content (emoji + naam)"
+                placeholder="Bijv. Content / Marketing / Sales"
                 style={inp}
               />
               <button type="button" onClick={addTopic} style={btnSec}>
