@@ -31,9 +31,22 @@ type Props = {
 
 type UIMessage = {
   id: string;
-  role: "user" | "assistant" | "error";
+  role: "user" | "assistant" | "error" | "system";
   text: string;
   pending?: boolean;
+  /** When set, the bubble renders an ask_followup question with
+   *  optional multiple-choice buttons (a click sends that label as
+   *  the user's next message). */
+  askFollowup?: {
+    question: string;
+    options?: { label: string; description?: string }[];
+  };
+  /** Inline tool-call chips so the user sees what the agent is doing. */
+  toolCalls?: Array<{ id: string; name: string; argsPreview: string }>;
+  /** When the model wants to confirm a destructive action. */
+  confirm?: { kind: string; summary: string };
+  /** Optional clickable navigation hint emitted by open_ui_at. */
+  navHint?: { path: string; label?: string };
 };
 
 export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
@@ -180,6 +193,79 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
                   ),
                 );
               }
+              if (event.type === "tool_call_start") {
+                const argsPreview = (() => {
+                  try {
+                    const s = JSON.stringify(event.args);
+                    return s.length > 80 ? s.slice(0, 77) + "…" : s;
+                  } catch {
+                    return "";
+                  }
+                })();
+                setMessages((m) =>
+                  m.map((mm) =>
+                    mm.id === assistantId
+                      ? {
+                          ...mm,
+                          toolCalls: [
+                            ...(mm.toolCalls ?? []),
+                            {
+                              id: event.tool_call_id,
+                              name: event.name,
+                              argsPreview,
+                            },
+                          ],
+                        }
+                      : mm,
+                  ),
+                );
+              }
+              if (event.type === "ask_followup") {
+                setMessages((m) =>
+                  m.map((mm) =>
+                    mm.id === assistantId
+                      ? {
+                          ...mm,
+                          pending: false,
+                          askFollowup: {
+                            question: event.question,
+                            options: event.options,
+                          },
+                        }
+                      : mm,
+                  ),
+                );
+              }
+              if (event.type === "confirm_required") {
+                setMessages((m) =>
+                  m.map((mm) =>
+                    mm.id === assistantId
+                      ? {
+                          ...mm,
+                          pending: false,
+                          confirm: {
+                            kind: event.kind,
+                            summary: event.summary,
+                          },
+                        }
+                      : mm,
+                  ),
+                );
+              }
+              if (event.type === "open_ui_at") {
+                setMessages((m) =>
+                  m.map((mm) =>
+                    mm.id === assistantId
+                      ? {
+                          ...mm,
+                          navHint: { path: event.path, label: event.label },
+                        }
+                      : mm,
+                  ),
+                );
+              }
+              // todo_set + plan_proposed render in future commits;
+              // ignored for now so they don't crash the parser.
             } catch {
               /* ignore malformed event */
             }
@@ -468,29 +554,203 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
                 style={{
                   alignSelf: m.role === "user" ? "flex-end" : "flex-start",
                   maxWidth: "82%",
-                  background:
-                    m.role === "user"
-                      ? "var(--tt-green)"
-                      : m.role === "error"
-                        ? "rgba(230,82,107,0.10)"
-                        : "var(--app-card-2)",
-                  color:
-                    m.role === "user"
-                      ? "#fff"
-                      : m.role === "error"
-                        ? "var(--rose)"
-                        : "var(--app-fg)",
-                  border:
-                    m.role === "error"
-                      ? "1px solid rgba(230,82,107,0.4)"
-                      : "1px solid var(--app-border-2)",
-                  borderRadius: 12,
-                  padding: "8px 11px",
-                  whiteSpace: "pre-wrap",
-                  lineHeight: 1.42,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
                 }}
               >
-                {m.text || (m.pending ? "…" : "")}
+                <div
+                  style={{
+                    background:
+                      m.role === "user"
+                        ? "var(--tt-green)"
+                        : m.role === "error"
+                          ? "rgba(230,82,107,0.10)"
+                          : "var(--app-card-2)",
+                    color:
+                      m.role === "user"
+                        ? "#fff"
+                        : m.role === "error"
+                          ? "var(--rose)"
+                          : "var(--app-fg)",
+                    border:
+                      m.role === "error"
+                        ? "1px solid rgba(230,82,107,0.4)"
+                        : "1px solid var(--app-border-2)",
+                    borderRadius: 12,
+                    padding: "8px 11px",
+                    whiteSpace: "pre-wrap",
+                    lineHeight: 1.42,
+                  }}
+                >
+                  {m.text || (m.pending ? "…" : "")}
+                </div>
+
+                {/* Tool-call chips so the user sees what the agent is
+                    doing while it runs. */}
+                {m.toolCalls && m.toolCalls.length > 0 && (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: 4,
+                    }}
+                  >
+                    {m.toolCalls.map((tc) => (
+                      <span
+                        key={tc.id}
+                        style={{
+                          fontSize: 10.5,
+                          padding: "2px 7px",
+                          borderRadius: 6,
+                          background: "var(--app-card-2)",
+                          border: "1px solid var(--app-border-2)",
+                          fontFamily: "var(--mono, monospace)",
+                          color: "var(--app-fg-3)",
+                        }}
+                        title={tc.argsPreview}
+                      >
+                        {tc.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* ask_followup — the agent paused for clarification.
+                    Render the question + optional multiple-choice
+                    buttons. Click sends the option label as the
+                    next user turn. */}
+                {m.askFollowup && (
+                  <div
+                    style={{
+                      background: "var(--app-card-2)",
+                      border: "1.5px solid var(--tt-green)",
+                      borderRadius: 12,
+                      padding: 10,
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 12.5,
+                        fontWeight: 700,
+                        marginBottom: 8,
+                      }}
+                    >
+                      {m.askFollowup.question}
+                    </div>
+                    {m.askFollowup.options && m.askFollowup.options.length > 0 ? (
+                      <div
+                        style={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: 6,
+                        }}
+                      >
+                        {m.askFollowup.options.map((o) => (
+                          <button
+                            key={o.label}
+                            type="button"
+                            disabled={sending}
+                            onClick={() => {
+                              setInput(o.label);
+                              // Defer to next tick so React commits
+                              // the input value first.
+                              setTimeout(() => void send(), 0);
+                            }}
+                            title={o.description}
+                            style={{
+                              padding: "6px 10px",
+                              fontSize: 12,
+                              fontWeight: 700,
+                              border: "1.5px solid var(--app-border)",
+                              background: "var(--app-card)",
+                              color: "var(--app-fg)",
+                              borderRadius: 8,
+                              cursor: sending ? "wait" : "pointer",
+                            }}
+                          >
+                            {o.label}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: "var(--app-fg-3)",
+                          fontStyle: "italic",
+                        }}
+                      >
+                        Typ je antwoord hieronder.
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* confirm_required — write tool wants approval. */}
+                {m.confirm && (
+                  <div
+                    style={{
+                      background: "rgba(230,82,107,0.06)",
+                      border: "1.5px solid var(--rose)",
+                      borderRadius: 12,
+                      padding: 10,
+                      fontSize: 12,
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 700,
+                        color: "var(--rose)",
+                        textTransform: "uppercase",
+                        letterSpacing: 0.5,
+                        marginBottom: 4,
+                      }}
+                    >
+                      Bevestig: {m.confirm.kind}
+                    </div>
+                    <pre
+                      style={{
+                        fontSize: 10.5,
+                        lineHeight: 1.4,
+                        margin: 0,
+                        whiteSpace: "pre-wrap",
+                        fontFamily: "var(--mono, monospace)",
+                        color: "var(--app-fg-2)",
+                      }}
+                    >
+                      {m.confirm.summary}
+                    </pre>
+                    <p
+                      style={{
+                        fontSize: 11,
+                        color: "var(--app-fg-3)",
+                        margin: "8px 0 0",
+                      }}
+                    >
+                      Write-tool execution komt in een follow-up commit.
+                      Type voor nu &quot;ja, voer uit&quot; of voer de
+                      actie zelf uit via de UI.
+                    </p>
+                  </div>
+                )}
+
+                {/* open_ui_at — agent suggests navigating somewhere. */}
+                {m.navHint && (
+                  <a
+                    href={m.navHint.path}
+                    style={{
+                      alignSelf: "flex-start",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: "var(--tt-green)",
+                      textDecoration: "underline",
+                    }}
+                  >
+                    → {m.navHint.label ?? m.navHint.path}
+                  </a>
+                )}
               </div>
             ))}
           </div>

@@ -111,6 +111,20 @@ export interface StreamChatOptions {
    *  to keep conversational context across turns within the same chat
    *  thread. Pass the chat_thread_id when streaming from /api/chat. */
   sessionId?: string;
+  /** AIO Control function-tools the agent is allowed to call this turn.
+   *  Currently honoured by the Claude provider via Anthropic's
+   *  tool_use; other providers will follow. When omitted no tools are
+   *  exposed (model behaves as plain chat). */
+  tools?: Array<{
+    name: string;
+    description: string;
+    parameters: {
+      type: "object";
+      properties: Record<string, unknown>;
+      required?: string[];
+      additionalProperties?: boolean;
+    };
+  }>;
 }
 
 export async function* streamChat(

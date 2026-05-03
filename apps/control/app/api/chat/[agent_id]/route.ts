@@ -12,11 +12,14 @@ import {
 } from "@aio/ai/router";
 import type { AGUIEvent, ChatMessage } from "@aio/ai/ag-ui";
 
+import { AIO_TOOLS, defaultToolsForKind } from "@aio/ai/aio-tools";
+
 import { resolveApiKey } from "../../../../lib/api-keys/resolve";
 import {
   buildAgentSystemPrompt,
   prependPreamble,
 } from "../../../../lib/agents/business-context";
+import { executeAioTool } from "../../../../lib/agents/tool-execution";
 import { checkSpendLimit } from "../../../../lib/dispatch/spend-limit";
 import { dispatchRunEvent } from "../../../../lib/notify/dispatch";
 import { getAgentById } from "../../../../lib/queries/agents";
@@ -142,6 +145,22 @@ export async function POST(
   let assistantText = "";
   let usage: { input: number; output: number; cost: number } | null = null;
 
+  // Resolve which AIO Control tools this agent is allowed to use.
+  // null in the DB = use the kind defaults; explicit array = allow-list.
+  // We translate names → spec objects → only the specs the registry
+  // knows about (filters out stale names from older config).
+  const allowedToolNames =
+    (agent as { allowed_tools?: string[] | null }).allowed_tools ??
+    defaultToolsForKind(agent.kind);
+  const tools = allowedToolNames
+    .map((n) => AIO_TOOLS[n])
+    .filter((t): t is NonNullable<typeof t> => !!t)
+    .map((t) => ({
+      name: t.name,
+      description: t.description,
+      parameters: t.parameters,
+    }));
+
   const stream = new ReadableStream({
     async start(controller) {
       const send = (event: AGUIEvent) => {
@@ -150,30 +169,146 @@ export async function POST(
         );
       };
 
+      // Multi-turn dispatch loop. We accumulate tool_use blocks the
+      // model emits during the stream, execute READ + META tools
+      // server-side, append tool_result messages, and re-invoke
+      // streamChat. Capped at 5 hops so a stuck loop can't burn
+      // tokens forever. WRITE tools and ask_followup defer to the
+      // panel and break the loop (the user's next request resumes).
+      const HOPS_MAX = 5;
+      const messages: ChatMessage[] = [...body.messages];
+      let deferred = false;
+
       try {
-        for await (const event of streamChat({
-          provider: agent.provider as ProviderId,
-          config,
-          messages: body.messages,
-          runId: run.id,
-          apiKey,
-          tenant: {
-            workspaceId: agent.workspace_id,
-            businessId: agent.business_id,
-          },
-          // Stable session id per chat thread → subprocess providers
-          // (openclaw, hermes) keep context across turns.
-          sessionId: threadId ?? undefined,
-        })) {
-          if (event.type === "token") assistantText += event.delta;
-          if (event.type === "message_end") {
-            usage = {
-              input: event.usage.input_tokens,
-              output: event.usage.output_tokens,
-              cost: event.usage.cost_cents,
-            };
+        for (let hop = 0; hop < HOPS_MAX && !deferred; hop++) {
+          const toolUses: Array<{
+            id: string;
+            name: string;
+            args: unknown;
+          }> = [];
+
+          for await (const event of streamChat({
+            provider: agent.provider as ProviderId,
+            config,
+            messages,
+            runId: run.id,
+            apiKey,
+            tenant: {
+              workspaceId: agent.workspace_id,
+              businessId: agent.business_id,
+            },
+            sessionId: threadId ?? undefined,
+            tools,
+          })) {
+            if (event.type === "token") assistantText += event.delta;
+            if (event.type === "message_end") {
+              usage = {
+                input: event.usage.input_tokens,
+                output: event.usage.output_tokens,
+                cost: event.usage.cost_cents,
+              };
+            }
+            if (event.type === "tool_call_start") {
+              toolUses.push({
+                id: event.tool_call_id,
+                name: event.name,
+                args: event.args,
+              });
+            }
+            send(event);
           }
-          send(event);
+
+          // No tool_use in this turn → conversation is complete.
+          if (toolUses.length === 0) break;
+
+          // Execute each tool. READ tools return data; META tools
+          // (ask_followup, …) and WRITE tools return defer events
+          // we forward to the panel and stop the loop.
+          const toolResults: Array<{ id: string; content: string }> = [];
+          for (const tu of toolUses) {
+            const res = await executeAioTool(tu.name, tu.args, {
+              workspaceId: agent.workspace_id,
+              defaultBusinessId: agent.business_id,
+            });
+            if (res.kind === "defer") {
+              const ev = res.event;
+              if (ev.type === "ask_followup") {
+                send({
+                  type: "ask_followup",
+                  tool_call_id: tu.id,
+                  question: ev.question,
+                  options: ev.options,
+                });
+              } else if (ev.type === "confirm_required") {
+                send({
+                  type: "confirm_required",
+                  tool_call_id: tu.id,
+                  summary: ev.summary,
+                  kind: ev.kind,
+                });
+              } else if (ev.type === "open_ui_at") {
+                send({
+                  type: "open_ui_at",
+                  path: ev.path,
+                  label: ev.label,
+                });
+                // open_ui_at is non-blocking — synthesize an "ack"
+                // result so the model can keep going.
+                toolResults.push({
+                  id: tu.id,
+                  content: JSON.stringify({ navigated: true }),
+                });
+                continue;
+              } else if (ev.type === "todo_set") {
+                send({ type: "todo_set", items: ev.items });
+                toolResults.push({
+                  id: tu.id,
+                  content: JSON.stringify({ ok: true }),
+                });
+                continue;
+              }
+              deferred = true;
+              break;
+            }
+            // ok / error — JSON-encode for the model.
+            toolResults.push({
+              id: tu.id,
+              content:
+                res.kind === "ok"
+                  ? JSON.stringify(res.data)
+                  : JSON.stringify({ error: res.error }),
+            });
+          }
+
+          if (deferred) break;
+          if (toolResults.length === 0) break;
+
+          // Append the assistant turn's tool_use blocks + a user turn
+          // with the tool_results, then continue the loop. The Claude
+          // provider's decodeBlocks() turns the JSON-encoded array
+          // back into structured content blocks before calling the
+          // SDK.
+          messages.push({
+            role: "assistant",
+            content: JSON.stringify(
+              toolUses.map((t) => ({
+                type: "tool_use",
+                id: t.id,
+                name: t.name,
+                input: t.args,
+              })),
+            ),
+          });
+          messages.push({
+            role: "user",
+            content: JSON.stringify(
+              toolResults.map((r) => ({
+                type: "tool_result",
+                tool_use_id: r.id,
+                content: r.content,
+              })),
+            ),
+          });
         }
       } catch (err) {
         send({
