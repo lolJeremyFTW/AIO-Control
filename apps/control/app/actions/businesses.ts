@@ -27,6 +27,9 @@ export type BusinessInput = {
   color_hex?: string | null;
   /** Optional uploaded logo URL — overrides letter/icon. */
   logo_url?: string | null;
+  description?: string;
+  mission?: string;
+  isolated?: boolean;
 };
 
 const HEX_RE = /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
@@ -60,6 +63,9 @@ export async function createBusiness(
       color_hex: colorHex,
       logo_url: input.logo_url?.trim() || null,
       status: "paused",
+      description: input.description?.trim() || null,
+      mission: input.mission?.trim() || null,
+      isolated: !!input.isolated,
     })
     .select("id")
     .single();
@@ -100,6 +106,7 @@ export async function updateBusiness(input: {
     description?: string | null;
     mission?: string | null;
     targets?: unknown[];
+    isolated?: boolean;
   };
 }): Promise<ActionResult<null>> {
   const patch: Record<string, unknown> = {};
@@ -132,6 +139,7 @@ export async function updateBusiness(input: {
   if (input.patch.mission !== undefined)
     patch.mission = input.patch.mission?.toString() || null;
   if (input.patch.targets !== undefined) patch.targets = input.patch.targets;
+  if (input.patch.isolated !== undefined) patch.isolated = input.patch.isolated;
 
   if (Object.keys(patch).length === 0) return { ok: true, data: null };
 

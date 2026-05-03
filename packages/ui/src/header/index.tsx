@@ -45,6 +45,8 @@ type Props = {
    *  NotificationsBell with realtime badge). */
   searchSlot?: ReactNode;
   bellSlot?: ReactNode;
+  /** Tiny circle button next to the bell — light/dark theme flip. */
+  themeToggle?: ReactNode;
   children?: ReactNode; // optional row 2 content
 };
 
@@ -61,6 +63,7 @@ export function Header({
   userEmail,
   searchSlot,
   bellSlot,
+  themeToggle,
   children,
 }: Props) {
   const [activeAvatar, setActiveAvatar] = useState(false);
@@ -141,6 +144,7 @@ export function Header({
           </span>{" "}
           Praat met AI
         </div>
+        {themeToggle}
         {bellSlot ?? (
           <button className="ibtn" aria-label="Notifications">
             <BellIcon />

@@ -42,8 +42,59 @@ export async function resolveApiKey(
 
   try {
     const supabase = await createSupabaseServerClient();
-    // RPC call to the SECURITY DEFINER resolver which validates
-    // workspace membership before walking the scope hierarchy.
+
+    // Check the business's isolated flag. Isolated businesses do
+    // NOT inherit workspace defaults — only their own keys count.
+    let isolated = false;
+    if (ctx.businessId) {
+      const { data: biz } = await supabase
+        .from("businesses")
+        .select("isolated")
+        .eq("id", ctx.businessId)
+        .maybeSingle();
+      isolated = !!biz?.isolated;
+    }
+
+    if (isolated) {
+      // Walk only the per-business + per-navnode scopes; skip the
+      // workspace fallback. We do this by calling the RPC with a
+      // dummy workspace_id when there's nothing more specific —
+      // OR we manually decrypt the business-scope row.
+      const { data: row } = await supabase
+        .from("api_keys")
+        .select("encrypted_value")
+        .eq("workspace_id", ctx.workspaceId)
+        .eq("scope", "business")
+        .eq("scope_id", ctx.businessId!)
+        .eq("provider", provider)
+        .maybeSingle();
+      if (!row) return null;
+      // Decrypt via the existing RPC pointed at JUST this row.
+      const { data: decrypted } = await supabase.rpc("resolve_api_key", {
+        _workspace_id: ctx.workspaceId,
+        _business_id: ctx.businessId,
+        _nav_node_id: ctx.navNodeId ?? null,
+        _provider: provider,
+        _master_key: masterKey,
+      });
+      // The RPC walks navnode → business → workspace, so we filter
+      // out the workspace-level value by also asking ourselves the
+      // workspace value separately and discarding when they match.
+      if (typeof decrypted !== "string" || !decrypted) return null;
+      const { data: wsRow } = await supabase.rpc("resolve_api_key", {
+        _workspace_id: ctx.workspaceId,
+        _business_id: null,
+        _nav_node_id: null,
+        _provider: provider,
+        _master_key: masterKey,
+      });
+      // If the resolver returned the workspace default it means
+      // there's no business/navnode override — refuse it.
+      if (typeof wsRow === "string" && wsRow === decrypted) return null;
+      return decrypted;
+    }
+
+    // Standard path — walk the full hierarchy with env fallback.
     const { data, error } = await supabase.rpc("resolve_api_key", {
       _workspace_id: ctx.workspaceId,
       _business_id: ctx.businessId ?? null,

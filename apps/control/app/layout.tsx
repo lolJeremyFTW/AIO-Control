@@ -29,6 +29,20 @@ export const metadata: Metadata = {
   description: "The solo operator's agent command center.",
 };
 
+// Inline script that runs BEFORE React hydration so the chosen
+// theme is applied immediately — no flash of dark UI when the user
+// has light selected. Reads localStorage (client-side only); the
+// initial server render defaults to data-theme="dark".
+const themeBoot = `
+try {
+  var saved = localStorage.getItem('aio-theme');
+  if (saved === 'light' || (!saved && window.matchMedia('(prefers-color-scheme: light)').matches)) {
+    document.body.setAttribute('data-theme', saved || 'light');
+    document.documentElement.style.colorScheme = saved || 'light';
+  }
+} catch (_) {}
+`.trim();
+
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
@@ -38,6 +52,7 @@ export default function RootLayout({
         data-theme="dark"
         className={`${kalam.variable} ${caveat.variable} ${spaceGrotesk.variable} ${inter.variable}`}
       >
+        <script dangerouslySetInnerHTML={{ __html: themeBoot }} />
         {children}
       </body>
     </html>

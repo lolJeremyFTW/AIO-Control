@@ -32,6 +32,7 @@ export type EditTarget =
       description?: string | null;
       mission?: string | null;
       targets?: Target[];
+      isolated?: boolean;
     }
   | {
       kind: "navnode";
@@ -89,6 +90,9 @@ export function EditNodeDialog({ workspaceSlug, target, onClose }: Props) {
   const [bizTargets, setBizTargets] = useState<Target[]>(
     target.kind === "business" ? (target.targets ?? []) : [],
   );
+  const [bizIsolated, setBizIsolated] = useState(
+    target.kind === "business" ? (target.isolated ?? false) : false,
+  );
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const router = useRouter();
@@ -118,6 +122,7 @@ export function EditNodeDialog({ workspaceSlug, target, onClose }: Props) {
           description: bizDescription || null,
           mission: bizMission || null,
           targets: bizTargets,
+          isolated: bizIsolated,
         },
       });
     } else {
@@ -318,6 +323,45 @@ export function EditNodeDialog({ workspaceSlug, target, onClose }: Props) {
                 : "Business is gepauzeerd — geen runs"}
             </label>
           </div>
+
+          <label
+            style={{
+              display: "flex",
+              gap: 10,
+              alignItems: "flex-start",
+              padding: 12,
+              border: `1.5px solid ${bizIsolated ? "var(--rose)" : "var(--app-border-2)"}`,
+              borderRadius: 10,
+              background: bizIsolated
+                ? "rgba(230,82,107,0.06)"
+                : "var(--app-card-2)",
+              cursor: "pointer",
+              marginBottom: 12,
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={bizIsolated}
+              onChange={(e) => setBizIsolated(e.target.checked)}
+              style={{ accentColor: "var(--rose)", marginTop: 3 }}
+            />
+            <div style={{ fontSize: 12 }}>
+              <div style={{ fontWeight: 700 }}>
+                🔒 Isolated van workspace defaults
+              </div>
+              <div
+                style={{
+                  color: "var(--app-fg-3)",
+                  marginTop: 2,
+                  lineHeight: 1.4,
+                }}
+              >
+                Wanneer aan: deze business gebruikt UITSLUITEND eigen API
+                keys / Telegram bot / SMTP creds. Geen workspace fallback.
+                Handig voor klantwerk waar je credentials niet wil mixen.
+              </div>
+            </div>
+          </label>
           </>
         )}
 

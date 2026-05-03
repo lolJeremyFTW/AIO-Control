@@ -63,35 +63,27 @@ body {
   font-family: var(--type);
 }
 
+/* Layout: rail is FIXED to the viewport-left, main content gets a
+   margin-left equal to the rail width. position:sticky on a grid
+   item proved fragile (depended on grid row height matching content
+   height + the cell not stretching). position:fixed always works
+   regardless of how tall the page gets. */
 .app-shell {
   min-height: 100vh;
-  display: grid;
-  grid-template-columns: var(--rail-w, 76px) 1fr;
-  transition: grid-template-columns 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
-/* The Rail component owns the `is-expanded` toggle (it knows when the
-   cursor is over it). We bridge that into the app-shell's grid template
-   via :has() so the column width animates to 240px while the cursor
-   hovers — exactly the behaviour the wireframe described. */
-.app-shell:has(.rail.is-expanded) {
-  grid-template-columns: var(--rail-w-expanded, 240px) 1fr;
+.app-shell:has(.rail.is-expanded) .app-main {
+  margin-left: var(--rail-w-expanded, 240px);
 }
-/* Legacy class on .app-shell still works (used by older callers). */
-.app-shell.is-expanded {
-  grid-template-columns: var(--rail-w-expanded, 240px) 1fr;
+.app-shell.is-expanded .app-main {
+  margin-left: var(--rail-w-expanded, 240px);
 }
 
 .rail {
-  height: 100vh;
-  /* Grid items default to align-self:stretch which makes the rail
-     match the row height (= main content height). That breaks the
-     sticky behaviour because the element fills the entire scroll
-     container — there's nothing to "stick" to. align-self:start +
-     a fixed 100vh height keeps the rail viewport-sized so it can
-     pin to top:0 as the page scrolls. */
-  align-self: start;
-  position: sticky;
+  position: fixed;
   top: 0;
+  left: 0;
+  bottom: 0;
+  width: var(--rail-w, 76px);
   background: var(--rail-dark);
   color: var(--paper);
   display: flex;
@@ -101,6 +93,9 @@ body {
   overflow: hidden;
   transition: width 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
   z-index: 5;
+}
+.rail.is-expanded {
+  width: var(--rail-w-expanded, 240px);
 }
 body[data-theme="light"] .rail {
   background: var(--rail-light);
@@ -412,9 +407,12 @@ body[data-theme="light"] .badge {
 }
 
 .app-main {
+  margin-left: var(--rail-w, 76px);
+  transition: margin-left 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 100vh;
 }
 
 .hdr {
@@ -1136,9 +1134,13 @@ a {
 }
 
 @media (max-width: 800px) {
-  .app-shell,
-  .app-shell.is-expanded {
-    grid-template-columns: 1fr;
+  /* Mobile: main goes flush left, rail becomes a drawer hidden
+     off-screen. The fixed-position rail tucks behind the viewport
+     edge until is-open is added by the hamburger toggle. */
+  .app-main,
+  .app-shell:has(.rail.is-expanded) .app-main,
+  .app-shell.is-expanded .app-main {
+    margin-left: 0 !important;
   }
 
   /* Rail becomes a slide-in drawer pinned to the left edge. */
@@ -1323,6 +1325,28 @@ a {
     height: 75vh;
     border-radius: 16px 16px 0 0;
   }
+}
+
+/* Theme toggle — circle button in the header. */
+.theme-toggle {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 1.5px solid var(--app-border);
+  background: var(--app-card-2);
+  color: var(--app-fg);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  flex-shrink: 0;
+  transition: transform 0.18s ease;
+}
+.theme-toggle:hover {
+  transform: scale(1.1);
 }
 
 /* Native <dialog> backdrop dim — purely cosmetic so the click-outside

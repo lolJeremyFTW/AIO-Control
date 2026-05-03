@@ -34,8 +34,10 @@ import {
   swapNavNodeOrder,
 } from "../app/actions/nav-nodes";
 import { setLocale } from "../app/actions/locale";
+import { AppContextMenu } from "./AppContextMenu";
+import { ThemeToggle } from "./ThemeToggle";
 import { EditNodeDialog, type EditTarget } from "./EditNodeDialog";
-import { NewBusinessDialog } from "./NewBusinessDialog";
+import { BusinessSetupWizard } from "./BusinessSetupWizard";
 import { NewNavNodeDialog } from "./NewNavNodeDialog";
 import { NotificationsBell } from "./NotificationsBell";
 import { SearchModal } from "./SearchModal";
@@ -295,6 +297,7 @@ export function WorkspaceShell({
               description: biz.description,
               mission: biz.mission,
               targets: biz.targets,
+              isolated: biz.isolated,
             }),
         },
         {
@@ -653,6 +656,7 @@ export function WorkspaceShell({
             // re-render on top of the action's revalidatePath.
             void setLocale(next.toLowerCase()).then(() => router.refresh());
           }}
+          themeToggle={<ThemeToggle />}
           userMenu={
             <>
               <button
@@ -726,7 +730,7 @@ export function WorkspaceShell({
       </main>
 
       {newBusinessOpen && (
-        <NewBusinessDialog
+        <BusinessSetupWizard
           workspaceSlug={workspace.slug}
           workspaceId={workspace.id}
           onClose={() => setNewBusinessOpen(false)}
@@ -761,6 +765,11 @@ export function WorkspaceShell({
       {/* Mounted once at the shell level — listens for ⌘/Ctrl+K and clicks
           on the header's .search element to open the cross-table search. */}
       <SearchModal workspaceSlug={workspace.slug} />
+
+      {/* Global right-click handler — blocks Chrome's native menu
+          everywhere except inputs/text-selection, and falls back to
+          our own when no other onContextMenu has stopPropagation'd. */}
+      <AppContextMenu workspaceSlug={workspace.slug} />
     </div>
   );
 }
