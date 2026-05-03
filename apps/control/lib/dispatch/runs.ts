@@ -261,6 +261,8 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
 
   // Drop the trailing empty assistant placeholder if the run produced
   // no tokens — it would just render as an empty bubble in the drawer.
+  // Local var so noUncheckedIndexedAccess (strict TS) sees a single
+  // defined narrowing rather than two separate index reads.
   const tail = history[history.length - 1];
   if (tail && tail.kind === "assistant" && tail.text === "") {
     history.pop();
