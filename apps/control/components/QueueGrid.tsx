@@ -120,6 +120,9 @@ function QueueCard({
       className="qcard"
       onContextMenu={(e) => {
         e.preventDefault();
+        // Stop the bubble — without this the global AppContextMenu
+        // also opens behind our card-specific menu.
+        e.stopPropagation();
         onContextMenu(e);
       }}
     >

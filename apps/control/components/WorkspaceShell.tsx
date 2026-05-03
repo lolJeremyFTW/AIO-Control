@@ -5,7 +5,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, useTransition, type ReactNode } from "react";
 
 import { ContextMenu, type ContextMenuItem } from "@aio/ui/context-menu";
 import { Header } from "@aio/ui/header";
@@ -112,6 +112,14 @@ export function WorkspaceShell({
   const [newBusinessOpen, setNewBusinessOpen] = useState(false);
   const [railOpen, setRailOpen] = useState(false);
   const closeRail = () => setRailOpen(false);
+
+  // Transition for the language switcher in the header. We await the
+  // setLocale server action BEFORE calling router.refresh() — the
+  // earlier `void setLocale(…).then(…)` ran refresh too eagerly, the
+  // cookie wasn't always live yet so the new locale never got picked
+  // up on the next render. The Profile editor uses the same await
+  // pattern and works.
+  const [, startLangTransition] = useTransition();
 
   // Right-click context menu state. `menu` carries the cursor coords +
   // which kind of row was clicked. `editing` opens the EditNodeDialog
@@ -668,10 +676,16 @@ export function WorkspaceShell({
           }
           lang={locale.toUpperCase() as "NL" | "EN" | "DE"}
           onLangChange={(next) => {
-            // Server action persists in cookie + revalidates; the page
-            // re-renders with the new dict. router.refresh forces a soft
-            // re-render on top of the action's revalidatePath.
-            void setLocale(next.toLowerCase()).then(() => router.refresh());
+            // Run inside a transition so we can AWAIT the server action
+            // before refreshing the page. Without the await the cookie
+            // might not be live yet when revalidatePath kicks in →
+            // page re-renders with the OLD locale and the click looks
+            // like a no-op.
+            startLangTransition(async () => {
+              const target = next.toLowerCase() as Locale;
+              const res = await setLocale(target);
+              if (res.ok) router.refresh();
+            });
           }}
           themeToggle={<ThemeToggle />}
           userMenu={

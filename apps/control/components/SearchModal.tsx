@@ -228,7 +228,7 @@ export function SearchModal({ workspaceSlug }: Props) {
         <span>↵ open</span>
         <span>Esc sluiten</span>
         <span style={{ marginLeft: "auto" }}>
-          ⌘/Ctrl + K opent overal
+          Ctrl+K opent overal
         </span>
         <span>workspace: {workspaceSlug}</span>
       </div>

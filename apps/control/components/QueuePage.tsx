@@ -245,6 +245,9 @@ export function QueuePage({
               businessName={businessName(q.business_id)}
               onContextMenu={(e) => {
                 e.preventDefault();
+                // stopPropagation so the global AppContextMenu doesn't
+                // also pop on top of our row menu.
+                e.stopPropagation();
                 setMenu({ x: e.clientX, y: e.clientY, item: q });
               }}
               onApprove={() => decide(q, "approve")}

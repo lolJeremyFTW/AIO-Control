@@ -36,6 +36,12 @@ export function AppContextMenu({ workspaceSlug }: Props) {
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
+      // Defense-in-depth: any per-row contextmenu handler that already
+      // called preventDefault() is signalling "I've handled this".
+      // Even if it forgot to also stopPropagation(), bail here so the
+      // global menu doesn't open ON TOP of the row-specific menu.
+      if (e.defaultPrevented) return;
+
       // Honour text selection — the user usually wants the native
       // copy/paste menu when they right-click on selected text.
       const sel = window.getSelection();
@@ -71,7 +77,7 @@ export function AppContextMenu({ workspaceSlug }: Props) {
     {
       label: "Zoeken",
       icon: <SearchIcon size={14} />,
-      shortcut: "⌘K",
+      shortcut: "Ctrl+K",
       onClick: () => {
         const el = document.querySelector(".search") as HTMLElement | null;
         if (el) el.click();

@@ -134,7 +134,7 @@ export function Header({
             <span className="placeholder">
               Zoek of vraag aan AI: &quot;hoeveel verdiende YouTube vandaag?&quot;
             </span>
-            <span className="kbd">⌘K</span>
+            <span className="kbd">Ctrl+K</span>
           </div>
         )}
         <div className="grow" />

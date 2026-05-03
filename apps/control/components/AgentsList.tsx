@@ -253,6 +253,9 @@ function AgentCard({
     <div
       onContextMenu={(e) => {
         e.preventDefault();
+        // stopPropagation prevents the global AppContextMenu from
+        // ALSO opening on top of our per-card menu.
+        e.stopPropagation();
         onContextMenu(e);
       }}
       style={{
