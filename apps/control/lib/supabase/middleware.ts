@@ -71,6 +71,9 @@ export async function updateSession(request: NextRequest) {
     path === "/api/integrations/stripe" ||
     path === "/api/integrations/mollie" ||
     path === "/api/push/queue-event" ||
+    // The Routines payload-callback endpoint authenticates via
+    // shared_secret in the body. No session needed.
+    path === "/api/runs/result" ||
     path.startsWith("/api/runs/") /* /result + /dispatch use header/session checks */;
 
   if (!user && !isPublic) {

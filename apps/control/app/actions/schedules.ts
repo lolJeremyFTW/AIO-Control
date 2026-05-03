@@ -33,7 +33,9 @@ export async function createCronSchedule(input: {
   business_id?: string | null;
   cron_expr: string;
   prompt: string;
-  callback_url: string;
+  /** Origin (no path) for building the Routines callback URL on the
+   *  subscription path. Ignored when the agent uses local cron. */
+  callback_origin?: string;
   mcp_servers?: Array<{ name: string; url: string }>;
   title?: string | null;
   description?: string | null;
@@ -41,29 +43,92 @@ export async function createCronSchedule(input: {
   timezone?: string;
   telegram_target_id?: string | null;
   custom_integration_id?: string | null;
-}): Promise<ActionResult<{ id: string; routine_id: string }>> {
+}): Promise<ActionResult<{ id: string; routine_id: string | null }>> {
   const supabase = await createSupabaseServerClient();
 
-  // 1. Create the routine on Anthropic's side first. If it fails, we don't
-  // leave a half-baked schedules row behind.
-  const routine = await createRoutine({
-    prompt: input.prompt,
-    trigger: { type: "cron", expression: input.cron_expr },
-    postTo: input.callback_url,
-    mcpServers: input.mcp_servers,
-    allowedTools: ["web_search"],
-  }).catch((err: Error) => err);
-  if (routine instanceof Error) return { ok: false, error: routine.message };
+  // Look up the agent so we know whether to route this through Claude
+  // Routines (subscription Claude — runs on Claude's own infra) or
+  // through our local cron-scheduler (everything else).
+  const { data: agent, error: agentErr } = await supabase
+    .from("agents")
+    .select("provider, key_source")
+    .eq("id", input.agent_id)
+    .maybeSingle();
+  if (agentErr || !agent) {
+    return { ok: false, error: "Agent niet gevonden." };
+  }
+  const useRoutines =
+    agent.provider === "claude" && agent.key_source === "subscription";
 
-  // 2. Persist the schedule row. Bearer token is encrypted in the column
-  // via the agent_secret_key env. If the user hasn't set the key we bail.
-  const key = process.env.AGENT_SECRET_KEY;
-  if (!key) {
-    // Roll back the Anthropic-side routine so we don't leak quota.
-    await deleteRoutine(routine.id).catch(() => {});
-    return { ok: false, error: "AGENT_SECRET_KEY is not configured." };
+  if (useRoutines) {
+    // ── Subscription Claude — schedule on Anthropic's infra ─────────
+    if (!input.callback_origin) {
+      return {
+        ok: false,
+        error: "callback_origin is verplicht voor subscription-Claude.",
+      };
+    }
+    // Payload-based callback (no run_id in URL). The result handler
+    // looks the schedule up by routine_id from the body and creates
+    // its own runs row. See /api/runs/result/route.ts.
+    const callback = `${input.callback_origin}/api/runs/result`;
+    const routine = await createRoutine({
+      prompt: input.prompt,
+      trigger: { type: "cron", expression: input.cron_expr },
+      postTo: callback,
+      mcpServers: input.mcp_servers,
+      allowedTools: ["web_search"],
+    }).catch((err: Error) => err);
+    if (routine instanceof Error) {
+      return { ok: false, error: routine.message };
+    }
+
+    const key = process.env.AGENT_SECRET_KEY;
+    if (!key) {
+      await deleteRoutine(routine.id).catch(() => {});
+      return { ok: false, error: "AGENT_SECRET_KEY is not configured." };
+    }
+
+    const { data, error } = await supabase
+      .from("schedules")
+      .insert({
+        workspace_id: input.workspace_id,
+        agent_id: input.agent_id,
+        business_id: input.business_id ?? null,
+        kind: "cron" satisfies ScheduleKind,
+        cron_expr: input.cron_expr,
+        provider_routine_id: routine.id,
+        provider_bearer_token: routine.bearer_token
+          ? Buffer.from(routine.bearer_token, "utf8").toString("base64")
+          : null,
+        title: input.title ?? null,
+        description: input.description ?? null,
+        instructions: input.instructions ?? input.prompt ?? null,
+        timezone: input.timezone ?? "Europe/Amsterdam",
+        telegram_target_id: input.telegram_target_id ?? null,
+        custom_integration_id: input.custom_integration_id ?? null,
+      })
+      .select("id, provider_routine_id")
+      .single();
+    if (error || !data) {
+      await deleteRoutine(routine.id).catch(() => {});
+      return {
+        ok: false,
+        error: error?.message ?? "Failed to persist schedule.",
+      };
+    }
+    revalidatePath(
+      `/${input.workspace_slug}/business/${input.business_id ?? ""}`,
+    );
+    return {
+      ok: true,
+      data: { id: data.id, routine_id: data.provider_routine_id },
+    };
   }
 
+  // ── Local cron (default for non-Claude AND for Claude+API key) ────
+  // No external API call; the cron-scheduler bootstrap in
+  // instrumentation.ts will pick this row up on its next minute tick.
   const { data, error } = await supabase
     .from("schedules")
     .insert({
@@ -72,33 +137,27 @@ export async function createCronSchedule(input: {
       business_id: input.business_id ?? null,
       kind: "cron" satisfies ScheduleKind,
       cron_expr: input.cron_expr,
-      provider_routine_id: routine.id,
-      provider_bearer_token: routine.bearer_token
-        ? Buffer.from(routine.bearer_token, "utf8").toString("base64")
-        : null,
       title: input.title ?? null,
       description: input.description ?? null,
-      instructions: input.instructions ?? null,
+      // Stash the prompt as `instructions` so the dispatcher uses it
+      // when the cron tick fires.
+      instructions: input.instructions ?? input.prompt ?? null,
       timezone: input.timezone ?? "Europe/Amsterdam",
       telegram_target_id: input.telegram_target_id ?? null,
       custom_integration_id: input.custom_integration_id ?? null,
     })
-    .select("id, provider_routine_id")
+    .select("id")
     .single();
-
   if (error || !data) {
-    await deleteRoutine(routine.id).catch(() => {});
     return {
       ok: false,
       error: error?.message ?? "Failed to persist schedule.",
     };
   }
-
-  revalidatePath(`/${input.workspace_slug}/business/${input.business_id ?? ""}`);
-  return {
-    ok: true,
-    data: { id: data.id, routine_id: data.provider_routine_id! },
-  };
+  revalidatePath(
+    `/${input.workspace_slug}/business/${input.business_id ?? ""}`,
+  );
+  return { ok: true, data: { id: data.id, routine_id: null } };
 }
 
 export async function createWebhookSchedule(input: {

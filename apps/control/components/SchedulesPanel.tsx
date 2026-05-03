@@ -111,7 +111,10 @@ export function SchedulesPanel({
     if (!cronPrompt.trim()) return setError("Vul een prompt in.");
     setError(null);
     startTransition(async () => {
-      const callback = `${triggerOrigin}/api/runs/CRON_RUN_ID/result`;
+      // Pass the origin only — the action picks the right callback
+      // path based on whether the agent is subscription-Claude (uses
+      // Anthropic Routines + payload-based callback) or local
+      // (cron-scheduler picks up the row, no callback needed).
       const res = await createCronSchedule({
         workspace_slug: workspaceSlug,
         workspace_id: workspaceId,
@@ -119,7 +122,7 @@ export function SchedulesPanel({
         business_id: businessId,
         cron_expr: cronExpr,
         prompt: cronPrompt,
-        callback_url: callback,
+        callback_origin: triggerOrigin,
       });
       if (!res.ok) {
         setError(res.error);

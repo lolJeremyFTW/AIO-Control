@@ -93,7 +93,9 @@ export function ScheduleBuilder({
     setError(null);
     setInfo(null);
     startTransition(async () => {
-      const callback = `${triggerOrigin}/api/runs/CRON_RUN_ID/result`;
+      // Pass the origin only — the action picks the right callback
+      // path based on whether the agent is subscription-Claude
+      // (Anthropic Routines + payload-callback) or local cron.
       const res = await createCronSchedule({
         workspace_slug: workspaceSlug,
         workspace_id: workspaceId,
@@ -101,7 +103,7 @@ export function ScheduleBuilder({
         business_id: businessId,
         cron_expr: cronExpr,
         prompt: instructions,
-        callback_url: callback,
+        callback_origin: triggerOrigin,
         title,
         description: description || null,
         instructions,

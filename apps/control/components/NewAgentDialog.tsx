@@ -71,6 +71,14 @@ export function NewAgentDialog({
   const [routingRulesJson, setRoutingRulesJson] = useState("");
   const [telegramTargetId, setTelegramTargetId] = useState("");
   const [customIntegrationId, setCustomIntegrationId] = useState("");
+  // Where this agent gets its Claude credentials. Subscription =
+  // Claude Pro/Max/Team — runs on Claude's own infra (Routines for
+  // cron, claude-cli for chat). api_key = Anthropic API key wired
+  // through our own dispatcher + local cron. env = legacy default
+  // for the rest of the providers.
+  const [keySource, setKeySource] = useState<
+    "subscription" | "api_key" | "env"
+  >("env");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -100,6 +108,7 @@ export function NewAgentDialog({
       routingRulesJson: routingRulesJson || undefined,
       telegram_target_id: telegramTargetId || null,
       custom_integration_id: customIntegrationId || null,
+      key_source: keySource,
     });
     setPending(false);
     if (!res.ok) {
@@ -230,6 +239,37 @@ export function NewAgentDialog({
             accepteert <code>sonnet</code>, <code>opus</code>,{" "}
             <code>haiku</code> of een full model id.
           </Hint>
+        )}
+
+        {(provider === "claude" || provider === "claude_cli") && (
+          <Field label="Credentials">
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr",
+                gap: 6,
+              }}
+            >
+              <KeySourceRadio
+                checked={keySource === "subscription"}
+                label="Claude Pro/Max/Team subscription"
+                desc="Cron-runs draaien als Claude Routines op Claude's eigen infra. Geen API key nodig. Quotum: 5/15/25 routine runs per dag."
+                onSelect={() => setKeySource("subscription")}
+              />
+              <KeySourceRadio
+                checked={keySource === "api_key"}
+                label="Anthropic API key (per token)"
+                desc="Cron-runs draaien lokaal via onze scheduler. Vereist een ANTHROPIC_API_KEY in je workspace api-keys. Betaalt per token, geen routine quotum."
+                onSelect={() => setKeySource("api_key")}
+              />
+              <KeySourceRadio
+                checked={keySource === "env"}
+                label="Env var fallback"
+                desc="Pakt ANTHROPIC_API_KEY uit de process env als fallback. Handig voor solo dev — niet aanbevolen voor multi-tenant."
+                onSelect={() => setKeySource("env")}
+              />
+            </div>
+          </Field>
         )}
         {provider === "openclaw" && (
           <Hint>
@@ -406,6 +446,65 @@ const btnPrimary = (pending: boolean): React.CSSProperties => ({
   cursor: pending ? "wait" : "pointer",
   opacity: pending ? 0.8 : 1,
 });
+
+function KeySourceRadio({
+  checked,
+  label,
+  desc,
+  onSelect,
+}: {
+  checked: boolean;
+  label: string;
+  desc: string;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      style={{
+        display: "flex",
+        gap: 10,
+        alignItems: "flex-start",
+        padding: "10px 12px",
+        textAlign: "left",
+        border: `1.5px solid ${checked ? "var(--tt-green)" : "var(--app-border)"}`,
+        background: checked ? "rgba(57,178,85,0.08)" : "var(--app-card-2)",
+        borderRadius: 10,
+        color: "var(--app-fg)",
+        cursor: "pointer",
+        fontFamily: "var(--type)",
+      }}
+    >
+      <span
+        aria-hidden
+        style={{
+          width: 16,
+          height: 16,
+          marginTop: 1,
+          borderRadius: "50%",
+          border: `2px solid ${checked ? "var(--tt-green)" : "var(--app-border)"}`,
+          background: checked ? "var(--tt-green)" : "transparent",
+          flexShrink: 0,
+        }}
+      />
+      <span style={{ display: "block" }}>
+        <span style={{ fontSize: 13, fontWeight: 700 }}>{label}</span>
+        <span
+          style={{
+            display: "block",
+            fontSize: 11.5,
+            color: "var(--app-fg-3)",
+            marginTop: 2,
+            lineHeight: 1.45,
+          }}
+        >
+          {desc}
+        </span>
+      </span>
+    </button>
+  );
+}
 
 function Hint({ children }: { children: React.ReactNode }) {
   return (

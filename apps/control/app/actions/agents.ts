@@ -8,10 +8,14 @@ import { revalidatePath } from "next/cache";
 
 import { createSupabaseServerClient } from "../../lib/supabase/server";
 
+export type AgentKeySource = "subscription" | "api_key" | "env";
+
 export type AgentInput = {
   workspace_slug: string;
   workspace_id: string;
-  business_id: string;
+  /** Nullable so workspace-global agents (no specific business) can be
+   *  created. The agents table already supports this in the schema. */
+  business_id: string | null;
   name: string;
   kind?: "chat" | "worker" | "reviewer" | "generator" | "router";
   provider:
@@ -36,6 +40,10 @@ export type AgentInput = {
   /** Chain hooks: when this agent's run finishes, queue the next one. */
   next_agent_on_done?: string | null;
   next_agent_on_fail?: string | null;
+  /** Where this agent's credentials come from. See migration 036. Only
+   *  'subscription' is meaningful for Claude — drives whether cron
+   *  schedules go through Anthropic Routines or our local scheduler. */
+  key_source?: AgentKeySource;
 };
 
 export type ActionResult<T> =
@@ -75,6 +83,16 @@ export async function createAgent(
     }
   }
 
+  // Subscription mode is Claude-only (Pro/Max/Team). Reject silently
+  // for other providers so a misclick doesn't persist nonsense.
+  const keySource: AgentKeySource =
+    input.key_source &&
+    (input.key_source !== "subscription" ||
+      input.provider === "claude" ||
+      input.provider === "claude_cli")
+      ? input.key_source
+      : "env";
+
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("agents")
@@ -96,13 +114,21 @@ export async function createAgent(
       custom_integration_id: input.custom_integration_id ?? null,
       next_agent_on_done: input.next_agent_on_done ?? null,
       next_agent_on_fail: input.next_agent_on_fail ?? null,
+      key_source: keySource,
     })
     .select("id")
     .single();
   if (error || !data) {
     return { ok: false, error: error?.message ?? "Insert failed." };
   }
-  revalidatePath(`/${input.workspace_slug}/business/${input.business_id}`);
+  revalidatePath(
+    `/${input.workspace_slug}/business/${input.business_id ?? ""}`,
+  );
+  // Workspace-global agents also surface on /[ws]/agents — refresh that
+  // route when business_id is null so the new row appears.
+  if (!input.business_id) {
+    revalidatePath(`/${input.workspace_slug}/agents`);
+  }
   return { ok: true, data: { id: data.id } };
 }
 
