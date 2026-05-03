@@ -5,10 +5,11 @@
 
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 
 import {
   deleteMarketplaceItem,
+  importLocalSkill,
   importMarketplaceItems,
   type ImportItem,
 } from "../app/actions/marketplace-admin";
@@ -95,6 +96,9 @@ export function MarketplaceAdmin({ sources, items }: Props) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
+      {/* ── Local upload ────────────────────────────────────── */}
+      <LocalSkillUploader />
+
       {/* ── Sources ─────────────────────────────────────────── */}
       <section>
         <h2
@@ -417,5 +421,207 @@ export function MarketplaceAdmin({ sources, items }: Props) {
         ))}
       </section>
     </div>
+  );
+}
+
+/**
+ * Tiny upload card for skills the user has on their laptop. Drag a
+ * .md file in (or pick via the file dialog) → server-side parses
+ * the YAML frontmatter → marketplace_agents row gets created with
+ * the body stashed as `config.content`. Lets the user surface their
+ * own skills (e.g. `ultraflow`) in the marketplace alongside the
+ * imported public catalogs.
+ */
+function LocalSkillUploader() {
+  const ref = useRef<HTMLInputElement>(null);
+  const [previewName, setPreviewName] = useState<string | null>(null);
+  const [previewContent, setPreviewContent] = useState<string | null>(null);
+  const [busy, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
+
+  const handleFile = async (file: File) => {
+    setError(null);
+    setInfo(null);
+    if (file.size > 256 * 1024) {
+      setError("Skill te groot (max 256 KiB).");
+      return;
+    }
+    const text = await file.text();
+    setPreviewName(file.name);
+    setPreviewContent(text);
+  };
+
+  const submit = () => {
+    if (!previewContent || !previewName) return;
+    setError(null);
+    setInfo(null);
+    startTransition(async () => {
+      const res = await importLocalSkill({
+        content: previewContent,
+        filename: previewName,
+      });
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      setInfo(`Skill "${res.data.slug}" toegevoegd aan de marketplace.`);
+      setPreviewContent(null);
+      setPreviewName(null);
+      if (ref.current) ref.current.value = "";
+    });
+  };
+
+  return (
+    <section>
+      <h2
+        style={{
+          fontFamily: "var(--hand)",
+          fontSize: 22,
+          fontWeight: 700,
+          margin: "0 0 10px",
+        }}
+      >
+        Eigen skill uploaden
+      </h2>
+      <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "copy";
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          const f = e.dataTransfer.files?.[0];
+          if (f) void handleFile(f);
+        }}
+        style={{
+          border: "1.5px dashed var(--app-border)",
+          borderRadius: 12,
+          background: "var(--app-card)",
+          padding: 18,
+          display: "flex",
+          flexDirection: "column",
+          gap: 10,
+        }}
+      >
+        <p
+          style={{
+            margin: 0,
+            fontSize: 13,
+            color: "var(--app-fg-3)",
+            lineHeight: 1.5,
+          }}
+        >
+          Drop een <code>SKILL.md</code> hier (of klik <em>Bestand kiezen</em>).
+          De YAML-frontmatter wordt geparset en de body wordt opgeslagen
+          als <code>config.content</code> zodat anderen 'm in de
+          marketplace kunnen openen.
+        </p>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input
+            ref={ref}
+            type="file"
+            accept=".md,.markdown,text/markdown,text/plain"
+            style={{ display: "none" }}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void handleFile(f);
+            }}
+          />
+          <button
+            type="button"
+            className="btn"
+            onClick={() => ref.current?.click()}
+          >
+            Bestand kiezen
+          </button>
+          {previewName && (
+            <span
+              style={{
+                fontSize: 12,
+                color: "var(--app-fg-2)",
+                fontFamily: "ui-monospace, Menlo, monospace",
+              }}
+            >
+              {previewName}
+            </span>
+          )}
+        </div>
+        {previewContent && (
+          <pre
+            style={{
+              margin: 0,
+              padding: 10,
+              maxHeight: 180,
+              overflow: "auto",
+              fontSize: 11,
+              fontFamily: "ui-monospace, Menlo, monospace",
+              background: "var(--app-card-2)",
+              border: "1px solid var(--app-border-2)",
+              borderRadius: 8,
+              whiteSpace: "pre-wrap",
+              color: "var(--app-fg-2)",
+            }}
+          >
+            {previewContent.slice(0, 2000)}
+            {previewContent.length > 2000 ? "\n…" : ""}
+          </pre>
+        )}
+        {error && (
+          <p
+            role="alert"
+            style={{
+              margin: 0,
+              fontSize: 12,
+              color: "var(--rose)",
+              background: "rgba(230,82,107,0.08)",
+              border: "1px solid rgba(230,82,107,0.4)",
+              borderRadius: 8,
+              padding: "6px 10px",
+            }}
+          >
+            {error}
+          </p>
+        )}
+        {info && (
+          <p
+            style={{
+              margin: 0,
+              fontSize: 12,
+              color: "var(--tt-green)",
+              fontWeight: 700,
+            }}
+          >
+            ✓ {info}
+          </p>
+        )}
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            type="button"
+            className="btn primary"
+            disabled={!previewContent || busy}
+            onClick={submit}
+          >
+            {busy ? "Uploaden…" : "Toevoegen aan marketplace"}
+          </button>
+          {previewContent && (
+            <button
+              type="button"
+              className="btn"
+              disabled={busy}
+              onClick={() => {
+                setPreviewName(null);
+                setPreviewContent(null);
+                setError(null);
+                setInfo(null);
+                if (ref.current) ref.current.value = "";
+              }}
+            >
+              Annuleren
+            </button>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
