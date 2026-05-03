@@ -10,6 +10,7 @@ import { useState, useTransition } from "react";
 
 import type { AgentRow } from "../lib/queries/agents";
 import type { ScheduleRow } from "../lib/queries/schedules";
+import { CronBuilder } from "./CronBuilder";
 import { EditScheduleDialog } from "./EditScheduleDialog";
 import {
   createCronSchedule,
@@ -254,14 +255,9 @@ export function SchedulesPanel({
           >
             <label style={{ fontSize: 12, fontWeight: 600 }}>
               <span style={{ display: "block", marginBottom: 4 }}>
-                Cron-expressie ({CRON_EXAMPLES.join(" / ")})
+                Wanneer moet 'ie draaien?
               </span>
-              <input
-                value={cronExpr}
-                onChange={(e) => setCronExpr(e.target.value)}
-                style={inputStyle}
-                placeholder="0 9 * * *"
-              />
+              <CronBuilder value={cronExpr} onChange={setCronExpr} />
             </label>
             <label style={{ fontSize: 12, fontWeight: 600 }}>
               <span style={{ display: "block", marginBottom: 4 }}>
@@ -552,8 +548,6 @@ export function SchedulesPanel({
     </div>
   );
 }
-
-const CRON_EXAMPLES = ["0 9 * * *", "*/30 * * * *", "0 9 * * MON"];
 
 const inputStyle: React.CSSProperties = {
   width: "100%",
