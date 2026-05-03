@@ -43,6 +43,12 @@ build_and_stage() {
   # replaying the first build's cached output (with the wrong basePath
   # baked in). --force skips the cache and reruns Next every time.
   rm -rf "$APP/.next"
+  # Pre-generate the .next/types/validator.ts route-typegen file. Next
+  # 16's `next build` triggers typegen too, but on this VPS it races
+  # with the tsc workers and they sometimes start before validator.ts
+  # exists, failing with "File '...validator.ts' not found." Running
+  # typegen explicitly first removes the race.
+  ( cd "$APP" && BASE_PATH="$base_path" pnpm exec next typegen )
   BASE_PATH="$base_path" pnpm exec turbo run build --force --filter=@aio/control
 
   # Stage the standalone bundle. Standalone produces apps/control under
