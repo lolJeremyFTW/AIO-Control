@@ -17,6 +17,8 @@ import {
   resolveNavPath,
 } from "../../../../../../lib/queries/nav-nodes";
 import { NewNavNodeButton } from "../../../../../../components/NewNavNodeButton";
+import { TopicDashboard } from "../../../../../../components/TopicDashboard";
+import { TopicRoutinesList } from "../../../../../../components/TopicRoutinesList";
 
 type Props = {
   params: Promise<{
@@ -124,6 +126,25 @@ export default async function NavNodePage({ params }: Props) {
         >
           Open externe app → {current.href}
         </a>
+      )}
+
+      {current && (
+        <>
+          <TopicDashboard
+            workspaceSlug={workspace.slug}
+            workspaceId={workspace.id}
+            businessId={biz.id}
+            navNodeId={current.id}
+            includeDescendants
+          />
+          <TopicRoutinesList
+            workspaceSlug={workspace.slug}
+            workspaceId={workspace.id}
+            businessId={biz.id}
+            navNodeId={current.id}
+            includeDescendants
+          />
+        </>
       )}
 
       <div

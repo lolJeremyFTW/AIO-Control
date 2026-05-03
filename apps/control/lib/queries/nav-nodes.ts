@@ -69,3 +69,25 @@ export async function resolveNavPath(
   );
   return ids.map((id) => byId.get(id)).filter((n): n is NavNode => !!n);
 }
+
+/** Returns the rootId + every descendant nav_node id under it, via
+ *  the SECURITY INVOKER `descendant_nav_node_ids` SQL function from
+ *  migration 043. Used by topic-scoped dashboards / schedules / runs
+ *  queries to roll up sub-topics under a parent topic.
+ *
+ *  Returns just `[rootId]` on RPC failure so callers degrade to the
+ *  leaf topic instead of crashing the whole dashboard. */
+export async function listDescendantNavNodeIds(
+  rootId: string,
+): Promise<string[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("descendant_nav_node_ids", {
+    _root: rootId,
+  });
+  if (error || !data) {
+    console.error("listDescendantNavNodeIds failed", error);
+    return [rootId];
+  }
+  type Row = { id: string };
+  return (data as Row[]).map((r) => r.id);
+}
