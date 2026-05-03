@@ -108,6 +108,12 @@ export async function POST(
   });
   const threadId = thread?.id ?? null;
 
+  // Capture the start moment as a millisecond stamp so we can compute
+  // duration_ms in the finally block below. The runs table's
+  // started_at column carries an ISO string for display; this Number
+  // version is internal to the route.
+  const startedAtMs = Date.now();
+
   // Insert the run row up front so the chat panel can correlate stream
   // events with a persisted record. RLS policies enforce workspace
   // membership + editor-or-higher role.
@@ -119,7 +125,7 @@ export async function POST(
       business_id: agent.business_id,
       triggered_by: "chat",
       status: "running",
-      started_at: new Date().toISOString(),
+      started_at: new Date(startedAtMs).toISOString(),
       input: { messages: body.messages, thread_id: threadId },
     })
     .select("id")
@@ -453,8 +459,11 @@ export async function POST(
           .update({
             status: "done",
             ended_at: new Date().toISOString(),
-            duration_ms:
-              finishedAt.ts && (finishedAt.ts - new Date().getTime()),
+            // Duration = finish-stamp minus the request-entry stamp.
+            // Earlier we computed `finishedAt - new Date()` which is
+            // a tiny negative number — the right-hand operand was
+            // captured AFTER finishedAt, not at request start.
+            duration_ms: finishedAt.ts ? finishedAt.ts - startedAtMs : null,
             cost_cents: usage?.cost ?? 0,
             output: { text: assistantText },
           })

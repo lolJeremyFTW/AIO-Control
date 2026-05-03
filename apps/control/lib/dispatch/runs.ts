@@ -16,7 +16,6 @@ import {
 } from "@aio/ai/router";
 import type { ChatMessage } from "@aio/ai/ag-ui";
 
-import { resolveApiKey } from "../api-keys/resolve";
 import { resolveOllamaEndpoint } from "../ollama/endpoint";
 import {
   buildAgentSystemPrompt,

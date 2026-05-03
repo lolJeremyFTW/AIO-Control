@@ -196,7 +196,7 @@ function parseFrontmatter(text: string): {
     const kv = line.match(/^([A-Za-z0-9_-]+)\s*:\s*(.*)$/);
     if (!kv) continue;
     const key = kv[1]!.trim();
-    let raw = kv[2]!.trim();
+    const raw = kv[2]!.trim();
     if (raw === "") {
       fm[key] = "";
       continue;

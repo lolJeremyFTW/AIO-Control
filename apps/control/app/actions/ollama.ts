@@ -74,6 +74,7 @@ export async function saveOllamaEndpoint(input: {
   if (error) return { ok: false, error: error.message };
 
   revalidatePath(`/${input.workspace_slug}/settings`);
+  revalidatePath(`/${input.workspace_slug}/settings/ollama`);
   revalidatePath(`/${input.workspace_slug}/settings/talk`);
   return { ok: true, data: null };
 }
@@ -153,16 +154,20 @@ export async function scanOllamaModels(input: {
   }
 
   // Cache the result + the timestamp so the picker can render straight
-  // from the workspace row without scanning every page-load.
-  await supabase
+  // from the workspace row without scanning every page-load. Surface
+  // an RLS / column-not-found failure as a user-facing error instead
+  // of silently swallowing it.
+  const { error: updErr } = await supabase
     .from("workspaces")
     .update({
       ollama_models_cached: models,
       ollama_last_scan_at: new Date().toISOString(),
     })
     .eq("id", input.workspace_id);
+  if (updErr) return { ok: false, error: updErr.message };
 
   revalidatePath(`/${input.workspace_slug}/settings`);
+  revalidatePath(`/${input.workspace_slug}/settings/ollama`);
   revalidatePath(`/${input.workspace_slug}/settings/talk`);
   return { ok: true, data: { models, endpoint } };
 }

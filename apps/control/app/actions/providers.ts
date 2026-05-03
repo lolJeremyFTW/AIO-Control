@@ -195,14 +195,14 @@ export async function testHermesEndpoint(input: {
 
   // HTTP wrapper supplied → probe /healthz. Otherwise → spawn the CLI
   // binary; that's what the actual provider does at chat / run time.
-  const wantsHttp = !!endpoint && /^https?:\/\//i.test(endpoint);
-  if (wantsHttp) {
-    const r = await probeHealthz(endpoint!);
+  if (endpoint && /^https?:\/\//i.test(endpoint)) {
+    const r = await probeHealthz(endpoint);
     if (!r.ok) return { ok: false, error: r.error };
-    await supabase
+    const { error: updErr } = await supabase
       .from("workspaces")
       .update({ hermes_last_test_at: new Date().toISOString() })
       .eq("id", input.workspace_id);
+    if (updErr) return { ok: false, error: updErr.message };
     revalidatePath(`/${input.workspace_slug}/settings/providers`);
     return {
       ok: true,
@@ -213,10 +213,11 @@ export async function testHermesEndpoint(input: {
   const binary = process.env.HERMES_BIN || "hermes";
   const r = await probeBinary(binary);
   if (!r.ok) return { ok: false, error: r.error };
-  await supabase
+  const { error: updErr } = await supabase
     .from("workspaces")
     .update({ hermes_last_test_at: new Date().toISOString() })
     .eq("id", input.workspace_id);
+  if (updErr) return { ok: false, error: updErr.message };
   revalidatePath(`/${input.workspace_slug}/settings/providers`);
   return {
     ok: true,
@@ -262,14 +263,14 @@ export async function testOpenClawEndpoint(input: {
     endpoint = (data?.openclaw_endpoint as string | null) ?? null;
   }
 
-  const wantsHttp = !!endpoint && /^https?:\/\//i.test(endpoint);
-  if (wantsHttp) {
-    const r = await probeHealthz(endpoint!);
+  if (endpoint && /^https?:\/\//i.test(endpoint)) {
+    const r = await probeHealthz(endpoint);
     if (!r.ok) return { ok: false, error: r.error };
-    await supabase
+    const { error: updErr } = await supabase
       .from("workspaces")
       .update({ openclaw_last_test_at: new Date().toISOString() })
       .eq("id", input.workspace_id);
+    if (updErr) return { ok: false, error: updErr.message };
     revalidatePath(`/${input.workspace_slug}/settings/providers`);
     return {
       ok: true,
@@ -280,10 +281,11 @@ export async function testOpenClawEndpoint(input: {
   const binary = process.env.OPENCLAW_BIN || "openclaw";
   const r = await probeBinary(binary);
   if (!r.ok) return { ok: false, error: r.error };
-  await supabase
+  const { error: updErr } = await supabase
     .from("workspaces")
     .update({ openclaw_last_test_at: new Date().toISOString() })
     .eq("id", input.workspace_id);
+  if (updErr) return { ok: false, error: updErr.message };
   revalidatePath(`/${input.workspace_slug}/settings/providers`);
   return {
     ok: true,
