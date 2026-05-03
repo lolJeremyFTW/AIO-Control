@@ -11,17 +11,17 @@
 -- Idempotent: if-not-exists guards so re-running this migration on a
 -- live DB is a no-op.
 
-alter table workspaces
+alter table aio_control.workspaces
   add column if not exists ollama_host text,
   add column if not exists ollama_port int,
   add column if not exists ollama_models_cached jsonb default '[]'::jsonb,
   add column if not exists ollama_last_scan_at timestamptz;
 
-comment on column workspaces.ollama_host is
+comment on column aio_control.workspaces.ollama_host is
   'Hostname or IP for the local Ollama server. Empty = use env-var fallback.';
-comment on column workspaces.ollama_port is
+comment on column aio_control.workspaces.ollama_port is
   'Port for the local Ollama server. Defaults to 11434 when host is set.';
-comment on column workspaces.ollama_models_cached is
+comment on column aio_control.workspaces.ollama_models_cached is
   'Last scan result — array of {name, size, modified_at} so the picker has model names without re-hitting the network.';
-comment on column workspaces.ollama_last_scan_at is
+comment on column aio_control.workspaces.ollama_last_scan_at is
   'When the model list was last refreshed via the "scan" button.';
