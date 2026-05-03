@@ -261,12 +261,8 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
 
   // Drop the trailing empty assistant placeholder if the run produced
   // no tokens — it would just render as an empty bubble in the drawer.
-  if (
-    history.length > 0 &&
-    history[history.length - 1].kind === "assistant" &&
-    (history[history.length - 1] as RunStep & { kind: "assistant" }).text ===
-      ""
-  ) {
+  const tail = history[history.length - 1];
+  if (tail && tail.kind === "assistant" && tail.text === "") {
     history.pop();
   }
 
