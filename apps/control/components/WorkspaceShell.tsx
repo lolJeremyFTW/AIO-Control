@@ -33,6 +33,7 @@ import {
 } from "@aio/ui/rail";
 
 import type { WorkspaceListItem } from "../lib/auth/workspace";
+import type { AgentRow } from "../lib/queries/agents";
 import type { BusinessRow } from "../lib/queries/businesses";
 import type { NavNode } from "../lib/queries/nav-nodes";
 import { translate, type Locale, type T } from "../lib/i18n/dict";
@@ -61,7 +62,8 @@ import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 // Heavy/conditional UIs — lazy-load so they don't bloat the initial
 // JS bundle. The shell renders on every workspace page even when these
 // dialogs / modals are closed, so deferring their JS until interaction
-// is a clean win for first paint.
+// is a clean win for first paint. ssr:false is allowed here because
+// this whole file is "use client" — Next.js 15 disallows it in RSC.
 const SearchModal = dynamic(
   () => import("./SearchModal").then((m) => m.SearchModal),
   { ssr: false },
@@ -77,6 +79,14 @@ const EditNodeDialog = dynamic(
 );
 const NewNavNodeDialog = dynamic(
   () => import("./NewNavNodeDialog").then((m) => m.NewNavNodeDialog),
+  { ssr: false },
+);
+const ChatPanel = dynamic(
+  () => import("./ChatPanel").then((m) => m.ChatPanel),
+  { ssr: false },
+);
+const RunsToaster = dynamic(
+  () => import("./RunsToaster").then((m) => m.RunsToaster),
   { ssr: false },
 );
 
@@ -120,6 +130,13 @@ type Props = {
   page?: "dashboard" | "settings" | "profile" | "agents";
   /** Active UI locale — translates client-side via the dict module. */
   locale: Locale;
+  /** Full agent rows for the floating ChatPanel. We accept these
+   *  through a prop instead of as `children` so the chat-panel +
+   *  runs-toaster can lazy-load via next/dynamic with ssr:false
+   *  (Next.js 15 disallows ssr:false in Server Components). */
+  chatPanelAgents?: AgentRow[];
+  /** First business id — used by ChatPanel's empty-state CTA. */
+  firstBusinessId?: string;
   children: ReactNode;
 };
 
@@ -157,6 +174,8 @@ export function WorkspaceShell({
   weather,
   page: pageProp = "dashboard",
   locale,
+  chatPanelAgents,
+  firstBusinessId,
   children,
 }: Props) {
   const router = useRouter();
@@ -1012,6 +1031,19 @@ export function WorkspaceShell({
           everywhere except inputs/text-selection, and falls back to
           our own when no other onContextMenu has stopPropagation'd. */}
       <AppContextMenu workspaceSlug={workspace.slug} />
+
+      {/* Floating chat panel + runs toaster. Both lazy-loaded via
+          next/dynamic above so the heavy chat UI + Supabase realtime
+          subscription don't block the first paint of any workspace
+          page that doesn't actually need them. */}
+      {chatPanelAgents && (
+        <ChatPanel
+          agents={chatPanelAgents}
+          workspaceSlug={workspace.slug}
+          firstBusinessId={firstBusinessId}
+        />
+      )}
+      <RunsToaster workspaceId={workspace.id} />
     </div>
   );
 }
