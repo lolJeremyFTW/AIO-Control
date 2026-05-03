@@ -43,6 +43,7 @@ import { NewNavNodeDialog } from "./NewNavNodeDialog";
 import { NotificationsBell } from "./NotificationsBell";
 import { SearchModal } from "./SearchModal";
 import { TalkModule, type TalkAgent } from "./TalkModule";
+import { WeatherChip } from "./WeatherChip";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 
 type Profile = {
@@ -793,6 +794,14 @@ export function WorkspaceShell({
             <TalkModule
               agents={talkAgents}
               workspaceSlug={workspace.slug}
+            />
+          }
+          weatherSlot={
+            <WeatherChip
+              workspaceId={workspace.id}
+              initial={
+                weather ?? { city: "Breda", date: "—", temp: "—" }
+              }
             />
           }
           userMenu={

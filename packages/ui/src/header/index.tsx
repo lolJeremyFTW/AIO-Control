@@ -51,6 +51,10 @@ type Props = {
    *  functional split-button: mic + agent dropdown + settings link.
    *  When omitted, the original static chip renders. */
   voiceSlot?: ReactNode;
+  /** Replaces the static weather chip with a clickable variant that
+   *  opens a 10-day forecast dropdown. When omitted, the original
+   *  static chip renders. */
+  weatherSlot?: ReactNode;
   children?: ReactNode; // optional row 2 content
 };
 
@@ -69,6 +73,7 @@ export function Header({
   bellSlot,
   themeToggle,
   voiceSlot,
+  weatherSlot,
   children,
 }: Props) {
   const [activeAvatar, setActiveAvatar] = useState(false);
@@ -160,13 +165,15 @@ export function Header({
             )}
           </button>
         )}
-        <div className="chip">
-          <CloudIcon />
-          <span>
-            <strong>{weather.city}</strong> · {weather.date}
-          </span>
-          <span className="temp">{weather.temp}</span>
-        </div>
+        {weatherSlot ?? (
+          <div className="chip">
+            <CloudIcon />
+            <span>
+              <strong>{weather.city}</strong> · {weather.date}
+            </span>
+            <span className="temp">{weather.temp}</span>
+          </div>
+        )}
         <div className="lang">
           {(["NL", "EN", "DE"] as const).map((l) => (
             <button
