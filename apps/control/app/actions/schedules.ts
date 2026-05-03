@@ -167,6 +167,25 @@ export async function createWebhookSchedule(input: {
   business_id?: string | null;
 }): Promise<ActionResult<{ id: string; secret: string }>> {
   const supabase = await createSupabaseServerClient();
+
+  // Pre-flight: don't let users wire a webhook to a subscription-Claude
+  // agent — webhooks fire on every external POST and would hammer the
+  // local CLI on a schedule no human controls. Anthropic bans accounts
+  // for that. Direct them to either a cron schedule (which routes via
+  // Anthropic Routines) or an API-key agent.
+  const { data: agent } = await supabase
+    .from("agents")
+    .select("key_source")
+    .eq("id", input.agent_id)
+    .maybeSingle();
+  if (agent?.key_source === "subscription") {
+    return {
+      ok: false,
+      error:
+        "Subscription-Claude agents mogen niet via webhook getriggerd worden. Gebruik een cron-schedule (Anthropic Routines) of switch deze agent naar een API-key.",
+    };
+  }
+
   const secret = mintWebhookSecret();
   const { data, error } = await supabase
     .from("schedules")

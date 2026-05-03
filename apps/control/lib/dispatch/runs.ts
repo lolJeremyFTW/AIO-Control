@@ -47,7 +47,7 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
     .from("runs")
     .select(
       `id, workspace_id, agent_id, business_id, input, status,
-       agents:agent_id ( id, name, provider, model, config, archived_at, next_agent_on_done, next_agent_on_fail ),
+       agents:agent_id ( id, name, provider, model, config, key_source, archived_at, next_agent_on_done, next_agent_on_fail ),
        businesses:business_id ( id, status )`,
     )
     .eq("id", runId)
@@ -66,6 +66,7 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
     provider: string;
     model: string | null;
     config: Record<string, unknown> | null;
+    key_source: string | null;
     archived_at: string | null;
     next_agent_on_done: string | null;
     next_agent_on_fail: string | null;
@@ -80,6 +81,19 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
   }
   if (agent.archived_at) {
     return await markFailed(runId, DEFER_REASONS.agent_archived);
+  }
+  // Subscription-Claude (Pro/Max plans) is only allowed via interactive
+  // chat or Anthropic Routines (cron schedules route there directly,
+  // bypassing this dispatcher). Server-spawned CLI runs from webhooks /
+  // manual / chain triggers count as automation against the subscription
+  // — Anthropic bans accounts that hammer the CLI on a server. Force
+  // those runs to fail loudly so the user picks an API key or a
+  // Routines-cron schedule instead.
+  if (agent.key_source === "subscription") {
+    return await markFailed(
+      runId,
+      "Subscription-Claude agents kunnen niet via webhook / Run now / chain draaien — gebruik chat of een cron-schedule (Anthropic Routines) zodat je Claude-account niet wordt gebanned.",
+    );
   }
   if (business && business.status === "paused") {
     // We keep the row queued so a future run-now / unpause picks it up.
