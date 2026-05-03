@@ -96,7 +96,10 @@ async function probeBinary(binary: string): Promise<BinaryProbeResult> {
 }
 
 /** Probe a HTTP /healthz endpoint with a 5s timeout. Returns the
- *  full URL it actually hit + the round-trip latency on success. */
+ *  full URL it actually hit + the round-trip latency on success.
+ *  Distinguishes timeout from other network failures so the user
+ *  message reads "timeout na 5s" instead of the raw "operation was
+ *  aborted" AbortError text. */
 async function probeHealthz(
   base: string,
 ): Promise<
@@ -106,9 +109,13 @@ async function probeHealthz(
   const url = base.replace(/\/+$/, "");
   const probe = `${url}/healthz`;
   const t0 = Date.now();
+  const ctrl = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    ctrl.abort();
+  }, 5000);
   try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 5000);
     const r = await fetch(probe, { signal: ctrl.signal });
     clearTimeout(timer);
     if (!r.ok)
@@ -118,6 +125,13 @@ async function probeHealthz(
       };
     return { ok: true, url, latencyMs: Date.now() - t0 };
   } catch (err) {
+    clearTimeout(timer);
+    if (timedOut) {
+      return {
+        ok: false,
+        error: `Geen verbinding met ${probe}: timeout na 5s.`,
+      };
+    }
     return {
       ok: false,
       error: `Geen verbinding met ${probe}: ${

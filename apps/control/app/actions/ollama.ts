@@ -120,8 +120,24 @@ export async function scanOllamaModels(input: {
     // Tight timeout — local LAN should answer in < 200ms. We don't
     // want the panel to hang for a minute when the host is wrong.
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 5000);
-    const r = await fetch(`${endpoint}/api/tags`, { signal: ctrl.signal });
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      ctrl.abort();
+    }, 5000);
+    let r: Response;
+    try {
+      r = await fetch(`${endpoint}/api/tags`, { signal: ctrl.signal });
+    } catch (err) {
+      clearTimeout(timer);
+      if (timedOut) {
+        return {
+          ok: false,
+          error: `Geen verbinding met ${endpoint}: timeout na 5s. Klopt host + poort? Draait Ollama?`,
+        };
+      }
+      throw err;
+    }
     clearTimeout(timer);
     if (!r.ok) {
       return {
