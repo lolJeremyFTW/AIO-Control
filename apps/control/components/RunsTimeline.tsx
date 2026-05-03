@@ -1,13 +1,20 @@
-// Recent runs for a business — server component, pure markup. Phase 5.5
-// shows status + trigger + duration; phase 6 will link each row to a
-// detail drawer with input/output diff.
+// Recent runs for a business — clickable timeline. Phase 5.5 just shows
+// status + trigger + duration; clicking a row now opens the
+// RunDetailDrawer (chat-style replay of the run).
+
+"use client";
+
+import { useState } from "react";
 
 import type { AgentRow } from "../lib/queries/agents";
 import type { RunRow } from "../lib/queries/schedules";
+import { RunDetailDrawer } from "./RunDetailDrawer";
 
 type Props = { runs: RunRow[]; agents: AgentRow[] };
 
 export function RunsTimeline({ runs, agents }: Props) {
+  const [openRunId, setOpenRunId] = useState<string | null>(null);
+
   if (runs.length === 0) {
     return (
       <p
@@ -25,90 +32,112 @@ export function RunsTimeline({ runs, agents }: Props) {
     );
   }
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        background: "var(--app-card)",
-        border: "1.5px solid var(--app-border)",
-        borderRadius: 14,
-      }}
-    >
-      {runs.map((r, i) => {
-        const agent = agents.find((a) => a.id === r.agent_id);
-        const tone =
-          r.status === "failed"
-            ? "var(--rose)"
-            : r.status === "review"
-              ? "var(--amber)"
-              : r.status === "running"
-                ? "var(--tt-green)"
-                : "var(--app-fg-3)";
-        return (
-          <div
-            key={r.id}
-            style={{
-              display: "grid",
-              gridTemplateColumns: "10px 1fr auto",
-              gap: 12,
-              padding: "10px 14px",
-              borderTop: i === 0 ? "none" : "1px solid var(--app-border-2)",
-            }}
-          >
-            <span
-              style={{
-                width: 8,
-                height: 8,
-                marginTop: 7,
-                borderRadius: 999,
-                background: tone,
+    <>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          background: "var(--app-card)",
+          border: "1.5px solid var(--app-border)",
+          borderRadius: 14,
+        }}
+      >
+        {runs.map((r, i) => {
+          const agent = agents.find((a) => a.id === r.agent_id);
+          const tone =
+            r.status === "failed"
+              ? "var(--rose)"
+              : r.status === "review"
+                ? "var(--amber)"
+                : r.status === "running"
+                  ? "var(--tt-green)"
+                  : "var(--app-fg-3)";
+          return (
+            <div
+              key={r.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => setOpenRunId(r.id)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setOpenRunId(r.id);
+                }
               }}
-            />
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>
-                {agent?.name ?? "Onbekende agent"}
-                <span
+              style={{
+                display: "grid",
+                gridTemplateColumns: "10px 1fr auto",
+                gap: 12,
+                padding: "10px 14px",
+                borderTop: i === 0 ? "none" : "1px solid var(--app-border-2)",
+                cursor: "pointer",
+                transition: "background 0.12s",
+              }}
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.background = "var(--app-card-2)")
+              }
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.background = "transparent")
+              }
+            >
+              <span
+                style={{
+                  width: 8,
+                  height: 8,
+                  marginTop: 7,
+                  borderRadius: 999,
+                  background: tone,
+                }}
+              />
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>
+                  {agent?.name ?? "Onbekende agent"}
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      letterSpacing: "0.16em",
+                      textTransform: "uppercase",
+                      color: tone,
+                      marginLeft: 8,
+                    }}
+                  >
+                    {r.status}
+                  </span>
+                </div>
+                <div
                   style={{
-                    fontSize: 10,
-                    fontWeight: 700,
-                    letterSpacing: "0.16em",
-                    textTransform: "uppercase",
-                    color: tone,
-                    marginLeft: 8,
+                    fontSize: 11.5,
+                    color: "var(--app-fg-3)",
+                    marginTop: 2,
                   }}
                 >
-                  {r.status}
-                </span>
+                  {r.triggered_by}
+                  {r.duration_ms != null
+                    ? ` · ${(r.duration_ms / 1000).toFixed(1)}s`
+                    : ""}
+                  {r.cost_cents
+                    ? ` · ${(r.cost_cents / 100).toFixed(2)}€`
+                    : ""}
+                  {r.error_text ? ` · ${r.error_text}` : ""}
+                </div>
               </div>
               <div
                 style={{
-                  fontSize: 11.5,
+                  fontSize: 11,
                   color: "var(--app-fg-3)",
-                  marginTop: 2,
+                  whiteSpace: "nowrap",
                 }}
               >
-                {r.triggered_by}
-                {r.duration_ms != null
-                  ? ` · ${(r.duration_ms / 1000).toFixed(1)}s`
-                  : ""}
-                {r.cost_cents
-                  ? ` · ${(r.cost_cents / 100).toFixed(2)}€`
-                  : ""}
-                {r.error_text ? ` · ${r.error_text}` : ""}
+                {new Date(r.created_at).toLocaleString("nl-NL")}
               </div>
             </div>
-            <div
-              style={{
-                fontSize: 11,
-                color: "var(--app-fg-3)",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {new Date(r.created_at).toLocaleString("nl-NL")}
-            </div>
-          </div>
-        );
-      })}
-    </div>
+          );
+        })}
+      </div>
+      {openRunId && (
+        <RunDetailDrawer runId={openRunId} onClose={() => setOpenRunId(null)} />
+      )}
+    </>
   );
 }

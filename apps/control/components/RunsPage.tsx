@@ -10,6 +10,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import type { AgentRow } from "../lib/queries/agents";
+import { RunDetailDrawer } from "./RunDetailDrawer";
 
 type Run = {
   id: string;
@@ -57,6 +58,7 @@ export function RunsPage({
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [openRunId, setOpenRunId] = useState<string | null>(null);
 
   // Re-fetch whenever filters change.
   useEffect(() => {
@@ -184,6 +186,7 @@ export function RunsPage({
                   ? (businessName?.[r.business_id] ?? null)
                   : null
               }
+              onOpen={() => setOpenRunId(r.id)}
             />
           ))}
         </div>
@@ -211,6 +214,9 @@ export function RunsPage({
           Meer laden
         </button>
       )}
+      {openRunId && (
+        <RunDetailDrawer runId={openRunId} onClose={() => setOpenRunId(null)} />
+      )}
     </div>
   );
 }
@@ -219,25 +225,40 @@ function RunRow({
   run,
   agentName,
   businessLabel,
+  onOpen,
 }: {
   run: Run;
   agentName: string;
   businessLabel: string | null;
+  onOpen: () => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const failed = run.status === "failed" || run.status === "fail";
   const ok = run.status === "done";
-  const text = run.output?.text ?? run.error_text ?? "";
 
   return (
     <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
       style={{
         padding: "12px 14px",
         background: "var(--app-card)",
         borderBottom: "1px solid var(--app-border-2)",
-        cursor: text ? "pointer" : "default",
+        cursor: "pointer",
+        transition: "background 0.12s",
       }}
-      onClick={() => text && setExpanded((v) => !v)}
+      onMouseEnter={(e) =>
+        (e.currentTarget.style.background = "var(--app-card-2)")
+      }
+      onMouseLeave={(e) =>
+        (e.currentTarget.style.background = "var(--app-card)")
+      }
     >
       <div
         style={{
@@ -287,25 +308,6 @@ function RunRow({
           {new Date(run.created_at).toLocaleString("nl-NL")}
         </span>
       </div>
-      {expanded && text && (
-        <pre
-          style={{
-            marginTop: 8,
-            padding: 8,
-            fontSize: 11,
-            background: "var(--app-card-2)",
-            border: "1px solid var(--app-border-2)",
-            borderRadius: 6,
-            color: failed ? "var(--rose)" : "var(--app-fg-2)",
-            whiteSpace: "pre-wrap",
-            maxHeight: 240,
-            overflow: "auto",
-          }}
-        >
-          {text.slice(0, 4000)}
-          {text.length > 4000 ? "\n… (truncated)" : ""}
-        </pre>
-      )}
     </div>
   );
 }

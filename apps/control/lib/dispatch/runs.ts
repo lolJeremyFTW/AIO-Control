@@ -24,6 +24,7 @@ import {
 import { checkSpendLimit } from "./spend-limit";
 import { getServiceRoleSupabase } from "../supabase/service";
 import { resolveApiKey } from "../api-keys/resolve";
+import type { RunStep } from "../runs/message-history";
 
 type DispatchResult = {
   ok: boolean;
@@ -148,6 +149,27 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
   let cost = 0;
   let errorText: string | null = null;
 
+  // Build a structured replay of the run as it streams. The drawer
+  // renders this chat-style (user → assistant → tool_call → result →
+  // error). Seed it with the user-side input we built above so old
+  // viewers still see what was sent in even if the model produced
+  // nothing.
+  const history: RunStep[] = messages.map((m) => ({
+    kind: m.role === "assistant" ? ("assistant" as const) : ("user" as const),
+    text: m.content,
+    at: startedAt,
+  }));
+  // Track the assistant turn we're currently appending tokens to so
+  // multiple message_start blocks (rare; provider re-emits) split into
+  // separate bubbles instead of fusing.
+  let activeAssistant: RunStep & { kind: "assistant" } = {
+    kind: "assistant",
+    text: "",
+    at: startedAt,
+  };
+  history.push(activeAssistant);
+  const toolCalls = new Map<string, RunStep & { kind: "tool_call" }>();
+
   // Resolve workspace-level Ollama endpoint so a scheduled / webhook
   // / manual run hits the same box as the chat panel does. Cheap;
   // single row read, no-op when the workspace hasn't configured one.
@@ -190,12 +212,62 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
         openclawAgentName,
       },
     })) {
-      if (event.type === "token") output += event.delta;
-      else if (event.type === "message_end") cost = event.usage.cost_cents;
-      else if (event.type === "error") errorText = event.message;
+      if (event.type === "token") {
+        output += event.delta;
+        activeAssistant.text += event.delta;
+      } else if (event.type === "message_start") {
+        // A new assistant turn begins (provider is restarting after a
+        // tool call, or it's the very first start). If the previous
+        // assistant slot has content, leave it and open a fresh one.
+        if (activeAssistant.text.length > 0) {
+          activeAssistant = {
+            kind: "assistant",
+            text: "",
+            at: new Date().toISOString(),
+          };
+          history.push(activeAssistant);
+        }
+      } else if (event.type === "message_end") {
+        cost = event.usage.cost_cents;
+      } else if (event.type === "tool_call_start") {
+        const step: RunStep & { kind: "tool_call" } = {
+          kind: "tool_call",
+          name: event.name,
+          args: event.args,
+          at: new Date().toISOString(),
+        };
+        toolCalls.set(event.tool_call_id, step);
+        history.push(step);
+      } else if (event.type === "tool_call_result") {
+        const step = toolCalls.get(event.tool_call_id);
+        if (step) step.result = event.output;
+      } else if (event.type === "error") {
+        errorText = event.message;
+        history.push({
+          kind: "error",
+          message: event.message,
+          at: new Date().toISOString(),
+        });
+      }
     }
   } catch (err) {
     errorText = err instanceof Error ? err.message : "dispatch error";
+    history.push({
+      kind: "error",
+      message: errorText,
+      at: new Date().toISOString(),
+    });
+  }
+
+  // Drop the trailing empty assistant placeholder if the run produced
+  // no tokens — it would just render as an empty bubble in the drawer.
+  if (
+    history.length > 0 &&
+    history[history.length - 1].kind === "assistant" &&
+    (history[history.length - 1] as RunStep & { kind: "assistant" }).text ===
+      ""
+  ) {
+    history.pop();
   }
 
   const endedAt = new Date();
@@ -232,6 +304,7 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
       output: { text: output },
       error_text: errorText,
       next_retry_at: nextRetryAt,
+      message_history: history,
     })
     .eq("id", runId);
 
