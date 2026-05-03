@@ -994,6 +994,7 @@ export function WorkspaceShell({
         <BusinessSetupWizard
           workspaceSlug={workspace.slug}
           workspaceId={workspace.id}
+          locale={locale}
           onClose={() => setNewBusinessOpen(false)}
         />
       )}

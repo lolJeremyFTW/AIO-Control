@@ -8,6 +8,7 @@ import {
   getWorkspaceBySlug,
 } from "../../../../../lib/auth/workspace";
 import { resolveApiKey } from "../../../../../lib/api-keys/resolve";
+import { getDict } from "../../../../../lib/i18n/server";
 import { listAgentsForWorkspace } from "../../../../../lib/queries/agents";
 import { listBusinesses } from "../../../../../lib/queries/businesses";
 import { AgentsList } from "../../../../../components/AgentsList";
@@ -70,11 +71,13 @@ export default async function BusinessAgentsPage({ params }: Props) {
     }),
   );
 
+  const { t } = await getDict();
+
   return (
     <div className="content">
       <div className="page-title-row">
-        <h1>{biz.name} — agents</h1>
-        <span className="sub">Providers · prompts · schedules</span>
+        <h1>{t("page.business.agents.h1", { business: biz.name })}</h1>
+        <span className="sub">{t("page.business.agents.sub")}</span>
       </div>
       <AgentsList
         workspaceSlug={workspace.slug}

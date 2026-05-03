@@ -20,6 +20,7 @@ import { createBusiness } from "../app/actions/businesses";
 import { createAgent, type AgentInput } from "../app/actions/agents";
 import { createNavNode } from "../app/actions/nav-nodes";
 import { listWorkspaceTelegramTargets } from "../app/actions/telegram";
+import { translate, type Locale } from "../lib/i18n/dict";
 import { AppearancePicker, type AppearanceValue } from "./AppearancePicker";
 import { TargetsEditor, type Target } from "./TargetsEditor";
 
@@ -39,17 +40,24 @@ type Props = {
   /** Workspace defaults so the main-agent step can pre-fill. */
   defaultProvider?: AgentInput["provider"];
   defaultModel?: string | null;
+  /** Active UI locale — translates step labels + cta copy through the
+   *  shared dict module. Defaults to "nl" so existing call-sites that
+   *  haven't passed it yet keep their current text. */
+  locale?: Locale;
   onClose: () => void;
 };
 
+// Step labels resolve through the i18n dict; see `wizard.step.*` keys.
+// We carry the i18n key on the step entry so the strip can render the
+// translated copy without hard-wiring NL.
 const STEPS = [
-  { id: 1, label: "Identiteit" },
-  { id: 2, label: "Doel" },
-  { id: 3, label: "Topics" },
-  { id: 4, label: "Main agent" },
-  { id: 5, label: "Telegram" },
-  { id: 6, label: "Isolatie" },
-  { id: 7, label: "Bevestig" },
+  { id: 1, labelKey: "wizard.step.identity" },
+  { id: 2, labelKey: "wizard.step.intent" },
+  { id: 3, labelKey: "wizard.step.topics" },
+  { id: 4, labelKey: "wizard.step.mainAgent" },
+  { id: 5, labelKey: "wizard.step.telegram" },
+  { id: 6, labelKey: "wizard.step.isolation" },
+  { id: 7, labelKey: "wizard.step.confirm" },
 ] as const;
 
 const TOTAL_STEPS = STEPS.length;
@@ -79,8 +87,11 @@ export function BusinessSetupWizard({
   telegramTargets = [],
   defaultProvider,
   defaultModel,
+  locale = "nl",
   onClose,
 }: Props) {
+  const t = (key: string, vars?: Record<string, string | number>) =>
+    translate(locale, key, vars);
   const ref = useRef<HTMLDialogElement>(null);
   const router = useRouter();
   useEffect(() => {
@@ -285,7 +296,10 @@ export function BusinessSetupWizard({
               letterSpacing: "-0.3px",
             }}
           >
-            Nieuwe business · stap {step} / {TOTAL_STEPS}
+            {t("wizard.business.title", {
+              current: step,
+              total: TOTAL_STEPS,
+            })}
           </h2>
           <button
             type="button"
@@ -314,7 +328,7 @@ export function BusinessSetupWizard({
                   step >= s.id ? "var(--tt-green)" : "var(--app-border-2)",
                 borderRadius: 2,
               }}
-              title={s.label}
+              title={t(s.labelKey)}
             />
           ))}
         </div>
@@ -727,7 +741,7 @@ export function BusinessSetupWizard({
             disabled={step === 1 || creating}
             style={btnSec}
           >
-            ← Terug
+            {t("wizard.cta.back")}
           </button>
           {step < TOTAL_STEPS ? (
             <button
@@ -736,7 +750,7 @@ export function BusinessSetupWizard({
               disabled={!canNext}
               style={btnPrimary(false)}
             >
-              Volgende →
+              {t("wizard.cta.next")}
             </button>
           ) : (
             <button
@@ -745,7 +759,7 @@ export function BusinessSetupWizard({
               disabled={creating}
               style={btnPrimary(creating)}
             >
-              {creating ? "Aanmaken…" : "✓ Aanmaken"}
+              {creating ? t("common.busy") : `✓ ${t("wizard.cta.create")}`}
             </button>
           )}
         </div>

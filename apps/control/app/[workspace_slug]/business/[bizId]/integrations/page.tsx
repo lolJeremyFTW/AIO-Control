@@ -5,6 +5,7 @@
 import { notFound, redirect } from "next/navigation";
 
 import { getCurrentUser, getWorkspaceBySlug } from "../../../../../lib/auth/workspace";
+import { getDict } from "../../../../../lib/i18n/server";
 import { listBusinesses } from "../../../../../lib/queries/businesses";
 import { listIntegrationsForBusiness } from "../../../../../lib/queries/integrations";
 import { IntegrationsList } from "../../../../../components/IntegrationsList";
@@ -28,11 +29,13 @@ export default async function BusinessIntegrationsPage({ params }: Props) {
   const biz = businesses.find((b) => b.id === bizId);
   if (!biz) notFound();
 
+  const { t } = await getDict();
+
   return (
     <div className="content">
       <div className="page-title-row">
-        <h1>{biz.name} — integraties</h1>
-        <span className="sub">External services this business uses</span>
+        <h1>{t("page.business.integrations.h1", { business: biz.name })}</h1>
+        <span className="sub">{t("page.business.integrations.sub")}</span>
       </div>
       <IntegrationsList
         workspaceSlug={workspace.slug}

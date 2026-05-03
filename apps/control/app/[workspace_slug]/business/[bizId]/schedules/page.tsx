@@ -8,6 +8,7 @@ import {
   getCurrentUser,
   getWorkspaceBySlug,
 } from "../../../../../lib/auth/workspace";
+import { getDict } from "../../../../../lib/i18n/server";
 import { listAgentsForWorkspace } from "../../../../../lib/queries/agents";
 import { listBusinesses } from "../../../../../lib/queries/businesses";
 import {
@@ -71,11 +72,13 @@ export default async function BusinessSchedulesPage({ params }: Props) {
   const triggerOrigin =
     process.env.NEXT_PUBLIC_TRIGGER_ORIGIN ?? `${proto}://${host}`;
 
+  const { t } = await getDict();
+
   return (
     <div className="content">
       <div className="page-title-row">
-        <h1>{biz.name} — schedules</h1>
-        <span className="sub">Cron · webhooks · run history</span>
+        <h1>{t("page.business.schedules.h1", { business: biz.name })}</h1>
+        <span className="sub">{t("page.business.schedules.sub")}</span>
       </div>
       {agents.length > 0 && (
         <div style={{ marginBottom: 22 }}>

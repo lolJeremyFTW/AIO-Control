@@ -111,6 +111,23 @@ const nl: Dict = {
   "page.business.runs.sub": "Volledige run-historie van alle agents",
   "page.business.subnav": "Sub-navigatie",
 
+  "page.business.runs.h1": "{business} — runs",
+  "page.business.agents.h1": "{business} — agents",
+  "page.business.schedules.h1": "{business} — routines",
+  "page.business.integrations.h1": "{business} — integraties",
+
+  "wizard.business.title": "Nieuwe business · stap {current} / {total}",
+  "wizard.step.identity": "Identiteit",
+  "wizard.step.intent": "Doel",
+  "wizard.step.topics": "Topics",
+  "wizard.step.mainAgent": "Main agent",
+  "wizard.step.telegram": "Telegram",
+  "wizard.step.isolation": "Isolatie",
+  "wizard.step.confirm": "Bevestig",
+  "wizard.cta.next": "Volgende →",
+  "wizard.cta.back": "← Terug",
+  "wizard.cta.create": "Business aanmaken",
+
   "rail.empty": "Geen businesses nog",
   "rail.emptyTopics": "Nog geen subtopics — maak er een aan ↓",
 
@@ -450,6 +467,18 @@ const en: Partial<Dict> = {
   "page.business.runs.sub": "Full run history across every agent",
   "page.business.subnav": "Sub-navigation",
 
+  "wizard.business.title": "New business · step {current} / {total}",
+  "wizard.step.identity": "Identity",
+  "wizard.step.intent": "Intent",
+  "wizard.step.topics": "Topics",
+  "wizard.step.mainAgent": "Main agent",
+  "wizard.step.telegram": "Telegram",
+  "wizard.step.isolation": "Isolation",
+  "wizard.step.confirm": "Confirm",
+  "wizard.cta.next": "Next →",
+  "wizard.cta.back": "← Back",
+  "wizard.cta.create": "Create business",
+
   "settings.sub": "Account · workspace · automations",
   "settings.section.agentDefaults": "Agent defaults",
   "settings.section.agentDefaults.desc":
@@ -750,6 +779,18 @@ const de: Partial<Dict> = {
   "profile.security.signOutAll": "Überall abmelden",
   "profile.security.signOutAll.confirm":
     "Meldet dich auf ALLEN Geräten + Browsern ab, wo du gerade angemeldet bist. Fortfahren?",
+
+  "wizard.business.title": "Neues Business · Schritt {current} / {total}",
+  "wizard.step.identity": "Identität",
+  "wizard.step.intent": "Ziel",
+  "wizard.step.topics": "Topics",
+  "wizard.step.mainAgent": "Haupt-Agent",
+  "wizard.step.telegram": "Telegram",
+  "wizard.step.isolation": "Isolation",
+  "wizard.step.confirm": "Bestätigen",
+  "wizard.cta.next": "Weiter →",
+  "wizard.cta.back": "← Zurück",
+  "wizard.cta.create": "Business erstellen",
 };
 
 const DICTS: Record<Locale, Partial<Dict>> = { nl, en, de };

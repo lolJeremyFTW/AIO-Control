@@ -9,6 +9,7 @@ import {
   getCurrentUser,
   getWorkspaceBySlug,
 } from "../../../../../lib/auth/workspace";
+import { getDict } from "../../../../../lib/i18n/server";
 import { listAgentsForWorkspace } from "../../../../../lib/queries/agents";
 import { listBusinesses } from "../../../../../lib/queries/businesses";
 import { RunsPage } from "../../../../../components/RunsPage";
@@ -35,11 +36,13 @@ export default async function BusinessRunsPage({ params, searchParams }: Props) 
   if (!biz) notFound();
   const agents = allAgents.filter((a) => a.business_id === bizId);
 
+  const { t } = await getDict();
+
   return (
     <div className="content">
       <div className="page-title-row">
-        <h1>{biz.name} — runs</h1>
-        <span className="sub">Volledige run-historie van alle agents</span>
+        <h1>{t("page.business.runs.h1", { business: biz.name })}</h1>
+        <span className="sub">{t("page.business.runs.sub")}</span>
       </div>
       <RunsPage
         workspaceSlug={workspace_slug}
