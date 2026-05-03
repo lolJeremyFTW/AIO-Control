@@ -312,7 +312,7 @@ export function TelegramPanel({
             color: "var(--app-fg-2)",
           }}
         >
-          🪄 Auto-create topic per business — setup
+          {tt("tg.disclosure.title")}
         </summary>
         <ol
           style={{
@@ -322,37 +322,11 @@ export function TelegramPanel({
             lineHeight: 1.55,
           }}
         >
-          <li>
-            Maak een Telegram <strong>supergroup</strong> en zet onder{" "}
-            <em>Manage → Topics</em> de optie <strong>Topics</strong> AAN.
-          </li>
-          <li>
-            Voeg je bot toe als <strong>admin</strong> met de permissie{" "}
-            <strong>Manage Topics</strong> (en Send Messages, Edit, Delete).
-          </li>
-          <li>
-            Pak de chat_id (start met <code>-100…</code>) via{" "}
-            <a
-              href="https://t.me/RawDataBot"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ color: "var(--tt-green)" }}
-            >
-              @RawDataBot
-            </a>
-            , voeg hier een nieuwe channel toe scope ={" "}
-            <strong>Workspace default</strong>, laat topic_id leeg.
-          </li>
-          <li>
-            Vink hieronder <strong>&quot;Auto-create forum topic per nieuwe
-            business&quot;</strong> aan op die row.
-          </li>
-          <li>
-            Klaar — vanaf nu krijgt élke nieuwe business automatisch een
-            eigen forum topic met dezelfde naam (+ emoji als je die set).
-            Bestaande businesses krijgen NIET automatisch een topic; maak ze
-            handmatig of dupliceer ze.
-          </li>
+          <li>{tt("tg.disclosure.step1")}</li>
+          <li>{tt("tg.disclosure.step2")}</li>
+          <li>{tt("tg.disclosure.step3")}</li>
+          <li>{tt("tg.disclosure.step4")}</li>
+          <li>{tt("tg.disclosure.step5")}</li>
         </ol>
       </details>
 

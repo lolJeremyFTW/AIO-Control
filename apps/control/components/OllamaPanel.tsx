@@ -17,6 +17,8 @@ import {
   scanOllamaModels,
   type OllamaModel,
 } from "../app/actions/ollama";
+import { translate } from "../lib/i18n/dict";
+import { useLocale } from "../lib/i18n/client";
 
 export type OllamaInitial = {
   host: string | null;
@@ -32,6 +34,9 @@ type Props = {
 };
 
 export function OllamaPanel({ workspaceId, workspaceSlug, initial }: Props) {
+  const locale = useLocale();
+  const t = (key: string, vars?: Record<string, string | number>) =>
+    translate(locale, key, vars);
   const [host, setHost] = useState(initial.host ?? "");
   const [port, setPort] = useState<string>(
     initial.port ? String(initial.port) : "11434",
@@ -84,7 +89,7 @@ export function OllamaPanel({ workspaceId, workspaceSlug, initial }: Props) {
   };
 
   const friendlyTime = lastScanAt
-    ? formatRelative(new Date(lastScanAt))
+    ? formatRelative(new Date(lastScanAt), t)
     : null;
 
   return (
@@ -108,11 +113,11 @@ export function OllamaPanel({ workspaceId, workspaceSlug, initial }: Props) {
               letterSpacing: 0.4,
             }}
           >
-            Host
+            {t("ollama.field.host")}
           </label>
           <input
             type="text"
-            placeholder="localhost · 192.168.0.42 · vps.tail-scale.ts.net"
+            placeholder={t("ollama.host.placeholder")}
             value={host}
             onChange={(e) => setHost(e.target.value)}
             style={inputStyle}
@@ -130,7 +135,7 @@ export function OllamaPanel({ workspaceId, workspaceSlug, initial }: Props) {
               letterSpacing: 0.4,
             }}
           >
-            Poort
+            {t("ollama.field.port")}
           </label>
           <input
             type="number"
@@ -154,7 +159,7 @@ export function OllamaPanel({ workspaceId, workspaceSlug, initial }: Props) {
             color: "var(--app-fg)",
           }}
         >
-          {scanPending ? "Scannen…" : "Scan models"}
+          {scanPending ? t("ollama.btn.scanning") : t("ollama.btn.scan")}
         </button>
         <button
           type="button"
@@ -167,11 +172,11 @@ export function OllamaPanel({ workspaceId, workspaceSlug, initial }: Props) {
             color: "#fff",
           }}
         >
-          {savePending ? "Opslaan…" : "Opslaan"}
+          {savePending ? t("ollama.btn.saving") : t("common.save")}
         </button>
         {savedAt && (
           <span style={{ fontSize: 12, color: "var(--tt-green)" }}>
-            ✓ Opgeslagen
+            {t("ollama.savedNotice")}
           </span>
         )}
       </div>
@@ -193,8 +198,13 @@ export function OllamaPanel({ workspaceId, workspaceSlug, initial }: Props) {
 
       {(resolvedEndpoint || friendlyTime) && (
         <p style={{ fontSize: 12, color: "var(--app-fg-3)", margin: 0 }}>
-          {resolvedEndpoint && <>Endpoint: <code>{resolvedEndpoint}</code> · </>}
-          {friendlyTime && <>laatst gescand {friendlyTime}</>}
+          {resolvedEndpoint && (
+            <>
+              {t("ollama.endpointLabel")}: <code>{resolvedEndpoint}</code>
+              {friendlyTime ? " · " : null}
+            </>
+          )}
+          {friendlyTime && t("ollama.lastScan", { when: friendlyTime })}
         </p>
       )}
 
@@ -218,7 +228,7 @@ export function OllamaPanel({ workspaceId, workspaceSlug, initial }: Props) {
               background: "var(--app-card-2)",
             }}
           >
-            {models.length} model{models.length === 1 ? "" : "s"} beschikbaar
+            {t("ollama.modelsCount", { count: models.length })}
           </div>
           <div style={{ display: "flex", flexDirection: "column" }}>
             {models.map((m) => (
@@ -263,8 +273,7 @@ export function OllamaPanel({ workspaceId, workspaceSlug, initial }: Props) {
             fontStyle: "italic",
           }}
         >
-          Nog geen models gescand. Vul host + poort in en klik &quot;Scan
-          models&quot;.
+          {t("ollama.empty")}
         </p>
       )}
     </div>
@@ -297,13 +306,16 @@ function fmtSize(bytes: number): string {
   return `${mb.toFixed(0)} MB`;
 }
 
-function formatRelative(d: Date): string {
+function formatRelative(
+  d: Date,
+  t: (key: string, vars?: Record<string, string | number>) => string,
+): string {
   const ms = Date.now() - d.getTime();
   const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s geleden`;
+  if (s < 60) return t("rel.s", { n: s });
   const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m geleden`;
+  if (m < 60) return t("rel.m", { n: m });
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}u geleden`;
-  return `${Math.floor(h / 24)}d geleden`;
+  if (h < 24) return t("rel.h", { n: h });
+  return t("rel.d", { n: Math.floor(h / 24) });
 }

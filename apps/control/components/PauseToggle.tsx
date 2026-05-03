@@ -9,6 +9,8 @@ import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 
 import { toggleBusinessStatus } from "../app/actions/businesses";
+import { translate } from "../lib/i18n/dict";
+import { useLocale } from "../lib/i18n/client";
 
 type Props = {
   workspaceSlug: string;
@@ -19,6 +21,8 @@ type Props = {
 export function PauseToggle({ workspaceSlug, businessId, status }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const locale = useLocale();
+  const t = (key: string) => translate(locale, key);
   const next = status === "running" ? "paused" : "running";
 
   return (
@@ -39,9 +43,13 @@ export function PauseToggle({ workspaceSlug, businessId, status }: Props) {
       style={{ cursor: pending ? "wait" : "pointer", border: "1.5px solid currentColor" }}
     >
       <span className="d" />
-      {status === "running" ? "Live · auto" : "Gepauzeerd"}
+      {status === "running" ? t("pause.live") : t("pause.paused")}
       <span style={{ opacity: 0.7, fontWeight: 600, marginLeft: 4 }}>
-        {pending ? "…" : "→ klik om " + (status === "running" ? "te pauzeren" : "te starten")}
+        {pending
+          ? "…"
+          : status === "running"
+            ? t("pause.clickToPause")
+            : t("pause.clickToStart")}
       </span>
     </button>
   );

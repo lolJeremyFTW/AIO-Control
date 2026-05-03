@@ -211,6 +211,17 @@ const nl: Dict = {
     "Allowlist (komma-gescheiden usernames, optioneel)",
   "tg.field.denylist":
     "Denylist (komma-gescheiden usernames, optioneel)",
+  "tg.disclosure.title": "🪄 Auto-create topic per business — setup",
+  "tg.disclosure.step1":
+    "Maak een Telegram supergroup en zet onder Manage → Topics de optie Topics AAN.",
+  "tg.disclosure.step2":
+    "Voeg je bot toe als admin met de permissie Manage Topics (en Send Messages, Edit, Delete).",
+  "tg.disclosure.step3":
+    "Pak de chat_id (start met -100…) via @RawDataBot, voeg hier een nieuwe channel toe scope = Workspace default, laat topic_id leeg.",
+  "tg.disclosure.step4":
+    "Vink hieronder \"Auto-create forum topic per nieuwe business\" aan op die row.",
+  "tg.disclosure.step5":
+    "Klaar — vanaf nu krijgt élke nieuwe business automatisch een eigen forum topic met dezelfde naam (+ emoji als je die set). Bestaande businesses krijgen NIET automatisch een topic; maak ze handmatig of dupliceer ze.",
 
   "keys.intro":
     "Stel API keys in op workspace-niveau (default voor alle agents) of overschrijf per business of per topic. Resolution: topic → business → workspace → env-var fallback.",
@@ -283,6 +294,164 @@ const nl: Dict = {
   "kpi.revenue": "REVENUE",
   "kpi.cost": "AI KOSTEN",
   "kpi.runs24h": "{count} runs · 24u",
+
+  "biz.kpi.revenue30d": "REVENUE 30D",
+  "biz.kpi.cost30d": "AI KOSTEN 30D",
+  "biz.kpi.revenue7d": "REVENUE 7D",
+  "biz.kpi.runs24h": "RUNS 24U",
+  "biz.kpi.successFail": "SUCCESS / FAIL",
+  "biz.openQueue": "Open queue",
+  "biz.viewAll": "Bekijk alles",
+  "biz.queueEmpty.title": "Wachtrij leeg ✓",
+  "biz.queueEmpty.body":
+    "Geen items te reviewen. Trigger een run of wacht tot een agent iets oppakt.",
+  "biz.agentsCount": "Agents · {count}",
+  "biz.manage": "Beheer",
+  "biz.noAgents.title": "Geen agents",
+  "biz.noAgents.body": "Voeg een agent toe om runs te starten.",
+  "biz.recentRuns": "Recente runs",
+  "biz.history": "History",
+  "biz.noRuns.title": "Nog geen runs",
+  "biz.noRuns.body": "Trigger een agent via Run-now of een webhook.",
+
+  "header.searchPlaceholder":
+    "Zoek of vraag aan AI: \"hoeveel verdiende YouTube vandaag?\"",
+  "header.crumbBackToWorkspace": "Terug naar workspace dashboard",
+  "header.crumbBackToBusinesses": "Terug naar alle businesses",
+
+  "search.placeholder":
+    "Zoek businesses, agents, queue items, marketplace…",
+  "search.scope.all": "Alles",
+  "search.scope.business": "Deze business",
+  "search.scope.global": "Workspace-global",
+  "search.quickActions": "Snelle acties",
+  "search.empty": "Geen resultaten in deze scope.",
+  "search.searching": "Zoeken…",
+  "search.footer.open": "↵ open",
+  "search.footer.close": "Esc sluiten",
+  "search.footer.shortcut": "Ctrl+K opent overal",
+  "search.footer.workspace": "workspace: {slug}",
+  "search.tpl.openQueue": "Open wachtrij",
+  "search.tpl.openQueue.hint": "HITL items te reviewen",
+  "search.tpl.failedRuns": "Mislukte runs (24u)",
+  "search.tpl.failedRuns.hint": "Failed status laatst 24u",
+  "search.tpl.workspaceAgents": "Workspace agents",
+  "search.tpl.workspaceAgents.hint": "Alle agents per business",
+  "search.tpl.activity": "Activiteit",
+  "search.tpl.activity.hint": "Audit log alle wijzigingen",
+  "search.tpl.cost": "Kosten & spend",
+  "search.tpl.cost.hint": "Per provider / business / agent",
+  "search.tpl.marketplace": "Marketplace",
+  "search.tpl.marketplace.hint": "Curated agent presets",
+  "search.tpl.profile": "Profile",
+  "search.tpl.profile.hint": "Account voorkeuren",
+  "search.tpl.settingsTelegram": "Settings · Telegram",
+  "search.tpl.settingsTelegram.hint": "Bot targets configureren",
+  "search.tpl.settingsApiKeys": "Settings · API keys",
+  "search.tpl.settingsApiKeys.hint": "Provider keys + overrides",
+  "search.tpl.settingsSpendLimits": "Settings · Spend limits",
+  "search.tpl.settingsSpendLimits.hint": "Daag/maand caps",
+  "search.tpl.settingsProviders": "Settings · Providers",
+  "search.tpl.settingsProviders.hint": "Hermes/OpenClaw/Ollama setup",
+  "search.tpl.bizAgents": "Deze business: agents",
+  "search.tpl.bizAgents.hint": "Per-business agents lijst",
+  "search.tpl.bizRoutines": "Deze business: routines",
+  "search.tpl.bizRoutines.hint": "Cron + webhook schedules",
+  "search.tpl.bizRuns": "Deze business: runs",
+  "search.tpl.bizRuns.hint": "Volledige run-historie",
+
+  "pause.live": "Live · auto",
+  "pause.paused": "Gepauzeerd",
+  "pause.clickToPause": "→ klik om te pauzeren",
+  "pause.clickToStart": "→ klik om te starten",
+
+  "ollama.field.host": "Host",
+  "ollama.field.port": "Poort",
+  "ollama.host.placeholder": "localhost · 192.168.0.42 · vps.tail-scale.ts.net",
+  "ollama.btn.scan": "Scan models",
+  "ollama.btn.scanning": "Scannen…",
+  "ollama.btn.saving": "Opslaan…",
+  "ollama.savedNotice": "✓ Opgeslagen",
+  "ollama.endpointLabel": "Endpoint",
+  "ollama.lastScan": "laatst gescand {when}",
+  "ollama.modelsCount": "{count} models beschikbaar",
+  "ollama.empty":
+    "Nog geen models gescand. Vul host + poort in en klik \"Scan models\".",
+  "rel.s": "{n}s geleden",
+  "rel.m": "{n}m geleden",
+  "rel.h": "{n}u geleden",
+  "rel.d": "{n}d geleden",
+
+  "providers.docs": "docs ↗",
+  "providers.howInstall": "Hoe installeer ik {name}?",
+  "providers.lastTested": "Laatst getest {when}",
+  "providers.btn.test": "Test connection",
+  "providers.btn.testing": "Testen…",
+  "providers.btn.save": "Opslaan",
+  "providers.btn.saving": "Opslaan…",
+  "providers.status.ready": "Klaar voor gebruik ✓",
+  "providers.status.partial.url": "URL ingevuld, nog niet getest",
+  "providers.status.partial.cli": "CLI niet getest — klik Test",
+  "providers.status.cliReady": "CLI getest ✓",
+  "providers.status.httpReady": "HTTP wrapper getest ✓",
+  "providers.status.notConfigured": "Niet ingesteld",
+  "providers.status.partial.scan": "Endpoint ingevuld, nog geen scan",
+  "providers.status.cliDefault": "CLI default — geen URL nodig",
+
+  "providers.ollama.tagline":
+    "Lokale LLM. Gratis, snel als je een GPU hebt, geen api-keys.",
+  "providers.ollama.modelsAvailable": "{count} models beschikbaar",
+  "providers.ollama.gotoSettings": "Naar Ollama-instellingen",
+  "providers.ollama.step1":
+    "Installeer Ollama op de machine die je modellen draait (laptop, VPS, andere server).",
+  "providers.ollama.step2":
+    "Start Ollama. Default luistert hij op poort 11434.",
+  "providers.ollama.step3":
+    "Pull een model — bijvoorbeeld: ollama pull llama3.2",
+  "providers.ollama.step4":
+    "Vul host + poort in op de Ollama-instellingen page en klik Scan.",
+
+  "providers.hermes.tagline":
+    "Self-hosted Hermes runner. AIO Control praat met de hermes CLI via subprocess (default) of een HTTP-wrapper als je die zelf draait.",
+  "providers.hermes.step1":
+    "Installeer de hermes CLI op deze server: clone github.com/NousResearch/hermes-agent en volg de README (Python entrypoint).",
+  "providers.hermes.step2":
+    "Zorg dat 'hermes --version' werkt vanaf de shell waarin de Node-server draait. Anders: zet HERMES_BIN in de env naar het absolute pad.",
+  "providers.hermes.step3":
+    "Klaar — geen URL invullen nodig. AIO Control spawnt de CLI per chat / run.",
+  "providers.hermes.step4":
+    "Optioneel: draai je een eigen HTTP-wrapper voor Hermes? Plak die URL hieronder en klik Test (verwacht /healthz → 200).",
+
+  "providers.openclaw.tagline":
+    "Local agent runtime — eigen tools + custom MCP. Spawned als CLI subprocess (default) of via HTTP-wrapper als je die zelf draait.",
+  "providers.openclaw.step1":
+    "Installeer OpenClaw — npm i -g @tromptech/openclaw, of clone + npm link.",
+  "providers.openclaw.step2":
+    "Bevestig dat 'openclaw --version' werkt in de shell waarin Node draait. Anders: zet OPENCLAW_BIN naar het absolute pad.",
+  "providers.openclaw.step3":
+    "Klaar — AIO Control spawnt de CLI per chat / run.",
+  "providers.openclaw.step4":
+    "Optioneel: draai je openclaw als HTTP-daemon? Plak de URL hieronder en klik Test (verwacht /healthz).",
+
+  "dash.kpi.agents": "Agents",
+  "dash.kpi.activeRoutines": "Actieve routines",
+  "dash.kpi.runsToday": "Runs vandaag",
+  "dash.kpi.cost30d": "Cost 30d",
+  "dash.kpi.revenue30d": "Revenue 30d",
+  "dash.calendar": "Agenda",
+  "dash.today": "Vandaag",
+  "dash.day": "Dag",
+  "dash.week": "Week",
+  "dash.month": "Maand",
+  "dash.cell.empty": "geen",
+  "dash.unknownAgent": "Onbekende agent",
+  "dash.perBusiness.title": "Per business · 30 dagen",
+  "dash.perBusiness.desc":
+    "AI-cost komt uit de runs-tabel. Revenue volgt zodra Stripe of Mollie hooks per business zijn aangesloten — de plekken zijn al gereserveerd.",
+  "dash.perBusiness.empty": "Nog geen businesses in deze workspace.",
+  "dash.perBusiness.revenue": "Revenue",
+  "dash.perBusiness.aiCost": "AI cost",
+  "dash.perBusiness.runsToday": "{count} runs vandaag",
 
   "settings.title": "Instellingen",
   "settings.sub": "Account · workspace · automations",
@@ -472,6 +641,164 @@ const en: Partial<Dict> = {
   "kpi.revenue": "REVENUE",
   "kpi.cost": "AI COST",
   "kpi.runs24h": "{count} runs · 24h",
+
+  "biz.kpi.revenue30d": "REVENUE 30D",
+  "biz.kpi.cost30d": "AI COST 30D",
+  "biz.kpi.revenue7d": "REVENUE 7D",
+  "biz.kpi.runs24h": "RUNS 24H",
+  "biz.kpi.successFail": "SUCCESS / FAIL",
+  "biz.openQueue": "Open queue",
+  "biz.viewAll": "View all",
+  "biz.queueEmpty.title": "Empty queue ✓",
+  "biz.queueEmpty.body":
+    "Nothing to review. Trigger a run or wait for an agent to pick something up.",
+  "biz.agentsCount": "Agents · {count}",
+  "biz.manage": "Manage",
+  "biz.noAgents.title": "No agents",
+  "biz.noAgents.body": "Add an agent to start running.",
+  "biz.recentRuns": "Recent runs",
+  "biz.history": "History",
+  "biz.noRuns.title": "No runs yet",
+  "biz.noRuns.body": "Trigger an agent via Run-now or a webhook.",
+
+  "header.searchPlaceholder":
+    "Search or ask the AI: \"how much did YouTube earn today?\"",
+  "header.crumbBackToWorkspace": "Back to workspace dashboard",
+  "header.crumbBackToBusinesses": "Back to all businesses",
+
+  "search.placeholder":
+    "Search businesses, agents, queue items, marketplace…",
+  "search.scope.all": "All",
+  "search.scope.business": "This business",
+  "search.scope.global": "Workspace-global",
+  "search.quickActions": "Quick actions",
+  "search.empty": "No results in this scope.",
+  "search.searching": "Searching…",
+  "search.footer.open": "↵ open",
+  "search.footer.close": "Esc close",
+  "search.footer.shortcut": "Ctrl+K opens anywhere",
+  "search.footer.workspace": "workspace: {slug}",
+  "search.tpl.openQueue": "Open queue",
+  "search.tpl.openQueue.hint": "HITL items to review",
+  "search.tpl.failedRuns": "Failed runs (24h)",
+  "search.tpl.failedRuns.hint": "Failed status last 24h",
+  "search.tpl.workspaceAgents": "Workspace agents",
+  "search.tpl.workspaceAgents.hint": "All agents per business",
+  "search.tpl.activity": "Activity",
+  "search.tpl.activity.hint": "Audit log of all changes",
+  "search.tpl.cost": "Cost & spend",
+  "search.tpl.cost.hint": "Per provider / business / agent",
+  "search.tpl.marketplace": "Marketplace",
+  "search.tpl.marketplace.hint": "Curated agent presets",
+  "search.tpl.profile": "Profile",
+  "search.tpl.profile.hint": "Account preferences",
+  "search.tpl.settingsTelegram": "Settings · Telegram",
+  "search.tpl.settingsTelegram.hint": "Configure bot targets",
+  "search.tpl.settingsApiKeys": "Settings · API keys",
+  "search.tpl.settingsApiKeys.hint": "Provider keys + overrides",
+  "search.tpl.settingsSpendLimits": "Settings · Spend limits",
+  "search.tpl.settingsSpendLimits.hint": "Daily/monthly caps",
+  "search.tpl.settingsProviders": "Settings · Providers",
+  "search.tpl.settingsProviders.hint": "Hermes/OpenClaw/Ollama setup",
+  "search.tpl.bizAgents": "This business: agents",
+  "search.tpl.bizAgents.hint": "Per-business agent list",
+  "search.tpl.bizRoutines": "This business: routines",
+  "search.tpl.bizRoutines.hint": "Cron + webhook schedules",
+  "search.tpl.bizRuns": "This business: runs",
+  "search.tpl.bizRuns.hint": "Full run history",
+
+  "pause.live": "Live · auto",
+  "pause.paused": "Paused",
+  "pause.clickToPause": "→ click to pause",
+  "pause.clickToStart": "→ click to start",
+
+  "ollama.field.host": "Host",
+  "ollama.field.port": "Port",
+  "ollama.host.placeholder": "localhost · 192.168.0.42 · vps.tail-scale.ts.net",
+  "ollama.btn.scan": "Scan models",
+  "ollama.btn.scanning": "Scanning…",
+  "ollama.btn.saving": "Saving…",
+  "ollama.savedNotice": "✓ Saved",
+  "ollama.endpointLabel": "Endpoint",
+  "ollama.lastScan": "last scanned {when}",
+  "ollama.modelsCount": "{count} models available",
+  "ollama.empty":
+    "No models scanned yet. Fill host + port and click \"Scan models\".",
+  "rel.s": "{n}s ago",
+  "rel.m": "{n}m ago",
+  "rel.h": "{n}h ago",
+  "rel.d": "{n}d ago",
+
+  "providers.docs": "docs ↗",
+  "providers.howInstall": "How do I install {name}?",
+  "providers.lastTested": "Last tested {when}",
+  "providers.btn.test": "Test connection",
+  "providers.btn.testing": "Testing…",
+  "providers.btn.save": "Save",
+  "providers.btn.saving": "Saving…",
+  "providers.status.ready": "Ready ✓",
+  "providers.status.partial.url": "URL filled, not tested yet",
+  "providers.status.partial.cli": "CLI not tested — click Test",
+  "providers.status.cliReady": "CLI tested ✓",
+  "providers.status.httpReady": "HTTP wrapper tested ✓",
+  "providers.status.notConfigured": "Not configured",
+  "providers.status.partial.scan": "Endpoint set, not scanned yet",
+  "providers.status.cliDefault": "CLI default — no URL needed",
+
+  "providers.ollama.tagline":
+    "Local LLM. Free, fast with a GPU, no API keys.",
+  "providers.ollama.modelsAvailable": "{count} models available",
+  "providers.ollama.gotoSettings": "Go to Ollama settings",
+  "providers.ollama.step1":
+    "Install Ollama on the machine that runs your models (laptop, VPS, another server).",
+  "providers.ollama.step2":
+    "Start Ollama. Default port is 11434.",
+  "providers.ollama.step3":
+    "Pull a model — for example: ollama pull llama3.2",
+  "providers.ollama.step4":
+    "Fill host + port on the Ollama settings page and click Scan.",
+
+  "providers.hermes.tagline":
+    "Self-hosted Hermes runner. AIO Control talks to the hermes CLI via subprocess (default) or an HTTP wrapper if you run one.",
+  "providers.hermes.step1":
+    "Install the hermes CLI on this server: clone github.com/NousResearch/hermes-agent and follow the README (Python entrypoint).",
+  "providers.hermes.step2":
+    "Make sure 'hermes --version' works in the shell the Node server runs in. Otherwise: set HERMES_BIN in env to the absolute path.",
+  "providers.hermes.step3":
+    "Done — no URL needed. AIO Control spawns the CLI per chat / run.",
+  "providers.hermes.step4":
+    "Optional: running an HTTP wrapper for Hermes? Paste the URL below and click Test (expects /healthz → 200).",
+
+  "providers.openclaw.tagline":
+    "Local agent runtime — own tools + custom MCP. Spawned as a CLI subprocess (default) or via HTTP wrapper if you run one.",
+  "providers.openclaw.step1":
+    "Install OpenClaw — npm i -g @tromptech/openclaw, or clone + npm link.",
+  "providers.openclaw.step2":
+    "Confirm 'openclaw --version' works in the shell Node runs in. Otherwise: set OPENCLAW_BIN to the absolute path.",
+  "providers.openclaw.step3":
+    "Done — AIO Control spawns the CLI per chat / run.",
+  "providers.openclaw.step4":
+    "Optional: running openclaw as an HTTP daemon? Paste the URL below and click Test (expects /healthz).",
+
+  "dash.kpi.agents": "Agents",
+  "dash.kpi.activeRoutines": "Active routines",
+  "dash.kpi.runsToday": "Runs today",
+  "dash.kpi.cost30d": "Cost 30d",
+  "dash.kpi.revenue30d": "Revenue 30d",
+  "dash.calendar": "Calendar",
+  "dash.today": "Today",
+  "dash.day": "Day",
+  "dash.week": "Week",
+  "dash.month": "Month",
+  "dash.cell.empty": "none",
+  "dash.unknownAgent": "Unknown agent",
+  "dash.perBusiness.title": "Per business · 30 days",
+  "dash.perBusiness.desc":
+    "AI cost comes from the runs table. Revenue follows once Stripe or Mollie hooks per business are wired — slots are already reserved.",
+  "dash.perBusiness.empty": "No businesses in this workspace yet.",
+  "dash.perBusiness.revenue": "Revenue",
+  "dash.perBusiness.aiCost": "AI cost",
+  "dash.perBusiness.runsToday": "{count} runs today",
 
   "settings.title": "Settings",
   "settings.section.general": "General",
@@ -667,6 +994,17 @@ const en: Partial<Dict> = {
     "Allowlist (comma-separated usernames, optional)",
   "tg.field.denylist":
     "Denylist (comma-separated usernames, optional)",
+  "tg.disclosure.title": "🪄 Auto-create topic per business — setup",
+  "tg.disclosure.step1":
+    "Create a Telegram supergroup and turn ON Topics under Manage → Topics.",
+  "tg.disclosure.step2":
+    "Add your bot as admin with the Manage Topics permission (and Send Messages, Edit, Delete).",
+  "tg.disclosure.step3":
+    "Get the chat_id (starts with -100…) via @RawDataBot, add a new channel here with scope = Workspace default, leave topic_id empty.",
+  "tg.disclosure.step4":
+    "Tick \"Auto-create forum topic per new business\" on that row below.",
+  "tg.disclosure.step5":
+    "Done — every new business now gets its own forum topic with the same name. Existing businesses are NOT auto-topiced; create them manually or duplicate.",
 
   "keys.intro":
     "Set API keys at workspace level (default for all agents) or override per business or topic. Resolution: topic → business → workspace → env-var fallback.",
@@ -833,6 +1171,164 @@ const de: Partial<Dict> = {
   "kpi.revenue": "UMSATZ",
   "kpi.cost": "AI KOSTEN",
   "kpi.runs24h": "{count} Runs · 24h",
+
+  "biz.kpi.revenue30d": "UMSATZ 30T",
+  "biz.kpi.cost30d": "AI KOSTEN 30T",
+  "biz.kpi.revenue7d": "UMSATZ 7T",
+  "biz.kpi.runs24h": "RUNS 24H",
+  "biz.kpi.successFail": "SUCCESS / FAIL",
+  "biz.openQueue": "Offene Warteschlange",
+  "biz.viewAll": "Alle ansehen",
+  "biz.queueEmpty.title": "Warteschlange leer ✓",
+  "biz.queueEmpty.body":
+    "Nichts zu prüfen. Trigger einen Run oder warte bis ein Agent etwas aufnimmt.",
+  "biz.agentsCount": "Agents · {count}",
+  "biz.manage": "Verwalten",
+  "biz.noAgents.title": "Keine Agents",
+  "biz.noAgents.body": "Füge einen Agent hinzu, um Runs zu starten.",
+  "biz.recentRuns": "Letzte Runs",
+  "biz.history": "History",
+  "biz.noRuns.title": "Noch keine Runs",
+  "biz.noRuns.body": "Triggere einen Agent via Run-now oder Webhook.",
+
+  "header.searchPlaceholder":
+    "Suche oder frag die KI: \"wieviel hat YouTube heute eingebracht?\"",
+  "header.crumbBackToWorkspace": "Zurück zum Workspace-Dashboard",
+  "header.crumbBackToBusinesses": "Zurück zu allen Businesses",
+
+  "search.placeholder":
+    "Suche Businesses, Agents, Queue-Items, Marketplace…",
+  "search.scope.all": "Alle",
+  "search.scope.business": "Dieses Business",
+  "search.scope.global": "Workspace-global",
+  "search.quickActions": "Schnellaktionen",
+  "search.empty": "Keine Ergebnisse in diesem Scope.",
+  "search.searching": "Suche…",
+  "search.footer.open": "↵ öffnen",
+  "search.footer.close": "Esc schließen",
+  "search.footer.shortcut": "Ctrl+K öffnet überall",
+  "search.footer.workspace": "Workspace: {slug}",
+  "search.tpl.openQueue": "Offene Warteschlange",
+  "search.tpl.openQueue.hint": "HITL-Items zu prüfen",
+  "search.tpl.failedRuns": "Fehlgeschlagene Runs (24h)",
+  "search.tpl.failedRuns.hint": "Failed-Status letzte 24h",
+  "search.tpl.workspaceAgents": "Workspace-Agents",
+  "search.tpl.workspaceAgents.hint": "Alle Agents pro Business",
+  "search.tpl.activity": "Aktivität",
+  "search.tpl.activity.hint": "Audit-Log aller Änderungen",
+  "search.tpl.cost": "Kosten & Verbrauch",
+  "search.tpl.cost.hint": "Pro Provider / Business / Agent",
+  "search.tpl.marketplace": "Marketplace",
+  "search.tpl.marketplace.hint": "Kuratierte Agent-Presets",
+  "search.tpl.profile": "Profil",
+  "search.tpl.profile.hint": "Konto-Einstellungen",
+  "search.tpl.settingsTelegram": "Settings · Telegram",
+  "search.tpl.settingsTelegram.hint": "Bot-Ziele konfigurieren",
+  "search.tpl.settingsApiKeys": "Settings · API-Keys",
+  "search.tpl.settingsApiKeys.hint": "Provider-Keys + Overrides",
+  "search.tpl.settingsSpendLimits": "Settings · Spend-Limits",
+  "search.tpl.settingsSpendLimits.hint": "Tages-/Monats-Caps",
+  "search.tpl.settingsProviders": "Settings · Providers",
+  "search.tpl.settingsProviders.hint": "Hermes/OpenClaw/Ollama Setup",
+  "search.tpl.bizAgents": "Dieses Business: Agents",
+  "search.tpl.bizAgents.hint": "Per-Business Agent-Liste",
+  "search.tpl.bizRoutines": "Dieses Business: Routinen",
+  "search.tpl.bizRoutines.hint": "Cron + Webhook-Zeitpläne",
+  "search.tpl.bizRuns": "Dieses Business: Runs",
+  "search.tpl.bizRuns.hint": "Vollständige Run-History",
+
+  "pause.live": "Live · auto",
+  "pause.paused": "Pausiert",
+  "pause.clickToPause": "→ klick zum Pausieren",
+  "pause.clickToStart": "→ klick zum Starten",
+
+  "ollama.field.host": "Host",
+  "ollama.field.port": "Port",
+  "ollama.host.placeholder": "localhost · 192.168.0.42 · vps.tail-scale.ts.net",
+  "ollama.btn.scan": "Modelle scannen",
+  "ollama.btn.scanning": "Scanne…",
+  "ollama.btn.saving": "Speichern…",
+  "ollama.savedNotice": "✓ Gespeichert",
+  "ollama.endpointLabel": "Endpoint",
+  "ollama.lastScan": "zuletzt gescannt {when}",
+  "ollama.modelsCount": "{count} Modelle verfügbar",
+  "ollama.empty":
+    "Noch keine Modelle gescannt. Host + Port ausfüllen und \"Scan models\" klicken.",
+  "rel.s": "vor {n}s",
+  "rel.m": "vor {n}m",
+  "rel.h": "vor {n}h",
+  "rel.d": "vor {n}d",
+
+  "providers.docs": "Docs ↗",
+  "providers.howInstall": "Wie installiere ich {name}?",
+  "providers.lastTested": "Zuletzt getestet {when}",
+  "providers.btn.test": "Verbindung testen",
+  "providers.btn.testing": "Teste…",
+  "providers.btn.save": "Speichern",
+  "providers.btn.saving": "Speichern…",
+  "providers.status.ready": "Bereit ✓",
+  "providers.status.partial.url": "URL eingegeben, noch nicht getestet",
+  "providers.status.partial.cli": "CLI nicht getestet — klick Test",
+  "providers.status.cliReady": "CLI getestet ✓",
+  "providers.status.httpReady": "HTTP-Wrapper getestet ✓",
+  "providers.status.notConfigured": "Nicht konfiguriert",
+  "providers.status.partial.scan": "Endpoint gesetzt, noch nicht gescannt",
+  "providers.status.cliDefault": "CLI-Default — keine URL nötig",
+
+  "providers.ollama.tagline":
+    "Lokale LLM. Kostenlos, schnell mit GPU, keine API-Keys.",
+  "providers.ollama.modelsAvailable": "{count} Modelle verfügbar",
+  "providers.ollama.gotoSettings": "Zu Ollama-Einstellungen",
+  "providers.ollama.step1":
+    "Installiere Ollama auf der Maschine, die die Modelle ausführt (Laptop, VPS, anderer Server).",
+  "providers.ollama.step2":
+    "Starte Ollama. Default-Port ist 11434.",
+  "providers.ollama.step3":
+    "Hole ein Modell — z.B.: ollama pull llama3.2",
+  "providers.ollama.step4":
+    "Trag Host + Port auf der Ollama-Settings-Seite ein und klicke Scan.",
+
+  "providers.hermes.tagline":
+    "Self-hosted Hermes-Runner. AIO Control spricht mit der hermes CLI via Subprocess (default) oder HTTP-Wrapper.",
+  "providers.hermes.step1":
+    "Installiere die hermes CLI auf diesem Server: clone github.com/NousResearch/hermes-agent und folge der README.",
+  "providers.hermes.step2":
+    "Stelle sicher dass 'hermes --version' in der Shell funktioniert in der Node läuft. Sonst: setze HERMES_BIN auf den absoluten Pfad.",
+  "providers.hermes.step3":
+    "Fertig — keine URL nötig. AIO Control spawnt die CLI pro Chat / Run.",
+  "providers.hermes.step4":
+    "Optional: HTTP-Wrapper für Hermes? Plak die URL unten und klick Test (erwartet /healthz → 200).",
+
+  "providers.openclaw.tagline":
+    "Local agent runtime — eigene Tools + Custom MCP. Subprocess oder HTTP-Wrapper.",
+  "providers.openclaw.step1":
+    "Installiere OpenClaw — npm i -g @tromptech/openclaw, oder clone + npm link.",
+  "providers.openclaw.step2":
+    "Stelle sicher dass 'openclaw --version' in der Shell funktioniert in der Node läuft. Sonst: setze OPENCLAW_BIN.",
+  "providers.openclaw.step3":
+    "Fertig — AIO Control spawnt die CLI pro Chat / Run.",
+  "providers.openclaw.step4":
+    "Optional: openclaw als HTTP-Daemon? Plak die URL unten und klick Test (erwartet /healthz).",
+
+  "dash.kpi.agents": "Agents",
+  "dash.kpi.activeRoutines": "Aktive Routinen",
+  "dash.kpi.runsToday": "Runs heute",
+  "dash.kpi.cost30d": "Kosten 30T",
+  "dash.kpi.revenue30d": "Umsatz 30T",
+  "dash.calendar": "Kalender",
+  "dash.today": "Heute",
+  "dash.day": "Tag",
+  "dash.week": "Woche",
+  "dash.month": "Monat",
+  "dash.cell.empty": "leer",
+  "dash.unknownAgent": "Unbekannter Agent",
+  "dash.perBusiness.title": "Pro Business · 30 Tage",
+  "dash.perBusiness.desc":
+    "AI-Kosten kommen aus der Runs-Tabelle. Umsatz folgt sobald Stripe- oder Mollie-Hooks pro Business angeschlossen sind.",
+  "dash.perBusiness.empty": "Noch keine Businesses in diesem Workspace.",
+  "dash.perBusiness.revenue": "Umsatz",
+  "dash.perBusiness.aiCost": "AI-Kosten",
+  "dash.perBusiness.runsToday": "{count} Runs heute",
 
   "settings.title": "Einstellungen",
   "settings.section.general": "Allgemein",
@@ -1087,6 +1583,17 @@ const de: Partial<Dict> = {
     "Allowlist (komma-getrennte Usernames, optional)",
   "tg.field.denylist":
     "Denylist (komma-getrennte Usernames, optional)",
+  "tg.disclosure.title": "🪄 Auto-Topic pro Business — Setup",
+  "tg.disclosure.step1":
+    "Erstelle eine Telegram-Supergroup und aktiviere unter Manage → Topics die Option Topics.",
+  "tg.disclosure.step2":
+    "Füge deinen Bot als Admin mit der Manage-Topics-Berechtigung hinzu (und Send Messages, Edit, Delete).",
+  "tg.disclosure.step3":
+    "Hol die chat_id (startet mit -100…) via @RawDataBot, füge hier einen neuen Channel hinzu mit Scope = Workspace-Default, lass topic_id leer.",
+  "tg.disclosure.step4":
+    "Hak \"Auto-Create Forum-Topic pro neuem Business\" in der Row unten an.",
+  "tg.disclosure.step5":
+    "Fertig — jedes neue Business bekommt jetzt sein eigenes Forum-Topic. Existierende Businesses werden NICHT automatisch getopict.",
 
   "keys.intro":
     "API-Keys auf Workspace-Ebene setzen (Default für alle Agents) oder pro Business / Topic überschreiben. Resolution: Topic → Business → Workspace → env-Var Fallback.",

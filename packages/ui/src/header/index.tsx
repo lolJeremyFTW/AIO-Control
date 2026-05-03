@@ -50,6 +50,10 @@ type Props = {
    *  app injects functional widgets (SearchModal trigger,
    *  NotificationsBell with realtime badge). */
   searchSlot?: ReactNode;
+  /** Translated placeholder for the static search bar (when searchSlot
+   *  is not set). The host app passes this via the i18n dict so the
+   *  copy flips with the language switcher. */
+  searchPlaceholder?: string;
   bellSlot?: ReactNode;
   /** Tiny circle button next to the bell — light/dark theme flip. */
   themeToggle?: ReactNode;
@@ -78,6 +82,7 @@ export function Header({
   userDisplayName,
   userEmail,
   searchSlot,
+  searchPlaceholder,
   bellSlot,
   themeToggle,
   voiceSlot,
@@ -173,7 +178,8 @@ export function Header({
           <div className="search">
             <SearchIcon />
             <span className="placeholder">
-              Zoek of vraag aan AI: &quot;hoeveel verdiende YouTube vandaag?&quot;
+              {searchPlaceholder ??
+                'Zoek of vraag aan AI: "hoeveel verdiende YouTube vandaag?"'}
             </span>
             <span className="kbd">Ctrl+K</span>
           </div>

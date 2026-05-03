@@ -9,7 +9,10 @@
 
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+
+import { translate } from "../lib/i18n/dict";
+import { useLocale } from "../lib/i18n/client";
 
 type ScheduleLite = {
   id: string;
@@ -66,8 +69,26 @@ export function AgentsDashboard({
   schedules,
   runs,
 }: Props) {
+  const locale = useLocale();
+  // Renamed to `tr` to avoid shadowing by the time-variable `t` used
+  // in the calendar `for (const t of fires)` loop below.
+  const tr = (key: string, vars?: Record<string, string | number>) =>
+    translate(locale, key, vars);
+  // The toLocale*() format strings used by the calendar pull from
+  // the active i18n locale (nl-NL / en-US / de-DE) so day initials
+  // and time formats follow the user's language.
+  const intlLocale =
+    locale === "en" ? "en-US" : locale === "de" ? "de-DE" : "nl-NL";
   const [view, setView] = useState<ViewMode>("week");
   const [anchor, setAnchor] = useState<Date>(() => new Date());
+  // Hydration guard: the SSR pass and the first CSR pass run on
+  // different wall-clocks (React error #418). We render a stable
+  // empty dashboard on the server and only flip to real content
+  // once we're definitely client-side.
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
 
   // ── KPI rollups ─────────────────────────────────────────────
   const stats = useMemo(() => {
@@ -115,7 +136,10 @@ export function AgentsDashboard({
   // window, then bucket by day. Webhook schedules don't have a
   // predictable schedule so we don't surface them on the calendar
   // (only the routines count badge tracks them).
-  const window = useMemo(() => buildWindow(view, anchor), [view, anchor]);
+  const window = useMemo(
+    () => buildWindow(view, anchor, intlLocale),
+    [view, anchor, intlLocale],
+  );
 
   const fireMap = useMemo(() => {
     const map = new Map<string, ScheduleFire[]>();
@@ -135,7 +159,7 @@ export function AgentsDashboard({
         map.get(key)!.push({
           time: t,
           schedule: s,
-          agentName: agent?.name ?? "Onbekende agent",
+          agentName: agent?.name ?? tr("dash.unknownAgent"),
           biz,
         });
       }
@@ -154,7 +178,7 @@ export function AgentsDashboard({
       map.get(key)!.push({
         time: at,
         run: r,
-        agentName: agent?.name ?? "Onbekende agent",
+        agentName: agent?.name ?? tr("dash.unknownAgent"),
         biz,
       });
     }
@@ -173,6 +197,24 @@ export function AgentsDashboard({
     setAnchor(d);
   };
 
+  // Render a tiny skeleton on the SSR pass + the very first CSR
+  // pass so the wall-clock-dependent calendar HTML can't disagree
+  // between the two — once the post-mount effect has run we swap
+  // in the real dashboard.
+  if (!hydrated) {
+    return (
+      <div
+        suppressHydrationWarning
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 18,
+          minHeight: 320,
+        }}
+      />
+    );
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       {/* ── KPI strip ───────────────────────────────────────── */}
@@ -183,22 +225,22 @@ export function AgentsDashboard({
           gap: 10,
         }}
       >
-        <Kpi label="Agents" value={String(stats.agents)} />
+        <Kpi label={tr("dash.kpi.agents")} value={String(stats.agents)} />
         <Kpi
-          label="Actieve routines"
+          label={tr("dash.kpi.activeRoutines")}
           value={String(stats.routines)}
           accent={stats.routines > 0 ? "tt-green" : undefined}
         />
         <Kpi
-          label="Runs vandaag"
+          label={tr("dash.kpi.runsToday")}
           value={String(stats.runsToday)}
           accent={stats.runsToday > 0 ? "tt-green" : undefined}
         />
         <Kpi
-          label="Cost 30d"
+          label={tr("dash.kpi.cost30d")}
           value={`€${(stats.cost30Cents / 100).toFixed(2)}`}
         />
-        <Kpi label="Revenue 30d" value="—" sub="Stripe/Mollie ↗" />
+        <Kpi label={tr("dash.kpi.revenue30d")} value="—" sub="Stripe/Mollie ↗" />
       </div>
 
       {/* ── Calendar ────────────────────────────────────────── */}
@@ -211,7 +253,7 @@ export function AgentsDashboard({
             marginBottom: 12,
           }}
         >
-          <h3 style={{ margin: 0 }}>Agenda</h3>
+          <h3 style={{ margin: 0 }}>{tr("dash.calendar")}</h3>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <button
               type="button"
@@ -243,7 +285,7 @@ export function AgentsDashboard({
               className="btn"
               onClick={() => setAnchor(new Date())}
             >
-              Vandaag
+              {tr("dash.today")}
             </button>
             <div
               style={{
@@ -277,7 +319,11 @@ export function AgentsDashboard({
                       fontWeight: 700,
                     }}
                   >
-                    {m === "day" ? "Dag" : m === "week" ? "Week" : "Maand"}
+                    {m === "day"
+                      ? tr("dash.day")
+                      : m === "week"
+                        ? tr("dash.week")
+                        : tr("dash.month")}
                   </button>
                 );
               })}
@@ -286,28 +332,36 @@ export function AgentsDashboard({
         </div>
 
         {view === "day" && (
-          <DayView day={anchor} fires={fireMap.get(dayKey(anchor)) ?? []} />
+          <DayView
+            day={anchor}
+            fires={fireMap.get(dayKey(anchor)) ?? []}
+            intlLocale={intlLocale}
+            tr={tr}
+          />
         )}
         {view === "week" && (
-          <WeekView days={window.days} fireMap={fireMap} />
+          <WeekView
+            days={window.days}
+            fireMap={fireMap}
+            intlLocale={intlLocale}
+            tr={tr}
+          />
         )}
         {view === "month" && (
           <MonthView
             anchor={anchor}
             days={window.days}
             fireMap={fireMap}
+            intlLocale={intlLocale}
+            tr={tr}
           />
         )}
       </div>
 
       {/* ── Per-business revenue/cost ───────────────────────── */}
       <div className="card">
-        <h3>Per business · 30 dagen</h3>
-        <p className="desc">
-          AI-cost komt uit de runs-tabel. Revenue volgt zodra Stripe of
-          Mollie hooks per business zijn aangesloten — de plekken zijn
-          al gereserveerd.
-        </p>
+        <h3>{tr("dash.perBusiness.title")}</h3>
+        <p className="desc">{tr("dash.perBusiness.desc")}</p>
         {perBiz.length === 0 ? (
           <p
             style={{
@@ -317,7 +371,7 @@ export function AgentsDashboard({
               padding: "16px 0",
             }}
           >
-            Nog geen businesses in deze workspace.
+            {tr("dash.perBusiness.empty")}
           </p>
         ) : (
           <div
@@ -381,7 +435,9 @@ export function AgentsDashboard({
                   }}
                 >
                   <div>
-                    <div style={{ color: "var(--app-fg-3)" }}>Revenue</div>
+                    <div style={{ color: "var(--app-fg-3)" }}>
+                      {tr("dash.perBusiness.revenue")}
+                    </div>
                     <div
                       style={{
                         fontSize: 16,
@@ -395,7 +451,9 @@ export function AgentsDashboard({
                     </div>
                   </div>
                   <div>
-                    <div style={{ color: "var(--app-fg-3)" }}>AI cost</div>
+                    <div style={{ color: "var(--app-fg-3)" }}>
+                      {tr("dash.perBusiness.aiCost")}
+                    </div>
                     <div
                       style={{
                         fontSize: 16,
@@ -414,7 +472,7 @@ export function AgentsDashboard({
                     marginTop: 8,
                   }}
                 >
-                  {p.runsToday} run{p.runsToday === 1 ? "" : "s"} vandaag
+                  {tr("dash.perBusiness.runsToday", { count: p.runsToday })}
                 </div>
               </a>
             ))}
@@ -492,7 +550,19 @@ function Kpi({
   );
 }
 
-function DayView({ day, fires }: { day: Date; fires: ScheduleFire[] }) {
+type Tr = (key: string, vars?: Record<string, string | number>) => string;
+
+function DayView({
+  day,
+  fires,
+  intlLocale,
+  tr,
+}: {
+  day: Date;
+  fires: ScheduleFire[];
+  intlLocale: string;
+  tr: Tr;
+}) {
   // Hour rail with chips per fire.
   const hours = Array.from({ length: 24 }, (_, i) => i);
   return (
@@ -509,7 +579,13 @@ function DayView({ day, fires }: { day: Date; fires: ScheduleFire[] }) {
       {hours.map((h) => {
         const inHour = fires.filter((f) => f.time.getHours() === h);
         return (
-          <DayHourRow key={h} hour={h} fires={inHour} />
+          <DayHourRow
+            key={h}
+            hour={h}
+            fires={inHour}
+            intlLocale={intlLocale}
+            tr={tr}
+          />
         );
       })}
       {/* Re-render the day prop in a hidden span so React doesn't
@@ -522,9 +598,13 @@ function DayView({ day, fires }: { day: Date; fires: ScheduleFire[] }) {
 function DayHourRow({
   hour,
   fires,
+  intlLocale,
+  tr,
 }: {
   hour: number;
   fires: ScheduleFire[];
+  intlLocale: string;
+  tr: Tr;
 }) {
   return (
     <>
@@ -553,7 +633,7 @@ function DayHourRow({
         }}
       >
         {fires.map((f, i) => (
-          <FireChip key={i} fire={f} />
+          <FireChip key={i} fire={f} intlLocale={intlLocale} tr={tr} />
         ))}
       </div>
     </>
@@ -563,9 +643,13 @@ function DayHourRow({
 function WeekView({
   days,
   fireMap,
+  intlLocale,
+  tr,
 }: {
   days: Date[];
   fireMap: Map<string, ScheduleFire[]>;
+  intlLocale: string;
+  tr: Tr;
 }) {
   return (
     <div
@@ -605,7 +689,7 @@ function WeekView({
               }}
             >
               {d
-                .toLocaleDateString("nl-NL", { weekday: "short" })
+                .toLocaleDateString(intlLocale, { weekday: "short" })
                 .replace(".", "")}{" "}
               {d.getDate()}
             </div>
@@ -624,10 +708,18 @@ function WeekView({
                     fontStyle: "italic",
                   }}
                 >
-                  geen
+                  {tr("dash.cell.empty")}
                 </span>
               ) : (
-                fires.map((f, j) => <FireChip key={j} fire={f} compact />)
+                fires.map((f, j) => (
+                  <FireChip
+                    key={j}
+                    fire={f}
+                    compact
+                    intlLocale={intlLocale}
+                    tr={tr}
+                  />
+                ))
               )}
             </div>
           </div>
@@ -641,12 +733,26 @@ function MonthView({
   anchor,
   days,
   fireMap,
+  intlLocale,
+  tr,
 }: {
   anchor: Date;
   days: Date[];
   fireMap: Map<string, ScheduleFire[]>;
+  intlLocale: string;
+  tr: Tr;
 }) {
-  const dayHeaders = ["Ma", "Di", "Wo", "Do", "Vr", "Za", "Zo"];
+  // Day-of-week headers using the active locale. We start at a known
+  // Monday (1970-01-05 was a Monday) and walk 7 days, so the labels
+  // come out in the user's language.
+  const monday = new Date(Date.UTC(1970, 0, 5));
+  const dayHeaders = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(monday);
+    d.setUTCDate(monday.getUTCDate() + i);
+    return d
+      .toLocaleDateString(intlLocale, { weekday: "short", timeZone: "UTC" })
+      .replace(".", "");
+  });
   return (
     <div
       style={{
@@ -724,7 +830,13 @@ function MonthView({
                 }}
               >
                 {fires.slice(0, 3).map((f, j) => (
-                  <FireChip key={j} fire={f} compact />
+                  <FireChip
+                    key={j}
+                    fire={f}
+                    compact
+                    intlLocale={intlLocale}
+                    tr={tr}
+                  />
                 ))}
                 {fires.length > 3 && (
                   <span
@@ -749,9 +861,16 @@ function MonthView({
 function FireChip({
   fire,
   compact,
+  intlLocale,
+  // tr unused inside the chip currently — kept on the prop list so
+  // callers don't have to drop it; will surface as the run-status
+  // label gets translated next pass.
+  tr: _tr,
 }: {
   fire: ScheduleFire;
   compact?: boolean;
+  intlLocale: string;
+  tr: Tr;
 }) {
   const isPast = !!fire.run;
   const dotColor = fire.run
@@ -764,7 +883,7 @@ function FireChip({
       `var(--${fire.biz?.variant ?? "tt-green"}, var(--tt-green))`;
   return (
     <span
-      title={`${fire.time.toLocaleTimeString("nl-NL", {
+      title={`${fire.time.toLocaleTimeString(intlLocale, {
         hour: "2-digit",
         minute: "2-digit",
       })} · ${fire.agentName}${fire.biz ? ` · ${fire.biz.name}` : ""}${
@@ -808,7 +927,7 @@ function FireChip({
           color: "var(--app-fg-3)",
         }}
       >
-        {fire.time.toLocaleTimeString("nl-NL", {
+        {fire.time.toLocaleTimeString(intlLocale, {
           hour: "2-digit",
           minute: "2-digit",
         })}
@@ -844,6 +963,7 @@ function isSameDay(a: Date, b: Date): boolean {
 function buildWindow(
   view: ViewMode,
   anchor: Date,
+  intlLocale: string = "nl-NL",
 ): { start: Date; end: Date; days: Date[]; label: string } {
   if (view === "day") {
     const start = new Date(anchor);
@@ -854,7 +974,7 @@ function buildWindow(
       start,
       end,
       days: [start],
-      label: anchor.toLocaleDateString("nl-NL", {
+      label: anchor.toLocaleDateString(intlLocale, {
         weekday: "long",
         day: "numeric",
         month: "long",
@@ -880,7 +1000,7 @@ function buildWindow(
       start,
       end,
       days,
-      label: `${start.toLocaleDateString("nl-NL", { day: "numeric", month: "short" })} – ${last.toLocaleDateString("nl-NL", { day: "numeric", month: "short", year: "numeric" })}`,
+      label: `${start.toLocaleDateString(intlLocale, { day: "numeric", month: "short" })} – ${last.toLocaleDateString(intlLocale, { day: "numeric", month: "short", year: "numeric" })}`,
     };
   }
   // month
@@ -901,7 +1021,7 @@ function buildWindow(
     start,
     end: monthEnd,
     days,
-    label: anchor.toLocaleDateString("nl-NL", {
+    label: anchor.toLocaleDateString(intlLocale, {
       month: "long",
       year: "numeric",
     }),

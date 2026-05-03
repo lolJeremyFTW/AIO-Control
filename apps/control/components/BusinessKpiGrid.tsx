@@ -10,6 +10,7 @@
 import Link from "next/link";
 
 import type { BusinessRow } from "../lib/queries/businesses";
+import { getDict } from "../lib/i18n/server";
 
 type Summary = {
   revenue_30d: number;
@@ -31,11 +32,12 @@ const fmtEur = (n: number) =>
     maximumFractionDigits: 0,
   });
 
-export function BusinessKpiGrid({
+export async function BusinessKpiGrid({
   workspaceSlug,
   businesses,
   summaries,
 }: Props) {
+  const { t } = await getDict();
   return (
     <div
       style={{
@@ -95,9 +97,9 @@ export function BusinessKpiGrid({
             </div>
 
             <div style={{ display: "flex", gap: 12, marginTop: 4 }}>
-              <Tile label="MARGE 30D" value={fmtEur(margin)} tone={positive ? "ok" : margin < 0 ? "bad" : "neutral"} />
-              <Tile label="REVENUE" value={fmtEur(s.revenue_30d)} tone="neutral" />
-              <Tile label="AI KOSTEN" value={fmtEur(s.usage_30d)} tone="neutral" />
+              <Tile label={t("kpi.margin")} value={fmtEur(margin)} tone={positive ? "ok" : margin < 0 ? "bad" : "neutral"} />
+              <Tile label={t("kpi.revenue")} value={fmtEur(s.revenue_30d)} tone="neutral" />
+              <Tile label={t("kpi.cost")} value={fmtEur(s.usage_30d)} tone="neutral" />
             </div>
 
             <div
@@ -107,7 +109,7 @@ export function BusinessKpiGrid({
                 marginTop: 4,
               }}
             >
-              {s.runs_24h} runs · 24u
+              {t("kpi.runs24h", { count: s.runs_24h })}
             </div>
           </Link>
         );

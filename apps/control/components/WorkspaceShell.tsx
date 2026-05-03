@@ -857,6 +857,7 @@ export function WorkspaceShell({
                     : t("page.dashboard"),
             pageSub: drilledBiz?.biz.sub ?? undefined,
           }}
+          searchPlaceholder={t("header.searchPlaceholder")}
           onCrumbWorkspaceClick={() => {
             closeRail();
             router.push(`/${workspace.slug}/dashboard`);

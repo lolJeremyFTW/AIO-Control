@@ -7,6 +7,7 @@ import Link from "next/link";
 import type { AgentRow } from "../lib/queries/agents";
 import type { BusinessRow, KpiRow, QueueRow } from "../lib/queries/businesses";
 import type { RunRow } from "../lib/queries/schedules";
+import { getDict } from "../lib/i18n/server";
 import { QueueGrid } from "./QueueGrid";
 
 type Props = {
@@ -25,7 +26,7 @@ const fmtEur = (n: number) =>
     maximumFractionDigits: 0,
   });
 
-export function BusinessDashboard({
+export async function BusinessDashboard({
   workspaceSlug,
   business,
   kpis,
@@ -33,6 +34,7 @@ export function BusinessDashboard({
   agents,
   runs,
 }: Props) {
+  const { t } = await getDict();
   const k30 = kpis.find((k) => k.period === "30D");
   const k7 = kpis.find((k) => k.period === "7D");
   const k24 = kpis.find((k) => k.period === "24H");
@@ -52,23 +54,23 @@ export function BusinessDashboard({
         }}
       >
         <KpiTile
-          label="MARGE 30D"
+          label={t("kpi.margin")}
           value={fmtEur(margin)}
           tone={margin > 0 ? "ok" : margin < 0 ? "bad" : "neutral"}
         />
-        <KpiTile label="REVENUE 30D" value={fmtEur(k30?.revenue_eur ?? 0)} />
-        <KpiTile label="AI KOSTEN 30D" value={fmtEur(k30?.usage_eur ?? 0)} />
+        <KpiTile label={t("biz.kpi.revenue30d")} value={fmtEur(k30?.revenue_eur ?? 0)} />
+        <KpiTile label={t("biz.kpi.cost30d")} value={fmtEur(k30?.usage_eur ?? 0)} />
         <KpiTile
-          label="REVENUE 7D"
+          label={t("biz.kpi.revenue7d")}
           value={fmtEur(k7?.revenue_eur ?? 0)}
         />
         <KpiTile
-          label="RUNS 24U"
+          label={t("biz.kpi.runs24h")}
           value={String(k24?.runs_count ?? 0)}
           tone="neutral"
         />
         <KpiTile
-          label="SUCCESS / FAIL"
+          label={t("biz.kpi.successFail")}
           value={`${successfulRuns} / ${failedRuns}`}
           tone={failedRuns > 0 ? "warn" : "neutral"}
         />
@@ -84,11 +86,11 @@ export function BusinessDashboard({
       >
         <section>
           <SectionHeader
-            title="Open queue"
+            title={t("biz.openQueue")}
             cta={
               queue.length > 0
                 ? {
-                    label: "Bekijk alles",
+                    label: t("biz.viewAll"),
                     href: `/${workspaceSlug}/business/${business.id}`,
                   }
                 : undefined
@@ -96,8 +98,8 @@ export function BusinessDashboard({
           />
           {queue.length === 0 ? (
             <EmptyState
-              title="Wachtrij leeg ✓"
-              body="Geen items te reviewen. Trigger een run of wacht tot een agent iets oppakt."
+              title={t("biz.queueEmpty.title")}
+              body={t("biz.queueEmpty.body")}
             />
           ) : (
             <QueueGrid items={queue.slice(0, 6)} workspaceSlug={workspaceSlug} />
@@ -107,16 +109,16 @@ export function BusinessDashboard({
         <aside style={{ display: "flex", flexDirection: "column", gap: 18 }}>
           <section>
             <SectionHeader
-              title={`Agents · ${agents.length}`}
+              title={t("biz.agentsCount", { count: agents.length })}
               cta={{
-                label: "Beheer",
+                label: t("biz.manage"),
                 href: `/${workspaceSlug}/business/${business.id}/agents`,
               }}
             />
             {agents.length === 0 ? (
               <EmptyState
-                title="Geen agents"
-                body="Voeg een agent toe om runs te starten."
+                title={t("biz.noAgents.title")}
+                body={t("biz.noAgents.body")}
                 slim
               />
             ) : (
@@ -155,16 +157,16 @@ export function BusinessDashboard({
 
           <section>
             <SectionHeader
-              title="Recente runs"
+              title={t("biz.recentRuns")}
               cta={{
-                label: "History",
+                label: t("biz.history"),
                 href: `/${workspaceSlug}/business/${business.id}/schedules`,
               }}
             />
             {runs.length === 0 ? (
               <EmptyState
-                title="Nog geen runs"
-                body="Trigger een agent via Run-now of een webhook."
+                title={t("biz.noRuns.title")}
+                body={t("biz.noRuns.body")}
                 slim
               />
             ) : (

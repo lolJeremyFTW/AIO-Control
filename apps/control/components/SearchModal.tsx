@@ -16,6 +16,9 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { translate } from "../lib/i18n/dict";
+import { useLocale } from "../lib/i18n/client";
+
 type Hit = {
   kind: "business" | "agent" | "queue" | "node" | "marketplace";
   id: string;
@@ -27,8 +30,10 @@ type Hit = {
 type Scope = "all" | "business" | "global";
 
 type Template = {
-  label: string;
-  hint: string;
+  /** i18n key for the visible label. */
+  labelKey: string;
+  /** i18n key for the small hint shown below the label. */
+  hintKey: string;
   /** Either a relative path under /[ws] or a full URL. */
   href: string;
   /** Render only when the user is currently drilled into a business
@@ -38,21 +43,21 @@ type Template = {
 
 const TEMPLATES: Template[] = [
   // Workspace-wide.
-  { label: "Open wachtrij", hint: "HITL items te reviewen", href: "/queue" },
-  { label: "Mislukte runs (24u)", hint: "Failed status laatst 24u", href: "/runs?status=failed" },
-  { label: "Workspace agents", hint: "Alle agents per business", href: "/agents" },
-  { label: "Activiteit", hint: "Audit log alle wijzigingen", href: "/activity" },
-  { label: "Kosten & spend", hint: "Per provider / business / agent", href: "/cost" },
-  { label: "Marketplace", hint: "Curated agent presets", href: "/marketplace" },
-  { label: "Profile", hint: "Account voorkeuren", href: "/profile" },
-  { label: "Settings · Telegram", hint: "Bot targets configureren", href: "/settings/telegram" },
-  { label: "Settings · API keys", hint: "Provider keys + overrides", href: "/settings/api-keys" },
-  { label: "Settings · Spend limits", hint: "Daag/maand caps", href: "/settings/spend-limits" },
-  { label: "Settings · Providers", hint: "Hermes/OpenClaw/Ollama setup", href: "/settings/providers" },
+  { labelKey: "search.tpl.openQueue", hintKey: "search.tpl.openQueue.hint", href: "/queue" },
+  { labelKey: "search.tpl.failedRuns", hintKey: "search.tpl.failedRuns.hint", href: "/runs?status=failed" },
+  { labelKey: "search.tpl.workspaceAgents", hintKey: "search.tpl.workspaceAgents.hint", href: "/agents" },
+  { labelKey: "search.tpl.activity", hintKey: "search.tpl.activity.hint", href: "/activity" },
+  { labelKey: "search.tpl.cost", hintKey: "search.tpl.cost.hint", href: "/cost" },
+  { labelKey: "search.tpl.marketplace", hintKey: "search.tpl.marketplace.hint", href: "/marketplace" },
+  { labelKey: "search.tpl.profile", hintKey: "search.tpl.profile.hint", href: "/profile" },
+  { labelKey: "search.tpl.settingsTelegram", hintKey: "search.tpl.settingsTelegram.hint", href: "/settings/telegram" },
+  { labelKey: "search.tpl.settingsApiKeys", hintKey: "search.tpl.settingsApiKeys.hint", href: "/settings/api-keys" },
+  { labelKey: "search.tpl.settingsSpendLimits", hintKey: "search.tpl.settingsSpendLimits.hint", href: "/settings/spend-limits" },
+  { labelKey: "search.tpl.settingsProviders", hintKey: "search.tpl.settingsProviders.hint", href: "/settings/providers" },
   // Business-scoped — only when drilled in.
-  { label: "Deze business: agents", hint: "Per-business agents lijst", href: "/business/{bizId}/agents", requiresBusiness: true },
-  { label: "Deze business: routines", hint: "Cron + webhook schedules", href: "/business/{bizId}/schedules", requiresBusiness: true },
-  { label: "Deze business: runs", hint: "Volledige run-historie", href: "/business/{bizId}/runs", requiresBusiness: true },
+  { labelKey: "search.tpl.bizAgents", hintKey: "search.tpl.bizAgents.hint", href: "/business/{bizId}/agents", requiresBusiness: true },
+  { labelKey: "search.tpl.bizRoutines", hintKey: "search.tpl.bizRoutines.hint", href: "/business/{bizId}/schedules", requiresBusiness: true },
+  { labelKey: "search.tpl.bizRuns", hintKey: "search.tpl.bizRuns.hint", href: "/business/{bizId}/runs", requiresBusiness: true },
 ];
 
 type Props = { workspaceSlug: string };
@@ -60,6 +65,9 @@ type Props = { workspaceSlug: string };
 export function SearchModal({ workspaceSlug }: Props) {
   const router = useRouter();
   const pathname = usePathname() ?? "";
+  const locale = useLocale();
+  const t = (key: string, vars?: Record<string, string | number>) =>
+    translate(locale, key, vars);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
@@ -214,7 +222,7 @@ export function SearchModal({ workspaceSlug }: Props) {
           onKeyDown={(e) => {
             if (e.key === "Enter" && hits[0]) goHit(hits[0]);
           }}
-          placeholder="Zoek businesses, agents, queue items, marketplace…"
+          placeholder={t("search.placeholder")}
           style={{
             width: "100%",
             background: "transparent",
@@ -230,19 +238,19 @@ export function SearchModal({ workspaceSlug }: Props) {
           <ScopePill
             active={scope === "all"}
             onClick={() => setScope("all")}
-            label="Alles"
+            label={t("search.scope.all")}
           />
           {currentBizId && (
             <ScopePill
               active={scope === "business"}
               onClick={() => setScope("business")}
-              label="Deze business"
+              label={t("search.scope.business")}
             />
           )}
           <ScopePill
             active={scope === "global"}
             onClick={() => setScope("global")}
-            label="Workspace-global"
+            label={t("search.scope.global")}
           />
         </div>
       </div>
@@ -257,7 +265,7 @@ export function SearchModal({ workspaceSlug }: Props) {
       >
         {loading && (
           <p style={{ color: "var(--app-fg-3)", fontSize: 12, padding: 10 }}>
-            Zoeken…
+            {t("search.searching")}
           </p>
         )}
 
@@ -273,7 +281,7 @@ export function SearchModal({ workspaceSlug }: Props) {
                 margin: "0 6px 8px",
               }}
             >
-              Snelle acties
+              {t("search.quickActions")}
             </div>
             <div
               style={{
@@ -284,7 +292,7 @@ export function SearchModal({ workspaceSlug }: Props) {
             >
               {visibleTemplates.map((tpl) => (
                 <button
-                  key={tpl.label}
+                  key={tpl.labelKey}
                   onClick={() => go(tpl.fullHref)}
                   style={{
                     display: "flex",
@@ -309,10 +317,10 @@ export function SearchModal({ workspaceSlug }: Props) {
                   }}
                 >
                   <span style={{ fontSize: 13, fontWeight: 700 }}>
-                    {tpl.label}
+                    {t(tpl.labelKey)}
                   </span>
                   <span style={{ fontSize: 11, color: "var(--app-fg-3)" }}>
-                    {tpl.hint}
+                    {t(tpl.hintKey)}
                   </span>
                 </button>
               ))}
@@ -322,7 +330,7 @@ export function SearchModal({ workspaceSlug }: Props) {
 
         {!loading && q && hits.length === 0 && (
           <p style={{ color: "var(--app-fg-3)", fontSize: 12, padding: 10 }}>
-            Geen resultaten in deze scope.
+            {t("search.empty")}
           </p>
         )}
 
@@ -389,10 +397,12 @@ export function SearchModal({ workspaceSlug }: Props) {
           gap: 12,
         }}
       >
-        <span>↵ open</span>
-        <span>Esc sluiten</span>
-        <span style={{ marginLeft: "auto" }}>Ctrl+K opent overal</span>
-        <span>workspace: {workspaceSlug}</span>
+        <span>{t("search.footer.open")}</span>
+        <span>{t("search.footer.close")}</span>
+        <span style={{ marginLeft: "auto" }}>
+          {t("search.footer.shortcut")}
+        </span>
+        <span>{t("search.footer.workspace", { slug: workspaceSlug })}</span>
       </div>
     </dialog>
   );

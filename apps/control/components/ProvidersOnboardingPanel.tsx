@@ -23,6 +23,13 @@ import {
   testHermesEndpoint,
   testOpenClawEndpoint,
 } from "../app/actions/providers";
+import { translate, type Locale } from "../lib/i18n/dict";
+import { useLocale } from "../lib/i18n/client";
+
+type Tr = (
+  key: string,
+  vars?: Record<string, string | number>,
+) => string;
 
 type Initial = {
   ollama_host: string | null;
@@ -46,9 +53,12 @@ export function ProvidersOnboardingPanel({
   workspaceSlug,
   initial,
 }: Props) {
+  const locale: Locale = useLocale();
+  const t: Tr = (key, vars) => translate(locale, key, vars);
   return (
     <div style={{ display: "grid", gap: 18 }}>
       <OllamaCard
+        t={t}
         workspaceSlug={workspaceSlug}
         host={initial.ollama_host}
         port={initial.ollama_port}
@@ -56,12 +66,14 @@ export function ProvidersOnboardingPanel({
         lastScanAt={initial.ollama_last_scan_at}
       />
       <HermesCard
+        t={t}
         workspaceId={workspaceId}
         workspaceSlug={workspaceSlug}
         initial={initial.hermes_endpoint}
         lastTestAt={initial.hermes_last_test_at}
       />
       <OpenClawCard
+        t={t}
         workspaceId={workspaceId}
         workspaceSlug={workspaceSlug}
         initial={initial.openclaw_endpoint}
@@ -74,12 +86,14 @@ export function ProvidersOnboardingPanel({
 // ─── Cards ───────────────────────────────────────────────────────────
 
 function OllamaCard({
+  t,
   workspaceSlug,
   host,
   port,
   modelsCount,
   lastScanAt,
 }: {
+  t: Tr;
   workspaceSlug: string;
   host: string | null;
   port: number | null;
@@ -89,22 +103,28 @@ function OllamaCard({
   const configured = !!host;
   return (
     <ProviderCard
+      t={t}
       title="Ollama"
-      tagline="Lokale LLM. Gratis, snel als je een GPU hebt, geen api-keys."
+      tagline={t("providers.ollama.tagline")}
       docsHref="https://ollama.com/download"
       status={
         configured && modelsCount > 0
-          ? { kind: "ready", label: `${modelsCount} models beschikbaar` }
+          ? {
+              kind: "ready",
+              label: t("providers.ollama.modelsAvailable", {
+                count: modelsCount,
+              }),
+            }
           : configured
-            ? { kind: "partial", label: "Endpoint ingevuld, nog geen scan" }
-            : { kind: "missing", label: "Niet ingesteld" }
+            ? { kind: "partial", label: t("providers.status.partial.scan") }
+            : { kind: "missing", label: t("providers.status.notConfigured") }
       }
       lastTestedAt={lastScanAt}
       steps={[
-        "Installeer Ollama op de machine die je modellen draait (laptop, VPS, andere server).",
-        "Start Ollama. Default luistert hij op poort 11434.",
-        'Pull een model — bijvoorbeeld: ollama pull llama3.2',
-        "Vul host + poort in op de Ollama-instellingen page en klik Scan.",
+        t("providers.ollama.step1"),
+        t("providers.ollama.step2"),
+        t("providers.ollama.step3"),
+        t("providers.ollama.step4"),
       ]}
     >
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -112,7 +132,7 @@ function OllamaCard({
           href={`/${workspaceSlug}/settings/ollama`}
           style={ctaStyle("primary")}
         >
-          <OpenIcon /> Naar Ollama-instellingen
+          <OpenIcon /> {t("providers.ollama.gotoSettings")}
         </Link>
         {host && (
           <span style={{ fontSize: 12, color: "var(--app-fg-3)" }}>
@@ -125,11 +145,13 @@ function OllamaCard({
 }
 
 function HermesCard({
+  t,
   workspaceId,
   workspaceSlug,
   initial,
   lastTestAt,
 }: {
+  t: Tr;
   workspaceId: string;
   workspaceSlug: string;
   initial: string | null;
@@ -169,27 +191,29 @@ function HermesCard({
 
   return (
     <ProviderCard
+      t={t}
       title="Hermes-agent"
-      tagline="Self-hosted Hermes runner. AIO Control praat met de hermes CLI via subprocess (default) of een HTTP-wrapper als je die zelf draait."
+      tagline={t("providers.hermes.tagline")}
       docsHref="https://github.com/NousResearch/hermes-agent"
       status={
         tested
           ? endpoint.trim()
-            ? { kind: "ready", label: "HTTP wrapper getest ✓" }
-            : { kind: "ready", label: "CLI getest ✓" }
+            ? { kind: "ready", label: t("providers.status.httpReady") }
+            : { kind: "ready", label: t("providers.status.cliReady") }
           : endpoint.trim()
-            ? { kind: "partial", label: "URL ingevuld, nog niet getest" }
-            : { kind: "partial", label: "CLI niet getest — klik Test" }
+            ? { kind: "partial", label: t("providers.status.partial.url") }
+            : { kind: "partial", label: t("providers.status.partial.cli") }
       }
       lastTestedAt={tested}
       steps={[
-        "Installeer de hermes CLI op deze server: clone github.com/NousResearch/hermes-agent en volg de README (Python entrypoint).",
-        "Zorg dat 'hermes --version' werkt vanaf de shell waarin de Node-server draait. Anders: zet HERMES_BIN in de env naar het absolute pad.",
-        "Klaar — geen URL invullen nodig. AIO Control spawnt de CLI per chat / run.",
-        "Optioneel: draai je een eigen HTTP-wrapper voor Hermes? Plak die URL hieronder en klik Test (verwacht /healthz → 200).",
+        t("providers.hermes.step1"),
+        t("providers.hermes.step2"),
+        t("providers.hermes.step3"),
+        t("providers.hermes.step4"),
       ]}
     >
       <EndpointForm
+        t={t}
         placeholder="http://192.168.0.42:8080"
         value={endpoint}
         onChange={setEndpoint}
@@ -203,11 +227,13 @@ function HermesCard({
 }
 
 function OpenClawCard({
+  t,
   workspaceId,
   workspaceSlug,
   initial,
   lastTestAt,
 }: {
+  t: Tr;
   workspaceId: string;
   workspaceSlug: string;
   initial: string | null;
@@ -247,27 +273,29 @@ function OpenClawCard({
 
   return (
     <ProviderCard
+      t={t}
       title="OpenClaw"
-      tagline="Local agent runtime — eigen tools + custom MCP. Spawned als CLI subprocess (default) of via HTTP-wrapper als je die zelf draait."
+      tagline={t("providers.openclaw.tagline")}
       docsHref="https://github.com/tromptech/openclaw"
       status={
         tested
           ? endpoint.trim()
-            ? { kind: "ready", label: "HTTP wrapper getest ✓" }
-            : { kind: "ready", label: "CLI getest ✓" }
+            ? { kind: "ready", label: t("providers.status.httpReady") }
+            : { kind: "ready", label: t("providers.status.cliReady") }
           : endpoint.trim()
-            ? { kind: "partial", label: "URL ingevuld, nog niet getest" }
-            : { kind: "partial", label: "CLI niet getest — klik Test" }
+            ? { kind: "partial", label: t("providers.status.partial.url") }
+            : { kind: "partial", label: t("providers.status.partial.cli") }
       }
       lastTestedAt={tested}
       steps={[
-        "Installeer OpenClaw — npm i -g @tromptech/openclaw, of clone + npm link.",
-        "Bevestig dat 'openclaw --version' werkt in de shell waarin Node draait. Anders: zet OPENCLAW_BIN naar het absolute pad.",
-        "Klaar — AIO Control spawnt de CLI per chat / run.",
-        "Optioneel: draai je openclaw als HTTP-daemon? Plak de URL hieronder en klik Test (verwacht /healthz).",
+        t("providers.openclaw.step1"),
+        t("providers.openclaw.step2"),
+        t("providers.openclaw.step3"),
+        t("providers.openclaw.step4"),
       ]}
     >
       <EndpointForm
+        t={t}
         placeholder="http://localhost:9001"
         value={endpoint}
         onChange={setEndpoint}
@@ -288,6 +316,7 @@ type Status =
   | { kind: "missing"; label: string };
 
 function ProviderCard({
+  t,
   title,
   tagline,
   docsHref,
@@ -296,6 +325,7 @@ function ProviderCard({
   steps,
   children,
 }: {
+  t: Tr;
   title: string;
   tagline: string;
   docsHref: string;
@@ -353,7 +383,7 @@ function ProviderCard({
                 textDecoration: "none",
               }}
             >
-              docs ↗
+              {t("providers.docs")}
             </a>
           </p>
         </div>
@@ -376,7 +406,7 @@ function ProviderCard({
             color: "var(--app-fg-2)",
           }}
         >
-          Hoe installeer ik {title}?
+          {t("providers.howInstall", { name: title })}
         </summary>
         <ol style={{ margin: "10px 0 4px 18px", lineHeight: 1.6 }}>
           {steps.map((s, i) => (
@@ -397,7 +427,9 @@ function ProviderCard({
             margin: 0,
           }}
         >
-          Laatst getest {formatRelative(new Date(lastTestedAt))}
+          {t("providers.lastTested", {
+            when: formatRelative(new Date(lastTestedAt), t),
+          })}
         </p>
       )}
     </div>
@@ -426,6 +458,7 @@ function StatusPill({ status }: { status: Status }) {
 }
 
 function EndpointForm({
+  t,
   placeholder,
   value,
   onChange,
@@ -434,6 +467,7 @@ function EndpointForm({
   pending,
   error,
 }: {
+  t: Tr;
   placeholder: string;
   value: string;
   onChange: (v: string) => void;
@@ -467,7 +501,7 @@ function EndpointForm({
           disabled={pending}
           style={ctaStyle("ghost")}
         >
-          {pending ? "Testen…" : "Test connection"}
+          {pending ? t("providers.btn.testing") : t("providers.btn.test")}
         </button>
         <button
           type="button"
@@ -475,7 +509,7 @@ function EndpointForm({
           disabled={pending}
           style={ctaStyle("primary")}
         >
-          {pending ? "Opslaan…" : "Opslaan"}
+          {pending ? t("providers.btn.saving") : t("providers.btn.save")}
         </button>
       </div>
       {error && (
@@ -549,13 +583,13 @@ function statusColors(kind: Status["kind"]) {
   }
 }
 
-function formatRelative(d: Date): string {
+function formatRelative(d: Date, t: Tr): string {
   const ms = Date.now() - d.getTime();
   const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s geleden`;
+  if (s < 60) return t("rel.s", { n: s });
   const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m geleden`;
+  if (m < 60) return t("rel.m", { n: m });
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}u geleden`;
-  return `${Math.floor(h / 24)}d geleden`;
+  if (h < 24) return t("rel.h", { n: h });
+  return t("rel.d", { n: Math.floor(h / 24) });
 }

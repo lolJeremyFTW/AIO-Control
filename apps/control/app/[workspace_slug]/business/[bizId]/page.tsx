@@ -15,6 +15,7 @@ import {
   listOpenQueueItems,
 } from "../../../../lib/queries/businesses";
 import { listRecentRunsForBusiness } from "../../../../lib/queries/schedules";
+import { getDict } from "../../../../lib/i18n/server";
 import { BusinessDashboard } from "../../../../components/BusinessDashboard";
 import { PauseToggle } from "../../../../components/PauseToggle";
 
@@ -41,6 +42,7 @@ export default async function BusinessPage({ params }: Props) {
   if (!biz) notFound();
   const bizKpis = kpis.filter((k) => k.business_id === bizId);
   const bizAgents = agents.filter((a) => a.business_id === bizId);
+  const { t } = await getDict();
 
   return (
     <div className="content">
@@ -50,7 +52,9 @@ export default async function BusinessPage({ params }: Props) {
             literal "video " prefix into the heading. The actual SVG
             icon is already rendered in the rail row + breadcrumb. */}
         <h1>{biz.name}</h1>
-        <span className="sub">{biz.sub ?? "Per-business overzicht"}</span>
+        <span className="sub">
+          {biz.sub ?? t("page.business.overview.sub")}
+        </span>
       </div>
 
       <div style={{ marginBottom: 18 }}>
