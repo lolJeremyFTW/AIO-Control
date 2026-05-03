@@ -8,6 +8,7 @@ import {
   getCurrentUser,
   getWorkspaceBySlug,
 } from "../../../../lib/auth/workspace";
+import { getDict } from "../../../../lib/i18n/server";
 import { SubscriptionPanel } from "../../../../components/SubscriptionPanel";
 
 type Props = { params: Promise<{ workspace_slug: string }> };
@@ -27,12 +28,14 @@ export default async function SubscriptionPage({ params }: Props) {
   const currentTier: "free" | "pro" | "team" = "free";
   const stripeCustomerId: string | null = null;
 
+  const { t } = await getDict();
+
   return (
     <div className="content">
       <div className="page-title-row">
-        <h1>Abonnement</h1>
+        <h1>{t("page.subscription")}</h1>
         <span className="sub">
-          Plan, betaalmethode en facturen voor {workspace.name}
+          {t("page.subscription.sub", { workspace: workspace.name })}
         </span>
       </div>
       <SubscriptionPanel

@@ -9,6 +9,7 @@ import {
 } from "../../../../lib/auth/workspace";
 import { resolveApiKey } from "../../../../lib/api-keys/resolve";
 import { createSupabaseServerClient } from "../../../../lib/supabase/server";
+import { getDict } from "../../../../lib/i18n/server";
 import {
   TalkSettings,
   type TalkLogEntry,
@@ -74,13 +75,13 @@ export default async function TalkSettingsPage({ params }: Props) {
   // a friendly empty-state when log.length === 0.
   const log: TalkLogEntry[] = [];
 
+  const { t } = await getDict();
+
   return (
     <div className="content">
       <div className="page-title-row">
-        <h1>Talk to AI</h1>
-        <span className="sub">
-          Provider · stem · log voor de microfoon-knop in de header
-        </span>
+        <h1>{t("page.talk")}</h1>
+        <span className="sub">{t("page.talk.sub")}</span>
       </div>
       <TalkSettings
         initial={initial}

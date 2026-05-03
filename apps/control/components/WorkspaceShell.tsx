@@ -365,7 +365,7 @@ export function WorkspaceShell({
     if (origin.kind === "rail-bg") {
       return [
         {
-          label: "Nieuwe business",
+          label: t("ctx.newBusiness"),
           icon: <span style={{ fontWeight: 700 }}>+</span>,
           onClick: () => setNewBusinessOpen(true),
         },
@@ -376,32 +376,32 @@ export function WorkspaceShell({
       if (!biz) return [];
       const path = `/${workspace.slug}/business/${biz.id}`;
       return [
-        { label: "Open", onClick: () => router.push(path) },
+        { label: t("ctx.open"), onClick: () => router.push(path) },
         {
-          label: "Open in nieuw tabblad",
+          label: t("ctx.openNewTab"),
           onClick: () => window.open(path, "_blank", "noopener"),
         },
         { kind: "separator" },
         {
-          label: "Nieuw topic",
+          label: t("ctx.newTopic"),
           onClick: () =>
             setCreatingChildOf({
               businessId: biz.id,
               parentId: null,
-              title: `Nieuw topic in ${biz.name}`,
+              title: t("ctx.newTopicTitle", { parent: biz.name }),
             }),
         },
         {
-          label: "Agents",
+          label: t("ctx.agents"),
           onClick: () => router.push(`${path}/agents`),
         },
         {
-          label: "Schedules",
+          label: t("ctx.schedules"),
           onClick: () => router.push(`${path}/schedules`),
         },
         { kind: "separator" },
         {
-          label: "Instellingen…",
+          label: t("ctx.settings"),
           onClick: () =>
             setEditing({
               kind: "business",
@@ -423,7 +423,7 @@ export function WorkspaceShell({
             }),
         },
         {
-          label: "Dupliceer",
+          label: t("ctx.duplicate"),
           onClick: async () => {
             const res = await duplicateBusiness({
               workspace_slug: workspace.slug,
@@ -435,7 +435,7 @@ export function WorkspaceShell({
           },
         },
         {
-          label: "Kopieer link",
+          label: t("ctx.copyLink"),
           onClick: () =>
             navigator.clipboard.writeText(
               `${window.location.origin}${path}`,
@@ -443,14 +443,10 @@ export function WorkspaceShell({
         },
         { kind: "separator" },
         {
-          label: "Archiveer",
+          label: t("ctx.archive"),
           danger: true,
           onClick: async () => {
-            if (
-              !confirm(
-                `Weet je zeker dat je "${biz.name}" wilt archiveren?`,
-              )
-            )
+            if (!confirm(t("ctx.confirmArchiveBiz", { name: biz.name })))
               return;
             const res = await archiveBusiness({
               workspace_slug: workspace.slug,
@@ -475,12 +471,12 @@ export function WorkspaceShell({
       if (!node || !drilledBiz) {
         return [
           {
-            label: "Open",
+            label: t("ctx.open"),
             onClick: () => {
-              const t = railTopics.find((x) => x.id === origin.id);
-              if (t && drilledBiz) {
+              const topic = railTopics.find((x) => x.id === origin.id);
+              if (topic && drilledBiz) {
                 router.push(
-                  `/${workspace.slug}/business/${drilledBiz.biz.id}${t.path}`,
+                  `/${workspace.slug}/business/${drilledBiz.biz.id}${topic.path}`,
                 );
               }
             },
@@ -505,23 +501,23 @@ export function WorkspaceShell({
         )
         .slice(0, 12);
       return [
-        { label: "Open", onClick: () => router.push(fullPath) },
+        { label: t("ctx.open"), onClick: () => router.push(fullPath) },
         {
-          label: "Open in nieuw tabblad",
+          label: t("ctx.openNewTab"),
           onClick: () => window.open(fullPath, "_blank", "noopener"),
         },
         { kind: "separator" },
         {
-          label: "Nieuw subtopic",
+          label: t("ctx.newSubtopic"),
           onClick: () =>
             setCreatingChildOf({
               businessId: drilledBiz.biz.id,
               parentId: node.id,
-              title: `Nieuw subtopic in ${node.name}`,
+              title: t("ctx.newSubtopicTitle", { parent: node.name }),
             }),
         },
         {
-          label: "Instellingen…",
+          label: t("ctx.settings"),
           onClick: () =>
             setEditing({
               kind: "navnode",
@@ -537,7 +533,7 @@ export function WorkspaceShell({
             }),
         },
         {
-          label: "Dupliceer",
+          label: t("ctx.duplicate"),
           onClick: async () => {
             const res = await duplicateNavNode({
               workspace_slug: workspace.slug,
@@ -551,7 +547,7 @@ export function WorkspaceShell({
         },
         { kind: "separator" },
         {
-          label: "↑ Naar boven",
+          label: t("ctx.moveUp"),
           onClick: async () => {
             const res = await reorderNavNode({
               workspace_slug: workspace.slug,
@@ -564,7 +560,7 @@ export function WorkspaceShell({
           },
         },
         {
-          label: "↓ Naar beneden",
+          label: t("ctx.moveDown"),
           onClick: async () => {
             const res = await reorderNavNode({
               workspace_slug: workspace.slug,
@@ -578,7 +574,7 @@ export function WorkspaceShell({
         },
         { kind: "separator" },
         {
-          label: "Verplaats naar root",
+          label: t("ctx.moveToRoot"),
           onClick: async () => {
             const res = await moveNavNode({
               workspace_slug: workspace.slug,
@@ -592,7 +588,9 @@ export function WorkspaceShell({
         },
         ...moveTargets.slice(0, 6).map(
           (target): ContextMenuItem => ({
-            label: `Verplaats onder ${target.icon ?? ""}${target.name}`,
+            label: t("ctx.moveUnder", {
+              name: `${target.icon ?? ""}${target.name}`,
+            }),
             onClick: async () => {
               const res = await moveNavNode({
                 workspace_slug: workspace.slug,
@@ -607,7 +605,7 @@ export function WorkspaceShell({
         ),
         { kind: "separator" },
         {
-          label: "Kopieer link",
+          label: t("ctx.copyLink"),
           onClick: () =>
             navigator.clipboard.writeText(
               `${window.location.origin}${fullPath}`,
@@ -615,10 +613,11 @@ export function WorkspaceShell({
         },
         { kind: "separator" },
         {
-          label: "Archiveer",
+          label: t("ctx.archive"),
           danger: true,
           onClick: async () => {
-            if (!confirm(`Topic "${node.name}" archiveren?`)) return;
+            if (!confirm(t("ctx.confirmArchiveTopic", { name: node.name })))
+              return;
             const res = await archiveNavNode({
               workspace_slug: workspace.slug,
               business_id: drilledBiz.biz.id,
@@ -746,8 +745,8 @@ export function WorkspaceShell({
                   businessId: drilledBiz.biz.id,
                   parentId,
                   title: parentName
-                    ? `Nieuw subtopic in ${parentName}`
-                    : `Nieuw topic in ${drilledBiz.biz.name}`,
+                    ? t("ctx.newSubtopicTitle", { parent: parentName })
+                    : t("ctx.newTopicTitle", { parent: drilledBiz.biz.name }),
                 });
               }
             : undefined
@@ -770,10 +769,12 @@ export function WorkspaceShell({
             pageTitle: drilledBiz
               ? drilledBiz.biz.name
               : page === "settings"
-                ? "Settings"
+                ? t("page.settings")
                 : page === "profile"
-                  ? "Profile"
-                  : "Dashboard",
+                  ? t("page.profile")
+                  : page === "agents"
+                    ? t("page.workspaceAgents")
+                    : t("page.dashboard"),
             pageSub: drilledBiz?.biz.sub ?? undefined,
           }}
           notifications={0}
@@ -841,37 +842,37 @@ export function WorkspaceShell({
                 role="menuitem"
                 onClick={() => router.push(`/${workspace.slug}/queue`)}
               >
-                Wachtrij
+                {t("nav.queue")}
               </button>
               <button
                 role="menuitem"
                 onClick={() => router.push(`/${workspace.slug}/runs`)}
               >
-                Runs
+                {t("nav.runs")}
               </button>
               <button
                 role="menuitem"
                 onClick={() => router.push(`/${workspace.slug}/activity`)}
               >
-                Activity
+                {t("nav.activity")}
               </button>
               <button
                 role="menuitem"
                 onClick={() => router.push(`/${workspace.slug}/cost`)}
               >
-                Cost & spend
+                {t("nav.cost")}
               </button>
               <button
                 role="menuitem"
                 onClick={() => router.push(`/${workspace.slug}/marketplace`)}
               >
-                Marketplace
+                {t("nav.marketplace")}
               </button>
               <button
                 role="menuitem"
                 onClick={() => router.push(`/admin/marketplace`)}
               >
-                Marketplace admin
+                {t("nav.marketplaceAdmin")}
               </button>
               <div className="sep" />
               <form action={signOutAction}>

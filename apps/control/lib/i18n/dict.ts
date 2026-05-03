@@ -61,9 +61,54 @@ const nl: Dict = {
   "nav.newSubtopic": "Nieuw subtopic",
   "nav.allBusinesses": "Alle businesses",
   "nav.workspaceAgents": "Workspace agents",
+  "nav.queue": "Wachtrij",
+  "nav.runs": "Runs",
+  "nav.activity": "Activiteit",
+  "nav.cost": "Kosten & spend",
+  "nav.marketplace": "Marketplace",
+  "nav.marketplaceAdmin": "Marketplace admin",
+
+  "page.dashboard": "Dashboard",
+  "page.settings": "Instellingen",
+  "page.profile": "Profiel",
+  "page.subscription": "Abonnement",
+  "page.subscription.sub": "Plan, betaalmethode en facturen voor {workspace}",
+  "page.talk": "Talk to AI",
+  "page.talk.sub":
+    "Provider · stem · log voor de microfoon-knop in de header",
+  "page.workspaceAgents": "Workspace agents",
+  "page.workspaceAgents.sub":
+    "Agenda · revenue · alle agents in deze workspace, gegroepeerd per business.",
+  "page.workspaceAgents.empty":
+    "Nog geen agents in deze workspace. Maak er één aan via een business of via de \"+ Nieuwe agent\" knop in een lege groep.",
+  "page.workspaceAgents.workspaceGroup": "Workspace",
+  "page.workspaceAgents.workspaceGroupSub": "Niet aan een business gekoppeld",
+  "page.workspaceAgents.businessGroupSub": "Business agents",
+  "page.workspaceAgents.countSingular": "agent",
+  "page.workspaceAgents.countPlural": "agents",
 
   "rail.empty": "Geen businesses nog",
   "rail.emptyTopics": "Nog geen subtopics — maak er een aan ↓",
+
+  "ctx.newBusiness": "Nieuwe business",
+  "ctx.open": "Open",
+  "ctx.openNewTab": "Open in nieuw tabblad",
+  "ctx.newTopic": "Nieuw topic",
+  "ctx.newSubtopic": "Nieuw subtopic",
+  "ctx.agents": "Agents",
+  "ctx.schedules": "Schedules",
+  "ctx.settings": "Instellingen…",
+  "ctx.duplicate": "Dupliceer",
+  "ctx.copyLink": "Kopieer link",
+  "ctx.archive": "Archiveer",
+  "ctx.moveUp": "↑ Naar boven",
+  "ctx.moveDown": "↓ Naar beneden",
+  "ctx.moveToRoot": "Verplaats naar root",
+  "ctx.moveUnder": "Verplaats onder {name}",
+  "ctx.confirmArchiveBiz": "Weet je zeker dat je \"{name}\" wilt archiveren?",
+  "ctx.confirmArchiveTopic": "Topic \"{name}\" archiveren?",
+  "ctx.newTopicTitle": "Nieuw topic in {parent}",
+  "ctx.newSubtopicTitle": "Nieuw subtopic in {parent}",
 
   "topic.queue": "Wachtrij",
   "topic.agents": "Agents",
@@ -85,7 +130,8 @@ const nl: Dict = {
     "Hier verschijnen straks je automated mini-businesses. Maak er één aan om door te gaan.",
   "dashboard.queueEmpty.title": "Lege wachtrij ✓",
   "dashboard.queueEmpty.body":
-    "Geen items te reviewen. Zodra een agent iets oppakt verschijnt het hier.",
+    "Geen items te reviewen. Zodra een agent iets oppakt verschijnt het hier — auto-publish bij hoge confidence, anders HITL.",
+  "dashboard.queueEmpty.cta": "Nieuwe agent",
 
   "kpi.margin": "MARGE 30D",
   "kpi.revenue": "REVENUE",
@@ -93,6 +139,7 @@ const nl: Dict = {
   "kpi.runs24h": "{count} runs · 24u",
 
   "settings.title": "Instellingen",
+  "settings.sub": "Account · workspace · automations",
   "settings.section.general": "Algemeen",
   "settings.section.notifications": "Notificaties",
   "settings.section.team": "Team & rollen",
@@ -101,6 +148,38 @@ const nl: Dict = {
   "settings.section.language": "Taal",
   "settings.lang.desc":
     "Kies je interface-taal. Wijzigt direct na het submitten.",
+  "settings.section.agentDefaults": "Agent defaults",
+  "settings.section.agentDefaults.desc":
+    "Wat krijgt élke nieuwe agent als provider / model / system prompt? Per business of agent kun je nog overschrijven.",
+  "settings.section.weather": "Weather chip",
+  "settings.section.weather.desc":
+    "De rechterbovenhoek van de header toont een weer-chip per workspace.",
+  "settings.section.apiKeys": "API Keys",
+  "settings.section.apiKeys.desc":
+    "Workspace-defaults of overrides per business of topic. Encryptie via pgcrypto.",
+  "settings.section.spendLimits": "Spend limits",
+  "settings.section.spendLimits.desc":
+    "Daag/maand caps per workspace; auto-pause als gewenst.",
+  "settings.section.telegram": "Telegram",
+  "settings.section.telegram.desc":
+    "Stuur run-rapporten naar één of meer Telegram-channels.",
+  "settings.section.email": "Email notifications",
+  "settings.section.email.desc":
+    "Run-rapporten via SMTP. Per-business / per-agent overrides via right-click.",
+  "settings.section.customIntegrations": "Custom integrations",
+  "settings.section.customIntegrations.desc":
+    "Algemene HTTP webhooks / API calls. Mustache placeholders voor run-data.",
+  "settings.section.notifs.desc":
+    "Web Push voor HITL-items op dit apparaat.",
+  "settings.section.team.desc":
+    "Wie mag wat. Owner is altijd jij; je kunt admins/editors/viewers toevoegen.",
+  "settings.section.danger.desc":
+    "Data exporteren of de workspace permanent verwijderen.",
+  "settings.section.talk": "Talk to AI",
+  "settings.section.subscription": "Abonnement",
+  "settings.field.workspaceName": "Workspace naam",
+  "settings.field.email": "Email",
+  "settings.field.timezone": "Tijdzone",
 
   "danger.export.title": "Data exporteren",
   "danger.export.body":
@@ -190,6 +269,26 @@ const en: Partial<Dict> = {
   "rail.empty": "No businesses yet",
   "rail.emptyTopics": "No subtopics yet — create one below ↓",
 
+  "ctx.newBusiness": "New business",
+  "ctx.open": "Open",
+  "ctx.openNewTab": "Open in new tab",
+  "ctx.newTopic": "New topic",
+  "ctx.newSubtopic": "New subtopic",
+  "ctx.agents": "Agents",
+  "ctx.schedules": "Schedules",
+  "ctx.settings": "Settings…",
+  "ctx.duplicate": "Duplicate",
+  "ctx.copyLink": "Copy link",
+  "ctx.archive": "Archive",
+  "ctx.moveUp": "↑ Move up",
+  "ctx.moveDown": "↓ Move down",
+  "ctx.moveToRoot": "Move to root",
+  "ctx.moveUnder": "Move under {name}",
+  "ctx.confirmArchiveBiz": "Are you sure you want to archive \"{name}\"?",
+  "ctx.confirmArchiveTopic": "Archive topic \"{name}\"?",
+  "ctx.newTopicTitle": "New topic in {parent}",
+  "ctx.newSubtopicTitle": "New subtopic in {parent}",
+
   "topic.queue": "Queue",
   "topic.agents": "Agents",
   "topic.schedules": "Schedules",
@@ -210,7 +309,8 @@ const en: Partial<Dict> = {
     "Your automated mini-businesses will show up here. Create one to continue.",
   "dashboard.queueEmpty.title": "Empty queue ✓",
   "dashboard.queueEmpty.body":
-    "Nothing to review. As soon as an agent picks something up it'll show up here.",
+    "Nothing to review. As soon as an agent picks something up it'll show up here — auto-publish on high confidence, otherwise HITL.",
+  "dashboard.queueEmpty.cta": "New agent",
 
   "kpi.margin": "MARGIN 30D",
   "kpi.revenue": "REVENUE",
@@ -260,6 +360,65 @@ const en: Partial<Dict> = {
   "nav.newTopic": "New topic",
   "nav.newSubtopic": "New subtopic",
   "nav.workspaceAgents": "Workspace agents",
+  "nav.queue": "Queue",
+  "nav.runs": "Runs",
+  "nav.activity": "Activity",
+  "nav.cost": "Cost & spend",
+  "nav.marketplace": "Marketplace",
+  "nav.marketplaceAdmin": "Marketplace admin",
+
+  "page.dashboard": "Dashboard",
+  "page.settings": "Settings",
+  "page.profile": "Profile",
+  "page.subscription": "Subscription",
+  "page.subscription.sub": "Plan, payment method and invoices for {workspace}",
+  "page.talk": "Talk to AI",
+  "page.talk.sub":
+    "Provider · voice · log for the microphone button in the header",
+  "page.workspaceAgents": "Workspace agents",
+  "page.workspaceAgents.sub":
+    "Calendar · revenue · every agent in this workspace, grouped by business.",
+  "page.workspaceAgents.empty":
+    "No agents yet in this workspace. Create one through a business or with the \"+ New agent\" button in an empty group.",
+  "page.workspaceAgents.workspaceGroup": "Workspace",
+  "page.workspaceAgents.workspaceGroupSub": "Not tied to a business",
+  "page.workspaceAgents.businessGroupSub": "Business agents",
+  "page.workspaceAgents.countSingular": "agent",
+  "page.workspaceAgents.countPlural": "agents",
+
+  "settings.sub": "Account · workspace · automations",
+  "settings.section.agentDefaults": "Agent defaults",
+  "settings.section.agentDefaults.desc":
+    "What does every new agent get for provider / model / system prompt? Per business or agent you can still override.",
+  "settings.section.weather": "Weather chip",
+  "settings.section.weather.desc":
+    "The top-right corner of the header shows a per-workspace weather chip.",
+  "settings.section.apiKeys": "API Keys",
+  "settings.section.apiKeys.desc":
+    "Workspace defaults or overrides per business or topic. Encrypted via pgcrypto.",
+  "settings.section.spendLimits": "Spend limits",
+  "settings.section.spendLimits.desc":
+    "Daily/monthly caps per workspace; auto-pause if you want.",
+  "settings.section.telegram": "Telegram",
+  "settings.section.telegram.desc":
+    "Send run reports to one or more Telegram channels.",
+  "settings.section.email": "Email notifications",
+  "settings.section.email.desc":
+    "Run reports via SMTP. Per-business / per-agent overrides via right-click.",
+  "settings.section.customIntegrations": "Custom integrations",
+  "settings.section.customIntegrations.desc":
+    "Generic HTTP webhooks / API calls. Mustache placeholders for run data.",
+  "settings.section.notifs.desc":
+    "Web Push for HITL items on this device.",
+  "settings.section.team.desc":
+    "Who can do what. You're always owner; you can add admins / editors / viewers.",
+  "settings.section.danger.desc":
+    "Export data or delete the workspace permanently.",
+  "settings.section.talk": "Talk to AI",
+  "settings.section.subscription": "Subscription",
+  "settings.field.workspaceName": "Workspace name",
+  "settings.field.email": "Email",
+  "settings.field.timezone": "Timezone",
 
   "profile.title": "Profile",
   "profile.sub": "Account · preferences · sessions",
@@ -321,6 +480,26 @@ const de: Partial<Dict> = {
 
   "rail.empty": "Noch keine Businesses",
 
+  "ctx.newBusiness": "Neues Business",
+  "ctx.open": "Öffnen",
+  "ctx.openNewTab": "In neuem Tab öffnen",
+  "ctx.newTopic": "Neues Topic",
+  "ctx.newSubtopic": "Neues Subtopic",
+  "ctx.agents": "Agents",
+  "ctx.schedules": "Zeitpläne",
+  "ctx.settings": "Einstellungen…",
+  "ctx.duplicate": "Duplizieren",
+  "ctx.copyLink": "Link kopieren",
+  "ctx.archive": "Archivieren",
+  "ctx.moveUp": "↑ Nach oben",
+  "ctx.moveDown": "↓ Nach unten",
+  "ctx.moveToRoot": "Auf Root verschieben",
+  "ctx.moveUnder": "Verschieben unter {name}",
+  "ctx.confirmArchiveBiz": "Bist du sicher, dass du \"{name}\" archivieren willst?",
+  "ctx.confirmArchiveTopic": "Topic \"{name}\" archivieren?",
+  "ctx.newTopicTitle": "Neues Topic in {parent}",
+  "ctx.newSubtopicTitle": "Neues Subtopic in {parent}",
+
   "topic.queue": "Warteschlange",
   "topic.agents": "Agents",
   "topic.schedules": "Zeitpläne",
@@ -341,7 +520,8 @@ const de: Partial<Dict> = {
     "Hier landen deine automatisierten Mini-Businesses. Erstelle eins, um loszulegen.",
   "dashboard.queueEmpty.title": "Warteschlange leer ✓",
   "dashboard.queueEmpty.body":
-    "Nichts zum Prüfen. Sobald ein Agent etwas aufnimmt, erscheint es hier.",
+    "Nichts zum Prüfen. Sobald ein Agent etwas aufnimmt, erscheint es hier — auto-publish bei hoher Confidence, sonst HITL.",
+  "dashboard.queueEmpty.cta": "Neuer Agent",
 
   "kpi.margin": "MARGE 30T",
   "kpi.revenue": "UMSATZ",
@@ -394,6 +574,65 @@ const de: Partial<Dict> = {
   "nav.newTopic": "Neues Topic",
   "nav.newSubtopic": "Neues Subtopic",
   "nav.workspaceAgents": "Workspace-Agents",
+  "nav.queue": "Warteschlange",
+  "nav.runs": "Runs",
+  "nav.activity": "Aktivität",
+  "nav.cost": "Kosten & Verbrauch",
+  "nav.marketplace": "Marketplace",
+  "nav.marketplaceAdmin": "Marketplace Admin",
+
+  "page.dashboard": "Dashboard",
+  "page.settings": "Einstellungen",
+  "page.profile": "Profil",
+  "page.subscription": "Abonnement",
+  "page.subscription.sub": "Plan, Zahlungsmethode und Rechnungen für {workspace}",
+  "page.talk": "Talk to AI",
+  "page.talk.sub":
+    "Provider · Stimme · Log für den Mikrofon-Button im Header",
+  "page.workspaceAgents": "Workspace-Agents",
+  "page.workspaceAgents.sub":
+    "Kalender · Umsatz · alle Agents in diesem Workspace, gruppiert nach Business.",
+  "page.workspaceAgents.empty":
+    "Noch keine Agents in diesem Workspace. Lege einen über ein Business an oder über den \"+ Neuer Agent\"-Button in einer leeren Gruppe.",
+  "page.workspaceAgents.workspaceGroup": "Workspace",
+  "page.workspaceAgents.workspaceGroupSub": "Nicht an ein Business gebunden",
+  "page.workspaceAgents.businessGroupSub": "Business-Agents",
+  "page.workspaceAgents.countSingular": "Agent",
+  "page.workspaceAgents.countPlural": "Agents",
+
+  "settings.sub": "Konto · Workspace · Automatisierungen",
+  "settings.section.agentDefaults": "Agent-Defaults",
+  "settings.section.agentDefaults.desc":
+    "Was bekommt jeder neue Agent als Provider / Modell / System-Prompt? Pro Business oder Agent kannst du es noch überschreiben.",
+  "settings.section.weather": "Wetter-Chip",
+  "settings.section.weather.desc":
+    "Die rechte obere Ecke des Headers zeigt einen Wetter-Chip pro Workspace.",
+  "settings.section.apiKeys": "API-Keys",
+  "settings.section.apiKeys.desc":
+    "Workspace-Defaults oder Overrides pro Business oder Topic. Verschlüsselung via pgcrypto.",
+  "settings.section.spendLimits": "Spend-Limits",
+  "settings.section.spendLimits.desc":
+    "Tages-/Monats-Caps pro Workspace; auto-pause optional.",
+  "settings.section.telegram": "Telegram",
+  "settings.section.telegram.desc":
+    "Sende Run-Berichte an einen oder mehrere Telegram-Kanäle.",
+  "settings.section.email": "E-Mail-Benachrichtigungen",
+  "settings.section.email.desc":
+    "Run-Berichte via SMTP. Per-Business / Per-Agent Overrides via Rechtsklick.",
+  "settings.section.customIntegrations": "Eigene Integrationen",
+  "settings.section.customIntegrations.desc":
+    "Allgemeine HTTP-Webhooks / API-Calls. Mustache-Platzhalter für Run-Daten.",
+  "settings.section.notifs.desc":
+    "Web Push für HITL-Items auf diesem Gerät.",
+  "settings.section.team.desc":
+    "Wer darf was. Owner bist immer du; Admins / Editors / Viewers können hinzugefügt werden.",
+  "settings.section.danger.desc":
+    "Daten exportieren oder den Workspace dauerhaft löschen.",
+  "settings.section.talk": "Talk to AI",
+  "settings.section.subscription": "Abonnement",
+  "settings.field.workspaceName": "Workspace-Name",
+  "settings.field.email": "E-Mail",
+  "settings.field.timezone": "Zeitzone",
 
   "profile.title": "Profil",
   "profile.sub": "Konto · Einstellungen · Sitzungen",

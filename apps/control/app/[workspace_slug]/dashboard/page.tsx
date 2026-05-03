@@ -8,6 +8,7 @@ import {
   getCurrentUser,
   getWorkspaceBySlug,
 } from "../../../lib/auth/workspace";
+import { getDict } from "../../../lib/i18n/server";
 import { CreateFirstBusinessHint } from "../../../components/CreateFirstBusinessHint";
 import { BusinessKpiGrid } from "../../../components/BusinessKpiGrid";
 import { OnboardingWizard } from "../../../components/OnboardingWizard";
@@ -35,7 +36,7 @@ export default async function WorkspaceDashboardPage({ params }: Props) {
   if (!workspace) redirect("/login");
 
   const supabase = await createSupabaseServerClient();
-  const [businesses, queue, kpis, agents, { count: keyCount }] =
+  const [businesses, queue, kpis, agents, { count: keyCount }, { t }] =
     await Promise.all([
       listBusinesses(workspace.id),
       listOpenQueueItems(workspace.id, undefined, 12),
@@ -45,6 +46,7 @@ export default async function WorkspaceDashboardPage({ params }: Props) {
         .from("api_keys_metadata")
         .select("id", { count: "exact", head: true })
         .eq("workspace_id", workspace.id),
+      getDict(),
     ]);
 
   const summaries = summarizeKpis(
@@ -55,8 +57,8 @@ export default async function WorkspaceDashboardPage({ params }: Props) {
   return (
     <div className="content">
       <div className="page-title-row">
-        <h1>{workspace.name} — overzicht</h1>
-        <span className="sub">Marge per business · auto + HITL</span>
+        <h1>{t("dashboard.title", { workspace: workspace.name })}</h1>
+        <span className="sub">{t("dashboard.sub")}</span>
       </div>
 
       <OnboardingWizard
@@ -82,13 +84,10 @@ export default async function WorkspaceDashboardPage({ params }: Props) {
         />
       ) : queue.length === 0 ? (
         <div className="empty-state">
-          <h2>Lege wachtrij ✓</h2>
-          <p>
-            Geen items te reviewen. Zodra een agent iets oppakt verschijnt
-            het hier — auto-publish bij hoge confidence, anders HITL.
-          </p>
+          <h2>{t("dashboard.queueEmpty.title")}</h2>
+          <p>{t("dashboard.queueEmpty.body")}</p>
           <button className="cta">
-            <PlusIcon /> Nieuwe agent
+            <PlusIcon /> {t("dashboard.queueEmpty.cta")}
           </button>
         </div>
       ) : (

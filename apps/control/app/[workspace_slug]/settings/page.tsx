@@ -8,6 +8,7 @@ import {
   getCurrentUser,
   getWorkspaceBySlug,
 } from "../../../lib/auth/workspace";
+import { getDict } from "../../../lib/i18n/server";
 import { signOutAction } from "../../(auth)/actions";
 import { listApiKeys } from "../../actions/api-keys";
 import { ApiKeysPanel } from "../../../components/ApiKeysPanel";
@@ -35,25 +36,25 @@ import { createSupabaseServerClient } from "../../../lib/supabase/server";
 type Props = { params: Promise<{ workspace_slug: string }> };
 
 type SettingsNavEntry =
-  | { kind: "anchor"; id: string; label: string }
-  | { kind: "page"; href: string; label: string };
+  | { kind: "anchor"; id: string; labelKey: string }
+  | { kind: "page"; href: string; labelKey: string };
 
 const SECTIONS: SettingsNavEntry[] = [
-  { kind: "anchor", id: "general", label: "General" },
-  { kind: "anchor", id: "agent-defaults", label: "Agent defaults" },
-  { kind: "anchor", id: "weather", label: "Weather" },
-  { kind: "anchor", id: "api-keys", label: "API Keys" },
-  { kind: "anchor", id: "spend-limits", label: "Spend limits" },
-  { kind: "anchor", id: "telegram", label: "Telegram" },
-  { kind: "anchor", id: "email", label: "Email" },
-  { kind: "anchor", id: "custom-integrations", label: "Custom integrations" },
-  { kind: "anchor", id: "notifications", label: "Notifications" },
-  { kind: "anchor", id: "team", label: "Team & roles" },
+  { kind: "anchor", id: "general", labelKey: "settings.section.general" },
+  { kind: "anchor", id: "agent-defaults", labelKey: "settings.section.agentDefaults" },
+  { kind: "anchor", id: "weather", labelKey: "settings.section.weather" },
+  { kind: "anchor", id: "api-keys", labelKey: "settings.section.apiKeys" },
+  { kind: "anchor", id: "spend-limits", labelKey: "settings.section.spendLimits" },
+  { kind: "anchor", id: "telegram", labelKey: "settings.section.telegram" },
+  { kind: "anchor", id: "email", labelKey: "settings.section.email" },
+  { kind: "anchor", id: "custom-integrations", labelKey: "settings.section.customIntegrations" },
+  { kind: "anchor", id: "notifications", labelKey: "settings.section.notifications" },
+  { kind: "anchor", id: "team", labelKey: "settings.section.team" },
   // Sub-pages — clicking these routes the user away from the
   // single-page scrollable settings view to a dedicated page.
-  { kind: "page", href: "talk", label: "Talk to AI" },
-  { kind: "page", href: "subscription", label: "Abonnement" },
-  { kind: "anchor", id: "danger", label: "Danger zone" },
+  { kind: "page", href: "talk", labelKey: "settings.section.talk" },
+  { kind: "page", href: "subscription", labelKey: "settings.section.subscription" },
+  { kind: "anchor", id: "danger", labelKey: "settings.section.danger" },
 ];
 
 export default async function SettingsPage({ params }: Props) {
@@ -120,11 +121,13 @@ export default async function SettingsPage({ params }: Props) {
     lon: Number(wsExtra?.weather_lon ?? 4.776),
   };
 
+  const { t } = await getDict();
+
   return (
     <div className="content">
       <div className="page-title-row">
-        <h1>Settings</h1>
-        <span className="sub">Account · workspace · automations</span>
+        <h1>{t("settings.title")}</h1>
+        <span className="sub">{t("settings.sub")}</span>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", gap: 28 }}>
@@ -141,16 +144,25 @@ export default async function SettingsPage({ params }: Props) {
                 fontWeight: 600,
               }}
             >
-              {s.label}
+              {t(s.labelKey)}
             </a>
           ))}
         </nav>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-          <SectionCard id="general" title="General">
-            <SettingsRow label="Workspace name" value={workspace.name} />
-            <SettingsRow label="Email" value={user.email ?? "—"} />
-            <SettingsRow label="Tijdzone" value="Europe/Amsterdam" />
+          <SectionCard id="general" title={t("settings.section.general")}>
+            <SettingsRow
+              label={t("settings.field.workspaceName")}
+              value={workspace.name}
+            />
+            <SettingsRow
+              label={t("settings.field.email")}
+              value={user.email ?? "—"}
+            />
+            <SettingsRow
+              label={t("settings.field.timezone")}
+              value="Europe/Amsterdam"
+            />
             <form action={signOutAction} style={{ marginTop: 14 }}>
               <button
                 type="submit"
@@ -165,15 +177,15 @@ export default async function SettingsPage({ params }: Props) {
                   cursor: "pointer",
                 }}
               >
-                Sign out
+                {t("common.signOut")}
               </button>
             </form>
           </SectionCard>
 
           <SectionCard
             id="agent-defaults"
-            title="Agent defaults"
-            desc="Wat krijgt élke nieuwe agent als provider / model / system prompt? Per business of agent kun je nog overschrijven."
+            title={t("settings.section.agentDefaults")}
+            desc={t("settings.section.agentDefaults.desc")}
           >
             <WorkspaceDefaultsPanel
               workspaceSlug={workspace.slug}
@@ -189,8 +201,8 @@ export default async function SettingsPage({ params }: Props) {
 
           <SectionCard
             id="weather"
-            title="Weather chip"
-            desc="De rechterbovenhoek van de header toont een weer-chip per workspace."
+            title={t("settings.section.weather")}
+            desc={t("settings.section.weather.desc")}
           >
             <WeatherSettings
               workspaceId={workspace.id}
@@ -201,8 +213,8 @@ export default async function SettingsPage({ params }: Props) {
 
           <SectionCard
             id="api-keys"
-            title="API Keys"
-            desc="Workspace-defaults of overrides per business of topic. Encryptie via pgcrypto."
+            title={t("settings.section.apiKeys")}
+            desc={t("settings.section.apiKeys.desc")}
           >
             <ApiKeysPanel
               workspaceSlug={workspace.slug}
@@ -215,8 +227,8 @@ export default async function SettingsPage({ params }: Props) {
 
           <SectionCard
             id="spend-limits"
-            title="Spend limits"
-            desc="Daag/maand caps per workspace; auto-pause als gewenst."
+            title={t("settings.section.spendLimits")}
+            desc={t("settings.section.spendLimits.desc")}
           >
             <SpendLimitsPanel
               workspaceSlug={workspace.slug}
@@ -234,8 +246,8 @@ export default async function SettingsPage({ params }: Props) {
 
           <SectionCard
             id="telegram"
-            title="Telegram"
-            desc="Stuur run-rapporten naar één of meer Telegram-channels."
+            title={t("settings.section.telegram")}
+            desc={t("settings.section.telegram.desc")}
           >
             <TelegramPanel
               workspaceSlug={workspace.slug}
@@ -258,8 +270,8 @@ export default async function SettingsPage({ params }: Props) {
 
           <SectionCard
             id="email"
-            title="Email notifications"
-            desc="Run-rapporten via SMTP. Per-business / per-agent overrides via right-click."
+            title={t("settings.section.email")}
+            desc={t("settings.section.email.desc")}
           >
             <EmailNotifsPanel
               workspaceSlug={workspace.slug}
@@ -277,8 +289,8 @@ export default async function SettingsPage({ params }: Props) {
 
           <SectionCard
             id="custom-integrations"
-            title="Custom integrations"
-            desc="Algemene HTTP webhooks / API calls. Mustache placeholders voor run-data."
+            title={t("settings.section.customIntegrations")}
+            desc={t("settings.section.customIntegrations.desc")}
           >
             <CustomIntegrationsPanel
               workspaceSlug={workspace.slug}
@@ -291,16 +303,16 @@ export default async function SettingsPage({ params }: Props) {
 
           <SectionCard
             id="notifications"
-            title="Notifications"
-            desc="Web Push voor HITL-items op dit apparaat."
+            title={t("settings.section.notifications")}
+            desc={t("settings.section.notifs.desc")}
           >
             <NotificationsButton />
           </SectionCard>
 
           <SectionCard
             id="team"
-            title="Team & roles"
-            desc="Wie mag wat. Owner is altijd jij; je kunt admins/editors/viewers toevoegen."
+            title={t("settings.section.team")}
+            desc={t("settings.section.team.desc")}
           >
             <TeamPanel
               workspaceSlug={workspace.slug}
@@ -312,8 +324,8 @@ export default async function SettingsPage({ params }: Props) {
 
           <SectionCard
             id="danger"
-            title="Danger zone"
-            desc="Data exporteren of de workspace permanent verwijderen."
+            title={t("settings.section.danger")}
+            desc={t("settings.section.danger.desc")}
           >
             <DangerZone
               workspaceId={workspace.id}

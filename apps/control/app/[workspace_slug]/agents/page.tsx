@@ -20,6 +20,7 @@ import {
 import { AgentsDashboard } from "../../../components/AgentsDashboard";
 import { AgentsList } from "../../../components/AgentsList";
 import { createSupabaseServerClient } from "../../../lib/supabase/server";
+import { getDict } from "../../../lib/i18n/server";
 
 type Props = { params: Promise<{ workspace_slug: string }> };
 
@@ -40,6 +41,7 @@ export default async function WorkspaceAgentsPage({ params }: Props) {
     { data: telegramRows },
     { data: customRows },
     { data: wsDefaults },
+    { t },
   ] = await Promise.all([
     listAgentsForWorkspace(workspace.id, "all"),
     listBusinesses(workspace.id),
@@ -60,6 +62,7 @@ export default async function WorkspaceAgentsPage({ params }: Props) {
       .select("default_provider, default_model, default_system_prompt")
       .eq("id", workspace.id)
       .maybeSingle(),
+    getDict(),
   ]);
 
   // Resolve key status across every provider used in the workspace.
@@ -104,11 +107,8 @@ export default async function WorkspaceAgentsPage({ params }: Props) {
   return (
     <div className="content">
       <div className="page-title-row">
-        <h1>Workspace agents</h1>
-        <span className="sub">
-          Agenda · revenue · alle agents in deze workspace, gegroepeerd
-          per business.
-        </span>
+        <h1>{t("page.workspaceAgents")}</h1>
+        <span className="sub">{t("page.workspaceAgents.sub")}</span>
       </div>
 
       {/* ── Dashboard: KPIs + calendar + revenue ──────────────── */}
@@ -153,9 +153,14 @@ export default async function WorkspaceAgentsPage({ params }: Props) {
       {/* ── Workspace-global ───────────────────────────────────── */}
       <section style={{ marginBottom: 24 }}>
         <GroupHeading
-          title="Workspace"
-          sub="Niet aan een business gekoppeld"
+          title={t("page.workspaceAgents.workspaceGroup")}
+          sub={t("page.workspaceAgents.workspaceGroupSub")}
           count={globalAgents.length}
+          countLabel={
+            globalAgents.length === 1
+              ? t("page.workspaceAgents.countSingular")
+              : t("page.workspaceAgents.countPlural")
+          }
         />
         <AgentsList
           workspaceSlug={workspace.slug}
@@ -174,8 +179,13 @@ export default async function WorkspaceAgentsPage({ params }: Props) {
         <section key={g.id} style={{ marginBottom: 24 }}>
           <GroupHeading
             title={g.title}
-            sub={g.sub ?? "Business agents"}
+            sub={g.sub ?? t("page.workspaceAgents.businessGroupSub")}
             count={g.agents.length}
+            countLabel={
+              g.agents.length === 1
+                ? t("page.workspaceAgents.countSingular")
+                : t("page.workspaceAgents.countPlural")
+            }
             href={`/${workspace.slug}/business/${g.id}/agents`}
           />
           <AgentsList
@@ -200,8 +210,7 @@ export default async function WorkspaceAgentsPage({ params }: Props) {
             padding: "24px 0",
           }}
         >
-          Nog geen agents in deze workspace. Maak er één aan via een business
-          of via de &quot;+ Nieuwe agent&quot; knop in een lege groep.
+          {t("page.workspaceAgents.empty")}
         </p>
       )}
     </div>
@@ -212,11 +221,14 @@ function GroupHeading({
   title,
   sub,
   count,
+  countLabel,
   href,
 }: {
   title: string;
   sub: string;
   count: number;
+  /** Translatable suffix shown after the count (e.g. "agent" / "agents"). */
+  countLabel?: string;
   /** When set, the title is a link — used to deep-link to the
    *  per-business agents page. */
   href?: string;
@@ -269,7 +281,7 @@ function GroupHeading({
           textTransform: "uppercase",
         }}
       >
-        {count} agent{count === 1 ? "" : "s"}
+        {count} {countLabel ?? (count === 1 ? "agent" : "agents")}
       </span>
     </div>
   );
