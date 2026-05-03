@@ -49,7 +49,7 @@ export function RunsTimeline({ runs, agents }: Props) {
               ? "var(--rose)"
               : r.status === "review"
                 ? "var(--amber)"
-                : r.status === "running"
+                : r.status === "running" || r.status === "done"
                   ? "var(--tt-green)"
                   : "var(--app-fg-3)";
           return (

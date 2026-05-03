@@ -59,6 +59,36 @@ export function NotificationsBell({
     }
   };
 
+  // Mark a notification as dismissed for the current user. Notifications
+  // are synthesized from queue_items + failed runs — dismissal is per-user
+  // (POST writes notification_dismissals). We optimistically remove it
+  // locally so the bell empties out instantly when the user clicks.
+  const dismiss = (kind: "queue" | "run", id: string) => {
+    setItems((prev) => prev.filter((n) => !(n.kind === kind && n.id === id)));
+    const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+    void fetch(`${base}/api/notifications/dismiss`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ kind, id }),
+    }).catch(() => {
+      // On failure the next refresh() will repopulate it — better than
+      // leaving the user staring at a stale list. Silent retry next tick.
+    });
+  };
+
+  const dismissAll = () => {
+    const snapshot = items;
+    setItems([]);
+    const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+    for (const n of snapshot) {
+      void fetch(`${base}/api/notifications/dismiss`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ kind: n.kind, id: n.id }),
+      }).catch(() => {});
+    }
+  };
+
   useEffect(() => {
     void refresh();
   }, []);
@@ -163,6 +193,48 @@ export function NotificationsBell({
               runs.
             </p>
           ) : (
+            <>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "8px 12px 4px",
+                  borderBottom: "1px solid var(--app-border-2)",
+                  marginBottom: 4,
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 10.5,
+                    fontWeight: 800,
+                    letterSpacing: 0.6,
+                    textTransform: "uppercase",
+                    color: "var(--app-fg-3)",
+                  }}
+                >
+                  {items.length} open
+                </span>
+                <button
+                  type="button"
+                  onClick={dismissAll}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "var(--app-fg-2)",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    padding: "2px 6px",
+                    borderRadius: 6,
+                  }}
+                >
+                  Wis alles
+                </button>
+              </div>
+            </>
+          )}
+          {items.length > 0 && (
             (() => {
               // Group items by business_id so the user sees per-
               // business sections — same shape they'll recognise from
@@ -241,6 +313,7 @@ export function NotificationsBell({
                         <button
                           key={`${n.kind}:${n.id}`}
                           onClick={() => {
+                            dismiss(n.kind, n.id);
                             setOpen(false);
                             router.push(
                               n.business_id
@@ -318,3 +391,4 @@ export function NotificationsBell({
     </div>
   );
 }
+

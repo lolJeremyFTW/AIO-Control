@@ -64,6 +64,9 @@ export function NewBusinessDialog({
     <dialog
       ref={ref}
       onClose={onClose}
+      onClick={(e) => {
+        if (e.target === ref.current) onClose();
+      }}
       style={{
         background: "var(--app-card)",
         border: "1.5px solid var(--app-border)",
