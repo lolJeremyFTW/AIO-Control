@@ -13,6 +13,11 @@ import {
 import { resolveApiKey } from "../../../lib/api-keys/resolve";
 import { listAgentsForWorkspace } from "../../../lib/queries/agents";
 import { listBusinesses } from "../../../lib/queries/businesses";
+import {
+  listRecentRunsForWorkspace,
+  listSchedulesForWorkspace,
+} from "../../../lib/queries/schedules";
+import { AgentsDashboard } from "../../../components/AgentsDashboard";
 import { AgentsList } from "../../../components/AgentsList";
 import { createSupabaseServerClient } from "../../../lib/supabase/server";
 
@@ -30,12 +35,16 @@ export default async function WorkspaceAgentsPage({ params }: Props) {
   const [
     allAgents,
     businesses,
+    schedules,
+    runs,
     { data: telegramRows },
     { data: customRows },
     { data: wsDefaults },
   ] = await Promise.all([
     listAgentsForWorkspace(workspace.id, "all"),
     listBusinesses(workspace.id),
+    listSchedulesForWorkspace(workspace.id),
+    listRecentRunsForWorkspace(workspace.id, 200),
     supabase
       .from("telegram_targets")
       .select("id, name")
@@ -97,10 +106,48 @@ export default async function WorkspaceAgentsPage({ params }: Props) {
       <div className="page-title-row">
         <h1>Workspace agents</h1>
         <span className="sub">
-          Alle agents in deze workspace, gegroepeerd per business. Workspace
-          agents zijn niet aan een business gekoppeld en zijn beschikbaar
-          vanuit chat over de hele workspace.
+          Agenda · revenue · alle agents in deze workspace, gegroepeerd
+          per business.
         </span>
+      </div>
+
+      {/* ── Dashboard: KPIs + calendar + revenue ──────────────── */}
+      <div style={{ marginBottom: 24 }}>
+        <AgentsDashboard
+          workspaceSlug={workspace.slug}
+          agents={allAgents.map((a) => ({
+            id: a.id,
+            name: a.name,
+            business_id: a.business_id,
+          }))}
+          businesses={businesses.map((b) => ({
+            id: b.id,
+            name: b.name,
+            letter: b.letter,
+            variant: b.variant ?? "brand",
+            color_hex: b.color_hex ?? null,
+          }))}
+          schedules={schedules.map((s) => ({
+            id: s.id,
+            agent_id: s.agent_id,
+            business_id: s.business_id,
+            kind: s.kind,
+            cron_expr: s.cron_expr,
+            enabled: s.enabled,
+            title: s.title,
+          }))}
+          runs={runs.map((r) => ({
+            id: r.id,
+            agent_id: r.agent_id,
+            business_id: r.business_id,
+            schedule_id: r.schedule_id,
+            status: r.status,
+            started_at: r.started_at,
+            ended_at: r.ended_at,
+            cost_cents: r.cost_cents,
+            created_at: r.created_at,
+          }))}
+        />
       </div>
 
       {/* ── Workspace-global ───────────────────────────────────── */}

@@ -79,3 +79,46 @@ export async function listRecentRunsForBusiness(
   }
   return (data ?? []) as RunRow[];
 }
+
+/**
+ * Workspace-wide read used by the agents dashboard. Pulls every
+ * schedule across every business so the calendar can show next
+ * fire-times. RLS gates by membership.
+ */
+export async function listSchedulesForWorkspace(
+  workspaceId: string,
+): Promise<ScheduleRow[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("schedules_safe")
+    .select(
+      "id, workspace_id, agent_id, business_id, kind, cron_expr, provider_routine_id, enabled, last_fired_at, created_at, title, description, instructions, timezone, telegram_target_id, custom_integration_id",
+    )
+    .eq("workspace_id", workspaceId)
+    .order("created_at", { ascending: false });
+  if (error) {
+    console.error("listSchedulesForWorkspace failed", error);
+    return [];
+  }
+  return (data ?? []) as ScheduleRow[];
+}
+
+export async function listRecentRunsForWorkspace(
+  workspaceId: string,
+  limit = 200,
+): Promise<RunRow[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("runs")
+    .select(
+      "id, agent_id, business_id, schedule_id, triggered_by, status, started_at, ended_at, duration_ms, cost_cents, output, error_text, created_at",
+    )
+    .eq("workspace_id", workspaceId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) {
+    console.error("listRecentRunsForWorkspace failed", error);
+    return [];
+  }
+  return (data ?? []) as RunRow[];
+}
