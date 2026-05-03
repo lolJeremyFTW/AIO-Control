@@ -35,6 +35,7 @@ import {
 import type { WorkspaceListItem } from "../lib/auth/workspace";
 import type { AgentRow } from "../lib/queries/agents";
 import type { BusinessRow } from "../lib/queries/businesses";
+import { LocaleProvider } from "../lib/i18n/client";
 import type { NavNode } from "../lib/queries/nav-nodes";
 import { translate, type Locale, type T } from "../lib/i18n/dict";
 import { signOutAction } from "../app/(auth)/actions";
@@ -716,6 +717,7 @@ export function WorkspaceShell({
   };
 
   return (
+    <LocaleProvider locale={locale}>
     <div className="app-shell">
       <Rail
         profile={profileItem}
@@ -1047,5 +1049,6 @@ export function WorkspaceShell({
       )}
       <RunsToaster workspaceId={workspace.id} />
     </div>
+    </LocaleProvider>
   );
 }
