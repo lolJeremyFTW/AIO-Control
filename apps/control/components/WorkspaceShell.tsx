@@ -42,6 +42,7 @@ import { BusinessSetupWizard } from "./BusinessSetupWizard";
 import { NewNavNodeDialog } from "./NewNavNodeDialog";
 import { NotificationsBell } from "./NotificationsBell";
 import { SearchModal } from "./SearchModal";
+import { TalkModule, type TalkAgent } from "./TalkModule";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 
 type Profile = {
@@ -66,6 +67,16 @@ type Props = {
   /** Every nav_node in the workspace (across businesses). The shell
    *  filters per-business client-side as the user drills in. */
   navNodes: NavNode[];
+  /** Workspace agents — used by the header's TalkModule to populate
+   *  the dropdown. The chat-panel uses the same list. */
+  agents?: Array<{
+    id: string;
+    name: string;
+    business_id: string | null;
+    provider: string;
+    /** Optional — when omitted the TalkModule falls back to "—". */
+    model?: string | null;
+  }>;
   weather?: { city: string; date: string; temp: string };
   page?: "dashboard" | "settings" | "profile" | "agents";
   /** Active UI locale — translates client-side via the dict module. */
@@ -102,6 +113,7 @@ export function WorkspaceShell({
   workspaces,
   businesses,
   navNodes,
+  agents = [],
   weather,
   page: pageProp = "dashboard",
   locale,
@@ -241,6 +253,44 @@ export function WorkspaceShell({
     variant: (profile.variant ?? "orange") as RailItem["variant"],
     logoUrl: profile.avatarUrl ?? null,
   };
+
+  // Map workspace agents to the TalkModule's display shape. Pulls
+  // colour from the agent's business (when scoped) or "brand" for
+  // workspace-global agents. Status is a static "online" for now —
+  // wiring real status (last-run, paused, etc.) lands when the
+  // notify-dispatch grows a heartbeat.
+  const talkAgents: TalkAgent[] = useMemo(() => {
+    const VARIANTS: TalkAgent["variant"][] = [
+      "brand",
+      "rose",
+      "amber",
+      "violet",
+      "indigo",
+      "orange",
+    ];
+    return agents.map((a, i) => {
+      const biz = a.business_id
+        ? businesses.find((b) => b.id === a.business_id)
+        : null;
+      // Pick a stable colour: business's variant when valid, else
+      // round-robin over the palette so the dropdown looks varied.
+      const bizVariant = biz?.variant as TalkAgent["variant"] | undefined;
+      const variant: TalkAgent["variant"] =
+        bizVariant && VARIANTS.includes(bizVariant)
+          ? bizVariant
+          : VARIANTS[i % VARIANTS.length]!;
+      return {
+        id: a.id,
+        name: a.name,
+        biz: biz?.name ?? "Workspace",
+        letter: (a.name.trim().charAt(0) || "A").toUpperCase(),
+        variant,
+        status: "online" as const,
+        voice: a.model ? `${a.provider} · ${a.model}` : a.provider,
+        desc: biz?.sub ?? "Workspace-global",
+      };
+    });
+  }, [agents, businesses]);
 
   const railBusinesses: RailItem[] = businesses.map((b) => ({
     id: b.id,
@@ -739,6 +789,12 @@ export function WorkspaceShell({
             });
           }}
           themeToggle={<ThemeToggle />}
+          voiceSlot={
+            <TalkModule
+              agents={talkAgents}
+              workspaceSlug={workspace.slug}
+            />
+          }
           userMenu={
             <>
               <button

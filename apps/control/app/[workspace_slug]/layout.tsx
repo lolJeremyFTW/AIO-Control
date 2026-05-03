@@ -85,6 +85,13 @@ export default async function WorkspaceLayout({ children, params }: Props) {
       workspaces={workspaces}
       businesses={businesses}
       navNodes={navNodes}
+      agents={agents.map((a) => ({
+        id: a.id,
+        name: a.name,
+        business_id: a.business_id,
+        provider: a.provider,
+        model: a.model ?? null,
+      }))}
       weather={weather}
       locale={locale}
     >

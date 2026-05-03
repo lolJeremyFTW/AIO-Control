@@ -47,6 +47,10 @@ type Props = {
   bellSlot?: ReactNode;
   /** Tiny circle button next to the bell — light/dark theme flip. */
   themeToggle?: ReactNode;
+  /** Replaces the static "Praat met AI" voice chip with a fully
+   *  functional split-button: mic + agent dropdown + settings link.
+   *  When omitted, the original static chip renders. */
+  voiceSlot?: ReactNode;
   children?: ReactNode; // optional row 2 content
 };
 
@@ -64,6 +68,7 @@ export function Header({
   searchSlot,
   bellSlot,
   themeToggle,
+  voiceSlot,
   children,
 }: Props) {
   const [activeAvatar, setActiveAvatar] = useState(false);
@@ -138,12 +143,14 @@ export function Header({
           </div>
         )}
         <div className="grow" />
-        <div className="voice">
-          <span className="pulse">
-            <MicIcon />
-          </span>{" "}
-          Praat met AI
-        </div>
+        {voiceSlot ?? (
+          <div className="voice">
+            <span className="pulse">
+              <MicIcon />
+            </span>{" "}
+            Praat met AI
+          </div>
+        )}
         {themeToggle}
         {bellSlot ?? (
           <button className="ibtn" aria-label="Notifications">

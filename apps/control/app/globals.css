@@ -1603,3 +1603,642 @@ details[open] > div {
   background: var(--app-border-2);
   margin: 4px 6px;
 }
+
+/* ===== Generic settings primitives (from Claude Design bundle) =====
+   Used by the Talk-to-AI settings page and any future settings page
+   that wants to match the design system's card / field / toggle look.
+   Lifted from the design bundle's All-In-One Control App.html (the
+   user-blessed source of truth for the design language). */
+.card {
+  background: var(--app-card);
+  border: 1.5px solid var(--app-border);
+  border-radius: 16px;
+  padding: 22px 24px;
+  margin-bottom: 18px;
+}
+.card h3 {
+  font-family: var(--hand);
+  font-weight: 700;
+  font-size: 22px;
+  letter-spacing: -0.2px;
+  margin: 0 0 4px;
+}
+.card .desc {
+  color: var(--app-fg-3);
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+.field {
+  display: grid;
+  grid-template-columns: 200px 1fr auto;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 0;
+  border-top: 1px solid var(--app-border-2);
+}
+.field:first-of-type {
+  border-top: none;
+  padding-top: 4px;
+}
+.field .lbl {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--app-fg);
+}
+.field .lbl small {
+  display: block;
+  font-weight: 500;
+  color: var(--app-fg-3);
+  font-size: 11.5px;
+  margin-top: 2px;
+}
+.field .val {
+  font-size: 13px;
+  color: var(--app-fg-2);
+}
+.field input[type="text"],
+.field input[type="email"],
+.field select,
+.field textarea {
+  width: 100%;
+  background: var(--app-card-2);
+  border: 1.5px solid var(--app-border);
+  color: var(--app-fg);
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-family: var(--type);
+  font-size: 13px;
+}
+.field textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+
+.btn {
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 12.5px;
+  cursor: pointer;
+  border: 1.5px solid var(--app-border);
+  background: var(--app-card-2);
+  color: var(--app-fg);
+  font-family: var(--type);
+}
+.btn:hover {
+  background: var(--app-card);
+}
+.btn.primary {
+  background: var(--tt-green);
+  border-color: var(--tt-green);
+  color: #fff;
+}
+.btn.danger {
+  border-color: var(--rose);
+  color: var(--rose);
+  background: transparent;
+}
+.btn.danger:hover {
+  background: rgba(230, 82, 107, 0.08);
+}
+
+/* ===== TALK-TO-AI MODULE =====
+   Direct port from the Claude Design bundle (talk-module.jsx). Two
+   semicircle buttons that visually fuse into one pill: a green-pulsing
+   mic on the left + an agent-picker on the right that drops a panel
+   below with all workspace agents and a pinned Settings link. */
+.talk-module {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  flex-shrink: 0;
+  font-family: var(--type);
+}
+.talk-mic {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px 0 0 999px;
+  border: 1.5px solid var(--tt-green);
+  border-right: none;
+  background: rgba(57, 178, 85, 0.12);
+  color: var(--tt-green);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  position: relative;
+  padding: 0 4px 0 10px;
+}
+.talk-mic:hover {
+  background: rgba(57, 178, 85, 0.2);
+}
+.talk-mic-pulse {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--tt-green);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 0 0 rgba(57, 178, 85, 0.55);
+  animation: pulse 1.8s infinite;
+}
+.talk-mic.is-listening {
+  background: rgba(255, 122, 26, 0.16);
+  border-color: var(--orange);
+  color: var(--orange);
+}
+.talk-mic.is-listening .talk-mic-pulse {
+  background: var(--orange);
+  box-shadow: 0 0 0 0 rgba(255, 122, 26, 0.6);
+}
+.talk-wave {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 6px;
+  height: 18px;
+}
+.talk-wave i {
+  display: block;
+  width: 2px;
+  background: var(--orange);
+  border-radius: 999px;
+  animation: talkwave 1s ease-in-out infinite;
+}
+.talk-wave i:nth-child(1) {
+  height: 6px;
+  animation-delay: 0s;
+}
+.talk-wave i:nth-child(2) {
+  height: 14px;
+  animation-delay: 0.1s;
+}
+.talk-wave i:nth-child(3) {
+  height: 9px;
+  animation-delay: 0.2s;
+}
+.talk-wave i:nth-child(4) {
+  height: 16px;
+  animation-delay: 0.3s;
+}
+.talk-wave i:nth-child(5) {
+  height: 7px;
+  animation-delay: 0.4s;
+}
+@keyframes talkwave {
+  0%,
+  100% {
+    transform: scaleY(0.5);
+  }
+  50% {
+    transform: scaleY(1.3);
+  }
+}
+
+.talk-agent {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 12px 0 8px;
+  border: 1.5px solid var(--tt-green);
+  border-radius: 0 999px 999px 0;
+  background: rgba(57, 178, 85, 0.06);
+  color: var(--tt-green);
+  font-family: var(--type);
+  font-weight: 700;
+  font-size: 12.5px;
+  cursor: pointer;
+  max-width: 220px;
+}
+.talk-agent:hover,
+.talk-agent.is-open {
+  background: rgba(57, 178, 85, 0.14);
+}
+.talk-agent-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 800;
+  font-size: 11px;
+  flex-shrink: 0;
+  background: var(--tt-green);
+}
+.talk-agent-dot.brand {
+  background: var(--tt-green);
+}
+.talk-agent-dot.rose {
+  background: var(--rose);
+}
+.talk-agent-dot.amber {
+  background: var(--amber);
+  color: #1a1c1a;
+}
+.talk-agent-dot.violet {
+  background: #8a4dd6;
+}
+.talk-agent-dot.indigo {
+  background: #5b6cff;
+}
+.talk-agent-dot.orange {
+  background: var(--orange);
+}
+.talk-agent-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+}
+.talk-agent-caret {
+  display: flex;
+  opacity: 0.7;
+}
+
+.talk-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 380px;
+  background: var(--app-card);
+  border: 1.5px solid var(--app-border);
+  border-radius: 14px;
+  box-shadow:
+    0 24px 60px -12px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(57, 178, 85, 0.08);
+  z-index: 60;
+  overflow: hidden;
+  font-family: var(--type);
+}
+.talk-dropdown-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--app-border-2);
+}
+.talk-dropdown-title {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--app-fg-3);
+  font-weight: 700;
+}
+.talk-dropdown-meta {
+  font-size: 11px;
+  color: var(--app-fg-3);
+  font-weight: 600;
+}
+.talk-dropdown-list {
+  max-height: 340px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.talk-agent-row {
+  display: grid;
+  grid-template-columns: 32px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  color: var(--app-fg);
+  font-family: var(--type);
+}
+.talk-agent-row:hover {
+  background: var(--app-card-2);
+}
+.talk-agent-row.is-active {
+  background: rgba(57, 178, 85, 0.1);
+}
+.talk-agent-row.paused {
+  opacity: 0.55;
+}
+.talk-agent-row-dot {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 13px;
+}
+.talk-agent-row-dot.brand {
+  background: var(--tt-green);
+}
+.talk-agent-row-dot.rose {
+  background: var(--rose);
+}
+.talk-agent-row-dot.amber {
+  background: var(--amber);
+  color: #1a1c1a;
+}
+.talk-agent-row-dot.violet {
+  background: #8a4dd6;
+}
+.talk-agent-row-dot.indigo {
+  background: #5b6cff;
+}
+.talk-agent-row-dot.orange {
+  background: var(--orange);
+}
+.talk-agent-row-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.talk-agent-row-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--app-fg);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.talk-agent-row-status {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--app-fg-3);
+}
+.talk-agent-row-status.online {
+  background: var(--tt-green);
+  box-shadow: 0 0 0 2px rgba(57, 178, 85, 0.18);
+}
+.talk-agent-row-status.idle {
+  background: var(--amber);
+}
+.talk-agent-row-status.paused {
+  background: var(--app-fg-3);
+}
+.talk-agent-row-sub {
+  font-size: 11px;
+  color: var(--app-fg-3);
+  font-weight: 500;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.talk-agent-row-voice {
+  font-size: 10.5px;
+  color: var(--app-fg-2);
+  font-weight: 600;
+  background: var(--app-card-2);
+  border: 1px solid var(--app-border);
+  padding: 3px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.talk-dropdown-settings {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 14px;
+  border-top: 1px solid var(--app-border-2);
+  background: var(--app-card-2);
+  border-left: none;
+  border-right: none;
+  border-bottom: none;
+  cursor: pointer;
+  color: var(--app-fg);
+  font-family: var(--type);
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: left;
+}
+.talk-dropdown-settings:hover {
+  background: rgba(57, 178, 85, 0.08);
+  color: var(--tt-green);
+}
+.talk-dropdown-settings span {
+  flex: 1;
+}
+
+/* ===== TALK SETTINGS PAGE ===== */
+.talk-pick {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+.talk-pick-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1.5px solid var(--app-border);
+  border-radius: 10px;
+  background: var(--app-card-2);
+  color: var(--app-fg);
+  cursor: pointer;
+  font-family: var(--type);
+  text-align: left;
+}
+.talk-pick-card.is-active {
+  border-color: var(--tt-green);
+  background: rgba(57, 178, 85, 0.08);
+}
+.talk-pick-name {
+  font-size: 13px;
+  font-weight: 700;
+}
+.talk-pick-sub {
+  font-size: 11px;
+  color: var(--app-fg-3);
+  font-weight: 500;
+}
+
+.talk-key {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+}
+.talk-key input {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+  background: var(--app-card-2);
+  border: 1.5px solid var(--app-border);
+  color: var(--app-fg);
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+
+.talk-slider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.talk-slider input[type="range"] {
+  flex: 1;
+  accent-color: var(--tt-green);
+}
+.talk-slider-val {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--app-fg);
+  min-width: 40px;
+  text-align: right;
+}
+
+.voice-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.voice-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1.5px solid var(--app-border);
+  border-radius: 12px;
+  background: var(--app-card-2);
+  color: var(--app-fg);
+  cursor: pointer;
+  font-family: var(--type);
+  text-align: left;
+}
+.voice-card.is-active {
+  border-color: var(--tt-green);
+  background: rgba(57, 178, 85, 0.08);
+}
+.voice-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.voice-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: var(--tt-green);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.voice-name {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--app-fg);
+}
+.voice-sub {
+  display: block;
+  font-size: 10.5px;
+  color: var(--app-fg-3);
+  font-weight: 500;
+  margin-top: 1px;
+}
+.voice-wave {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 24px;
+  padding: 0 2px;
+}
+.voice-wave i {
+  display: block;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--tt-green);
+  opacity: 0.6;
+}
+.voice-card.is-active .voice-wave i {
+  opacity: 1;
+}
+.voice-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.voice-play {
+  font-size: 11px;
+  color: var(--tt-green);
+  font-weight: 700;
+}
+.voice-active-pill {
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--tt-green);
+  padding: 2px 7px;
+  border-radius: 999px;
+}
+
+.talk-log {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--app-border-2);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.talk-log-row {
+  display: grid;
+  grid-template-columns: 50px 60px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 12px;
+  border-top: 1px solid var(--app-border-2);
+  font-size: 12px;
+}
+.talk-log-row:first-child {
+  border-top: none;
+}
+.talk-log-row.you {
+  background: rgba(57, 178, 85, 0.04);
+}
+.talk-log-time {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px;
+  color: var(--app-fg-3);
+}
+.talk-log-who {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--app-fg-3);
+}
+.talk-log-who.you {
+  color: var(--tt-green);
+}
+.talk-log-who.agent {
+  color: var(--orange);
+}
+.talk-log-msg {
+  color: var(--app-fg);
+}
+.talk-log-meta {
+  font-size: 10.5px;
+  color: var(--app-fg-3);
+  font-family: ui-monospace, Menlo, monospace;
+  white-space: nowrap;
+}
+.talk-log-count {
+  font-family: var(--type);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--app-fg-3);
+}
