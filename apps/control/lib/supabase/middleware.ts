@@ -60,6 +60,10 @@ export async function updateSession(request: NextRequest) {
     PUBLIC_PATHS.has(path) ||
     path.startsWith("/_next") ||
     path.startsWith("/api/triggers/") ||
+    // Public marketplace share pages — no session needed.
+    path.startsWith("/share/") ||
+    // Telegram webhook authenticates via the secret in the URL.
+    path.startsWith("/api/integrations/telegram/webhook") ||
     // Webhooks and DB-trigger callbacks authenticate via a header secret
     // they prove they're authorized — we don't need a Supabase session.
     path === "/api/integrations/stripe" ||

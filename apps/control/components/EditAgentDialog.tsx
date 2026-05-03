@@ -12,6 +12,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { updateAgent } from "../app/actions/agents";
 import type { AgentRow } from "../lib/queries/agents";
+import { WorkflowGraph } from "./WorkflowGraph";
 
 type Provider = AgentRow["provider"];
 type Kind = AgentRow["kind"];
@@ -304,10 +305,27 @@ export function EditAgentDialog({
                 </select>
               </Field>
             </div>
-            <p style={{ fontSize: 11, color: "var(--app-fg-3)", margin: "8px 0 0" }}>
+            <p style={{ fontSize: 11, color: "var(--app-fg-3)", margin: "8px 0 8px" }}>
               De volgende agent ontvangt deze run&apos;s output als input
               prompt — perfect voor extract → translate → publish chains.
             </p>
+            <WorkflowGraph
+              focused={{
+                id: agent.id,
+                name: name || agent.name,
+                next_agent_on_done: nextOnDone || null,
+                next_agent_on_fail: nextOnFail || null,
+              }}
+              agents={siblingAgents.map((a) => ({
+                id: a.id,
+                name: a.name,
+                // We don't have their next-pointers here, but the graph
+                // walks them via id lookup; without data the chain
+                // stops one hop deep, which is fine for this preview.
+                next_agent_on_done: null,
+                next_agent_on_fail: null,
+              }))}
+            />
           </div>
         )}
 

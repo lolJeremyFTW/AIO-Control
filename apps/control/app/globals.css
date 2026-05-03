@@ -1326,6 +1326,40 @@ a {
   }
 }
 
+/* ─── Mobile responsive polish ─────────────────────────────────────
+   Below 800px the header stacks tighter and the .content area uses
+   less padding. Cost-dashboard tables become single-column. */
+@media (max-width: 800px) {
+  .content {
+    padding: 14px 12px !important;
+  }
+  .page-title-row h1 {
+    font-size: 22px !important;
+  }
+  .page-title-row .sub {
+    font-size: 11px !important;
+  }
+  /* Cost dashboard rows — drop runs column; keep label + cost. */
+  .content section[id^="cost"] > div[style*="grid-template-columns"] {
+    grid-template-columns: 1fr 80px !important;
+  }
+  /* Notification popover hangs flush with the screen edge instead of
+     poking off-screen. */
+  [aria-label="Notifications"] + div {
+    right: 8px !important;
+    left: 8px !important;
+    width: auto !important;
+    max-width: none !important;
+  }
+  /* User menu moves to a near-fullwidth drawer at the top so the
+     options stay tappable. */
+  .user-menu {
+    right: 8px !important;
+    width: calc(100vw - 16px) !important;
+    max-width: 320px !important;
+  }
+}
+
 /* ─── Native form controls: force a dark, legible look ─────────────
    `color-scheme: dark` at :root already nudges Chrome/Firefox to use
    dark popups, but option rendering inside <select> popups still

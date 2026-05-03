@@ -311,25 +311,49 @@ function Card({
       </div>
 
       {!isActive ? (
-        <button
-          onClick={onSetActive}
-          style={{
-            marginTop: 8,
-            alignSelf: "start",
-            padding: "6px 12px",
-            border: "1.5px solid var(--tt-green)",
-            background: "var(--tt-green)",
-            color: "#fff",
-            borderRadius: 10,
-            fontWeight: 700,
-            fontSize: 12,
-            cursor: "pointer",
-          }}
-        >
-          {agent.marketplace_kind === "agent"
-            ? "+ Installeren"
-            : "Bekijk config"}
-        </button>
+        <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+          <button
+            onClick={onSetActive}
+            style={{
+              padding: "6px 12px",
+              border: "1.5px solid var(--tt-green)",
+              background: "var(--tt-green)",
+              color: "#fff",
+              borderRadius: 10,
+              fontWeight: 700,
+              fontSize: 12,
+              cursor: "pointer",
+            }}
+          >
+            {agent.marketplace_kind === "agent"
+              ? "+ Installeren"
+              : "Bekijk config"}
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              const url = `${window.location.origin}/share/${agent.slug}`;
+              navigator.clipboard?.writeText(url).catch(() => null);
+              const target = e.currentTarget as HTMLButtonElement;
+              const original = target.innerText;
+              target.innerText = "✓";
+              setTimeout(() => (target.innerText = original), 1200);
+            }}
+            title="Kopieer share-link"
+            style={{
+              padding: "6px 10px",
+              border: "1.5px solid var(--app-border)",
+              background: "transparent",
+              color: "var(--app-fg-2)",
+              borderRadius: 10,
+              fontWeight: 700,
+              fontSize: 12,
+              cursor: "pointer",
+            }}
+          >
+            🔗
+          </button>
+        </div>
       ) : (
         <div
           style={{

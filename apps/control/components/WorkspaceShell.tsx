@@ -639,6 +639,12 @@ export function WorkspaceShell({
               </button>
               <button
                 role="menuitem"
+                onClick={() => router.push(`/${workspace.slug}/queue`)}
+              >
+                Wachtrij
+              </button>
+              <button
+                role="menuitem"
                 onClick={() => router.push(`/${workspace.slug}/runs`)}
               >
                 Runs
