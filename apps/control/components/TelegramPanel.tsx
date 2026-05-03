@@ -15,6 +15,7 @@ import {
   setTelegramAutoCreateTopics,
   testTelegramTarget,
 } from "../app/actions/telegram";
+import { updateTelegramTopology } from "../app/actions/workspace-settings";
 import type { BusinessRow } from "../lib/queries/businesses";
 import type { NavNode } from "../lib/queries/nav-nodes";
 
@@ -34,12 +35,18 @@ export type TelegramTargetRow = {
   auto_create_topics_for_businesses?: boolean;
 };
 
+export type TelegramTopology =
+  | "manual"
+  | "topic_per_business"
+  | "topic_per_business_and_node";
+
 type Props = {
   workspaceSlug: string;
   workspaceId: string;
   initialTargets: TelegramTargetRow[];
   businesses: BusinessRow[];
   navNodes: NavNode[];
+  initialTopology: TelegramTopology;
 };
 
 export function TelegramPanel({
@@ -48,7 +55,9 @@ export function TelegramPanel({
   initialTargets,
   businesses,
   navNodes,
+  initialTopology,
 }: Props) {
+  const [topology, setTopology] = useState<TelegramTopology>(initialTopology);
   const [targets, setTargets] = useState(initialTargets);
   const [adding, setAdding] = useState(false);
   const [scope, setScope] = useState<"workspace" | "business" | "navnode">(
@@ -144,6 +153,25 @@ export function TelegramPanel({
       }
     });
 
+  const setTopologyAndPersist = (next: TelegramTopology) =>
+    startTransition(async () => {
+      setError(null);
+      setInfo(null);
+      const prev = topology;
+      setTopology(next);
+      const res = await updateTelegramTopology({
+        workspace_slug: workspaceSlug,
+        workspace_id: workspaceId,
+        topology: next,
+      });
+      if (!res.ok) {
+        setTopology(prev);
+        setError(res.error);
+      } else {
+        setInfo(`Topology gezet op "${next}".`);
+      }
+    });
+
   const toggleAutoCreate = (id: string, enabled: boolean) =>
     startTransition(async () => {
       setError(null);
@@ -197,6 +225,73 @@ export function TelegramPanel({
         &quot;Telegram&quot;. Hier definieer je waar reports heen gaan: chat_id +
         optioneel topic_id voor forum-style groepen.
       </p>
+
+      <fieldset
+        style={{
+          border: "1.5px solid var(--app-border-2)",
+          borderRadius: 10,
+          padding: "10px 14px 12px",
+          margin: 0,
+          background: "var(--app-card-2)",
+        }}
+      >
+        <legend
+          style={{
+            fontSize: 11,
+            fontWeight: 700,
+            color: "var(--app-fg-2)",
+            padding: "0 6px",
+          }}
+        >
+          Topology — hoe wil je Telegram structureren?
+        </legend>
+        {(
+          [
+            {
+              id: "manual" as const,
+              label: "Manueel",
+              desc: "Jij zet voor elke business / topic zelf welke chat_id + topic_id de reports moeten hebben.",
+            },
+            {
+              id: "topic_per_business" as const,
+              label: "Auto-topic per business",
+              desc: "Eén supergroup met topics. Iedere nieuwe business krijgt zijn eigen forum topic.",
+            },
+            {
+              id: "topic_per_business_and_node" as const,
+              label: "Auto-topic per business + per nav-node",
+              desc: "Zelfde supergroup; nieuwe businesses + nieuwe topics in onze rail krijgen elk een forum topic.",
+            },
+          ] as const
+        ).map((opt) => (
+          <label
+            key={opt.id}
+            style={{
+              display: "flex",
+              gap: 10,
+              alignItems: "flex-start",
+              padding: "6px 4px",
+              cursor: "pointer",
+              fontSize: 12,
+              borderRadius: 6,
+            }}
+          >
+            <input
+              type="radio"
+              name="tg-topology"
+              checked={topology === opt.id}
+              onChange={() => setTopologyAndPersist(opt.id)}
+              style={{ accentColor: "var(--tt-green)", marginTop: 3 }}
+            />
+            <div>
+              <div style={{ fontWeight: 700 }}>{opt.label}</div>
+              <div style={{ color: "var(--app-fg-3)", marginTop: 2, fontSize: 11.5 }}>
+                {opt.desc}
+              </div>
+            </div>
+          </label>
+        ))}
+      </fieldset>
 
       <details
         style={{

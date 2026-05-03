@@ -292,6 +292,9 @@ export function WorkspaceShell({
               status: biz.status,
               daily_spend_limit_cents: biz.daily_spend_limit_cents,
               monthly_spend_limit_cents: biz.monthly_spend_limit_cents,
+              description: biz.description,
+              mission: biz.mission,
+              targets: biz.targets,
             }),
         },
         {

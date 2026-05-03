@@ -13,6 +13,7 @@ import { listApiKeys } from "../../actions/api-keys";
 import { ApiKeysPanel } from "../../../components/ApiKeysPanel";
 import { EmailNotifsPanel } from "../../../components/EmailNotifsPanel";
 import { SpendLimitsPanel } from "../../../components/SpendLimitsPanel";
+import { WorkspaceDefaultsPanel } from "../../../components/WorkspaceDefaultsPanel";
 import { isEmailConfigured } from "../../../lib/notify/email";
 import {
   CustomIntegrationsPanel,
@@ -35,6 +36,7 @@ type Props = { params: Promise<{ workspace_slug: string }> };
 
 const SECTIONS = [
   { id: "general", label: "General" },
+  { id: "agent-defaults", label: "Agent defaults" },
   { id: "weather", label: "Weather" },
   { id: "api-keys", label: "API Keys" },
   { id: "spend-limits", label: "Spend limits" },
@@ -71,7 +73,7 @@ export default async function SettingsPage({ params }: Props) {
     supabase
       .from("workspaces")
       .select(
-        "owner_id, weather_city, weather_lat, weather_lon, daily_spend_limit_cents, monthly_spend_limit_cents, auto_pause_on_limit, notify_email, notify_email_on_done, notify_email_on_fail",
+        "owner_id, weather_city, weather_lat, weather_lon, daily_spend_limit_cents, monthly_spend_limit_cents, auto_pause_on_limit, notify_email, notify_email_on_done, notify_email_on_fail, default_provider, default_model, default_system_prompt, telegram_topology",
       )
       .eq("id", workspace.id)
       .maybeSingle(),
@@ -161,6 +163,23 @@ export default async function SettingsPage({ params }: Props) {
           </SectionCard>
 
           <SectionCard
+            id="agent-defaults"
+            title="Agent defaults"
+            desc="Wat krijgt élke nieuwe agent als provider / model / system prompt? Per business of agent kun je nog overschrijven."
+          >
+            <WorkspaceDefaultsPanel
+              workspaceSlug={workspace.slug}
+              workspaceId={workspace.id}
+              initial={{
+                provider: (wsExtra?.default_provider as string | null) ?? null,
+                model: (wsExtra?.default_model as string | null) ?? null,
+                system_prompt:
+                  (wsExtra?.default_system_prompt as string | null) ?? null,
+              }}
+            />
+          </SectionCard>
+
+          <SectionCard
             id="weather"
             title="Weather chip"
             desc="De rechterbovenhoek van de header toont een weer-chip per workspace."
@@ -216,6 +235,16 @@ export default async function SettingsPage({ params }: Props) {
               initialTargets={telegramTargets}
               businesses={businesses}
               navNodes={navNodes}
+              initialTopology={
+                ((wsExtra?.telegram_topology as
+                  | "manual"
+                  | "topic_per_business"
+                  | "topic_per_business_and_node"
+                  | undefined) ?? "manual") as
+                  | "manual"
+                  | "topic_per_business"
+                  | "topic_per_business_and_node"
+              }
             />
           </SectionCard>
 

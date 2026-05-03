@@ -32,6 +32,7 @@ export default async function BusinessAgentsPage({ params }: Props) {
     allAgents,
     { data: telegramRows },
     { data: customRows },
+    { data: wsDefaults },
   ] = await Promise.all([
     listBusinesses(workspace.id),
     listAgentsForWorkspace(workspace.id),
@@ -45,6 +46,11 @@ export default async function BusinessAgentsPage({ params }: Props) {
       .select("id, name")
       .eq("workspace_id", workspace.id)
       .eq("enabled", true),
+    supabase
+      .from("workspaces")
+      .select("default_provider, default_model, default_system_prompt")
+      .eq("id", workspace.id)
+      .maybeSingle(),
   ]);
   const biz = businesses.find((b) => b.id === bizId);
   if (!biz) notFound();
@@ -82,6 +88,12 @@ export default async function BusinessAgentsPage({ params }: Props) {
         customIntegrations={
           (customRows ?? []) as { id: string; name: string }[]
         }
+        workspaceDefaults={{
+          provider: (wsDefaults?.default_provider as string | null) ?? null,
+          model: (wsDefaults?.default_model as string | null) ?? null,
+          systemPrompt:
+            (wsDefaults?.default_system_prompt as string | null) ?? null,
+        }}
       />
     </div>
   );

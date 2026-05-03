@@ -13,6 +13,7 @@ import {
 import type { AGUIEvent, ChatMessage } from "@aio/ai/ag-ui";
 
 import { resolveApiKey } from "../../../../lib/api-keys/resolve";
+import { buildBusinessContextPrefix } from "../../../../lib/agents/business-context";
 import { checkSpendLimit } from "../../../../lib/dispatch/spend-limit";
 import { dispatchRunEvent } from "../../../../lib/notify/dispatch";
 import { getAgentById } from "../../../../lib/queries/agents";
@@ -109,6 +110,16 @@ export async function POST(
 
   const config = (agent.config ?? {}) as AgentConfig;
   if (agent.model && !config.model) config.model = agent.model;
+
+  // Prepend the business context (description, mission, active
+  // targets, workspace-wide rules) so the agent always knows what
+  // it's working toward.
+  const bizCtx = await buildBusinessContextPrefix(agent.business_id);
+  if (bizCtx) {
+    config.systemPrompt = config.systemPrompt
+      ? `${bizCtx}\n\n---\n\n${config.systemPrompt}`
+      : bizCtx;
+  }
 
   // Resolve the per-tenant API key for this agent's provider. Order
   // is navnode → business → workspace → env-var fallback. Set up once

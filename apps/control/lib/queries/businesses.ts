@@ -5,6 +5,17 @@ import "server-only";
 
 import { createSupabaseServerClient } from "../supabase/server";
 
+export type BusinessTarget = {
+  id: string;
+  name: string;
+  /** e.g. "1000 EUR", "100 sales", "10 customers" — free text */
+  target: string;
+  current?: string;
+  deadline?: string | null;
+  status?: "open" | "done" | "abandoned";
+  notes?: string;
+};
+
 export type BusinessRow = {
   id: string;
   workspace_id: string;
@@ -21,6 +32,9 @@ export type BusinessRow = {
   sort_order: number;
   daily_spend_limit_cents: number | null;
   monthly_spend_limit_cents: number | null;
+  description: string | null;
+  mission: string | null;
+  targets: BusinessTarget[];
 };
 
 export async function listBusinesses(
@@ -30,7 +44,7 @@ export async function listBusinesses(
   const { data, error } = await supabase
     .from("businesses")
     .select(
-      "id, workspace_id, name, sub, letter, variant, icon, color_hex, logo_url, status, primary_action, created_at, sort_order, daily_spend_limit_cents, monthly_spend_limit_cents",
+      "id, workspace_id, name, sub, letter, variant, icon, color_hex, logo_url, status, primary_action, created_at, sort_order, daily_spend_limit_cents, monthly_spend_limit_cents, description, mission, targets",
     )
     .eq("workspace_id", workspaceId)
     .is("archived_at", null)

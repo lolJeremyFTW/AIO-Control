@@ -21,6 +21,13 @@ type Props = {
   businessId: string;
   telegramTargets?: Target[];
   customIntegrations?: Target[];
+  /** Workspace-level defaults applied when the user opens a fresh
+   *  agent dialog (he can still override). */
+  defaults?: {
+    provider?: string | null;
+    model?: string | null;
+    systemPrompt?: string | null;
+  };
   onClose: () => void;
 };
 
@@ -49,14 +56,17 @@ export function NewAgentDialog({
   businessId,
   telegramTargets = [],
   customIntegrations = [],
+  defaults,
   onClose,
 }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
   const [name, setName] = useState("");
   const [kind, setKind] = useState<Kind>("chat");
-  const [provider, setProvider] = useState<Provider>("claude");
-  const [model, setModel] = useState("");
-  const [systemPrompt, setSystemPrompt] = useState("");
+  const [provider, setProvider] = useState<Provider>(
+    (defaults?.provider as Provider) || "claude",
+  );
+  const [model, setModel] = useState(defaults?.model ?? "");
+  const [systemPrompt, setSystemPrompt] = useState(defaults?.systemPrompt ?? "");
   const [endpoint, setEndpoint] = useState("");
   const [routingRulesJson, setRoutingRulesJson] = useState("");
   const [telegramTargetId, setTelegramTargetId] = useState("");

@@ -13,6 +13,7 @@ import { useEffect, useRef, useState } from "react";
 import { updateBusiness } from "../app/actions/businesses";
 import { updateNavNode } from "../app/actions/nav-nodes";
 import { AppearancePicker, type AppearanceValue } from "./AppearancePicker";
+import { TargetsEditor, type Target } from "./TargetsEditor";
 
 export type EditTarget =
   | {
@@ -28,6 +29,9 @@ export type EditTarget =
       daily_spend_limit_cents?: number | null;
       monthly_spend_limit_cents?: number | null;
       status?: "running" | "paused";
+      description?: string | null;
+      mission?: string | null;
+      targets?: Target[];
     }
   | {
       kind: "navnode";
@@ -76,6 +80,15 @@ export function EditNodeDialog({ workspaceSlug, target, onClose }: Props) {
   const [bizStatus, setBizStatus] = useState<"running" | "paused">(
     target.kind === "business" ? (target.status ?? "running") : "running",
   );
+  const [bizDescription, setBizDescription] = useState(
+    target.kind === "business" ? (target.description ?? "") : "",
+  );
+  const [bizMission, setBizMission] = useState(
+    target.kind === "business" ? (target.mission ?? "") : "",
+  );
+  const [bizTargets, setBizTargets] = useState<Target[]>(
+    target.kind === "business" ? (target.targets ?? []) : [],
+  );
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const router = useRouter();
@@ -102,6 +115,9 @@ export function EditNodeDialog({ workspaceSlug, target, onClose }: Props) {
           daily_spend_limit_cents: parseEur(dailyEur),
           monthly_spend_limit_cents: parseEur(monthlyEur),
           status: bizStatus,
+          description: bizDescription || null,
+          mission: bizMission || null,
+          targets: bizTargets,
         },
       });
     } else {
@@ -215,6 +231,31 @@ export function EditNodeDialog({ workspaceSlug, target, onClose }: Props) {
         />
 
         {target.kind === "business" && (
+          <>
+            <Field label="Beschrijving (wat is deze business?)">
+              <textarea
+                value={bizDescription}
+                onChange={(e) => setBizDescription(e.target.value)}
+                rows={3}
+                placeholder="Bijv. Faceless YouTube kanaal over NL tech. Doel: educatieve content + affiliate revenue."
+                style={{ ...inputStyle, resize: "vertical", fontFamily: "var(--type)" }}
+              />
+            </Field>
+
+            <Field label="Mission / agent rules of engagement (wordt aan elke agent's system prompt toegevoegd)">
+              <textarea
+                value={bizMission}
+                onChange={(e) => setBizMission(e.target.value)}
+                rows={4}
+                placeholder={`Bijv.\n• Schrijf in NL u-vorm, geen jargon\n• Geen click-bait, focus op insights\n• Bij twijfel: HITL review (state=review)\n• Maximaal 1 affiliate link per video`}
+                style={{ ...inputStyle, resize: "vertical", fontFamily: "var(--type)" }}
+              />
+            </Field>
+
+            <Field label="Targets / KPIs (waar werkt deze business naartoe)">
+              <TargetsEditor value={bizTargets} onChange={setBizTargets} />
+            </Field>
+
           <div
             style={{
               border: "1.5px solid var(--app-border-2)",
@@ -277,6 +318,7 @@ export function EditNodeDialog({ workspaceSlug, target, onClose }: Props) {
                 : "Business is gepauzeerd — geen runs"}
             </label>
           </div>
+          </>
         )}
 
         {error && (

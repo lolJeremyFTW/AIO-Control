@@ -8,7 +8,9 @@ import { revalidatePath } from "next/cache";
 
 import { ALL_VARIANTS } from "@aio/ui/rail/Node";
 
+import { telegramCreateForumTopic } from "../../lib/notify/telegram";
 import { createSupabaseServerClient } from "../../lib/supabase/server";
+import { getServiceRoleSupabase } from "../../lib/supabase/service";
 
 export type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -58,11 +60,91 @@ export async function createNavNode(input: {
   if (error || !data)
     return { ok: false, error: error?.message ?? "Insert failed." };
 
+  // Best-effort: when workspace topology is "topic_per_business_and_node"
+  // and the business has a parent forum-group target, mint a topic
+  // for this nav-node too.
+  void autoCreateNavNodeTelegramTopic({
+    workspace_id: input.workspace_id,
+    business_id: input.business_id,
+    nav_node_id: data.id,
+    name: input.name.trim(),
+    icon: input.icon ?? null,
+  }).catch((err) => console.error("autoCreateNavNodeTopic failed", err));
+
   revalidatePath(
     `/${input.workspace_slug}/business/${input.business_id}`,
     "layout",
   );
   return { ok: true, data: { id: data.id } };
+}
+
+async function autoCreateNavNodeTelegramTopic(opts: {
+  workspace_id: string;
+  business_id: string;
+  nav_node_id: string;
+  name: string;
+  icon: string | null;
+}): Promise<void> {
+  const admin = getServiceRoleSupabase();
+  const { data: ws } = await admin
+    .from("workspaces")
+    .select("telegram_topology")
+    .eq("id", opts.workspace_id)
+    .maybeSingle();
+  if (ws?.telegram_topology !== "topic_per_business_and_node") return;
+
+  // Find the parent group (workspace-scope target with auto-create on).
+  const { data: parent } = await admin
+    .from("telegram_targets")
+    .select("id, chat_id")
+    .eq("workspace_id", opts.workspace_id)
+    .eq("scope", "workspace")
+    .eq("auto_create_topics_for_businesses", true)
+    .eq("enabled", true)
+    .limit(1)
+    .maybeSingle();
+  if (!parent?.chat_id) return;
+
+  // Look up the business name so the topic is "<biz> · <node>".
+  const { data: biz } = await admin
+    .from("businesses")
+    .select("name")
+    .eq("id", opts.business_id)
+    .maybeSingle();
+  const topicName = `${opts.icon ? opts.icon + " " : ""}${biz?.name ?? ""} · ${opts.name}`.trim();
+
+  const created = await telegramCreateForumTopic({
+    workspace_id: opts.workspace_id,
+    chat_id: parent.chat_id,
+    name: topicName,
+  });
+  if (!created.ok) {
+    console.warn("nav-node auto-topic failed:", created.error);
+    return;
+  }
+
+  const { data: newTarget } = await admin
+    .from("telegram_targets")
+    .insert({
+      workspace_id: opts.workspace_id,
+      scope: "navnode",
+      scope_id: opts.nav_node_id,
+      name: `Auto: ${biz?.name ?? ""} / ${opts.name}`,
+      chat_id: parent.chat_id,
+      topic_id: created.message_thread_id,
+      enabled: true,
+      send_run_done: true,
+      send_run_fail: true,
+      send_queue_review: true,
+    })
+    .select("id")
+    .single();
+  if (!newTarget) return;
+
+  await admin
+    .from("nav_nodes")
+    .update({ telegram_topic_target_id: newTarget.id })
+    .eq("id", opts.nav_node_id);
 }
 
 export async function updateNavNode(input: {

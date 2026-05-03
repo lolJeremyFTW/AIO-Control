@@ -78,6 +78,42 @@ export async function updateWorkspaceEmailNotifs(input: {
   return { ok: true, data: null };
 }
 
+export async function updateWorkspaceDefaults(input: {
+  workspace_slug: string;
+  workspace_id: string;
+  default_provider: string | null;
+  default_model: string | null;
+  default_system_prompt: string | null;
+}): Promise<ActionResult<null>> {
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase
+    .from("workspaces")
+    .update({
+      default_provider: input.default_provider,
+      default_model: input.default_model,
+      default_system_prompt: input.default_system_prompt,
+    })
+    .eq("id", input.workspace_id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath(`/${input.workspace_slug}/settings`);
+  return { ok: true, data: null };
+}
+
+export async function updateTelegramTopology(input: {
+  workspace_slug: string;
+  workspace_id: string;
+  topology: "manual" | "topic_per_business" | "topic_per_business_and_node";
+}): Promise<ActionResult<null>> {
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase
+    .from("workspaces")
+    .update({ telegram_topology: input.topology })
+    .eq("id", input.workspace_id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath(`/${input.workspace_slug}/settings`);
+  return { ok: true, data: null };
+}
+
 /**
  * Geocode a city name to coords via Open-Meteo's free geocoding API.
  * No key needed. Returns the first match — UI feeds the lat/lon into

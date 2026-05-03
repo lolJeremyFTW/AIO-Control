@@ -33,6 +33,12 @@ type Props = {
   providerKeyStatus?: Record<string, boolean>;
   telegramTargets?: Target[];
   customIntegrations?: Target[];
+  /** Workspace defaults that pre-fill NewAgentDialog. */
+  workspaceDefaults?: {
+    provider?: string | null;
+    model?: string | null;
+    systemPrompt?: string | null;
+  };
 };
 
 export function AgentsList({
@@ -43,6 +49,7 @@ export function AgentsList({
   providerKeyStatus = {},
   telegramTargets = [],
   customIntegrations = [],
+  workspaceDefaults,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<AgentRow | null>(null);
@@ -203,6 +210,7 @@ export function AgentsList({
           businessId={businessId}
           telegramTargets={telegramTargets}
           customIntegrations={customIntegrations}
+          defaults={workspaceDefaults}
           onClose={() => setOpen(false)}
         />
       )}

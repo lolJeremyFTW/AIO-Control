@@ -97,6 +97,9 @@ export async function updateBusiness(input: {
     daily_spend_limit_cents?: number | null;
     monthly_spend_limit_cents?: number | null;
     status?: "running" | "paused";
+    description?: string | null;
+    mission?: string | null;
+    targets?: unknown[];
   };
 }): Promise<ActionResult<null>> {
   const patch: Record<string, unknown> = {};
@@ -124,6 +127,11 @@ export async function updateBusiness(input: {
   if (input.patch.monthly_spend_limit_cents !== undefined)
     patch.monthly_spend_limit_cents = input.patch.monthly_spend_limit_cents;
   if (input.patch.status !== undefined) patch.status = input.patch.status;
+  if (input.patch.description !== undefined)
+    patch.description = input.patch.description?.toString() || null;
+  if (input.patch.mission !== undefined)
+    patch.mission = input.patch.mission?.toString() || null;
+  if (input.patch.targets !== undefined) patch.targets = input.patch.targets;
 
   if (Object.keys(patch).length === 0) return { ok: true, data: null };
 
