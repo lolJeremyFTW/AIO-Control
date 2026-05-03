@@ -241,7 +241,11 @@ body[data-theme="light"] .nav-row-meta {
     box-shadow 0.2s ease;
   flex-shrink: 0;
 }
-body[data-theme="light"] .node {
+/* Light theme override applies ONLY to the structural variants
+   (outline + dashed). Coloured variants like .node.brand/.node.orange
+   etc. keep their own background/border/color in both themes — this
+   is what restores the avatar palette after the theme toggle. */
+body[data-theme="light"] .node.outline {
   background: var(--paper);
   border: 1.5px solid var(--ink);
   color: var(--ink);
@@ -1436,10 +1440,12 @@ details[open] > div {
    Small button on the right edge of the rail that toggles the
    hover-expand behaviour. When `is-locked` is set on .rail, the rail
    stops responding to hover (stays narrow). Hidden on mobile — the
-   rail there is a slide-out drawer, not a hover-expand. */
-.rail {
-  position: relative;
-}
+   rail there is a slide-out drawer, not a hover-expand.
+   NOTE: the `.rail { position: relative }` rule that used to live
+   here was clobbering the position:fixed pin we set up earlier and
+   broke the entire layout (rail floated above content). The pin
+   uses position:absolute relative to the rail anyway, and .rail is
+   already position:fixed — so no .rail rule needed in this section. */
 .rail-pin {
   position: absolute;
   right: -10px;
