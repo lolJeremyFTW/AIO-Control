@@ -38,12 +38,13 @@ type Props = {
 };
 
 const PROVIDERS: { id: Provider; label: string; defaultModel?: string }[] = [
-  { id: "claude", label: "Claude (Anthropic)", defaultModel: "claude-sonnet-4-6" },
+  { id: "claude", label: "Claude (Anthropic API key)", defaultModel: "claude-sonnet-4-6" },
+  { id: "claude_cli", label: "Claude CLI (subscription, geen API key)", defaultModel: "sonnet" },
   { id: "openrouter", label: "OpenRouter", defaultModel: "openrouter/auto" },
   { id: "minimax", label: "MiniMax (Coder Plan)", defaultModel: "MiniMax-M2.7-Highspeed" },
   { id: "ollama", label: "Ollama (lokaal/VPS)", defaultModel: "llama3" },
-  { id: "openclaw", label: "OpenClaw (eigen)" },
-  { id: "hermes", label: "Hermes-agent (eigen)" },
+  { id: "openclaw", label: "OpenClaw (eigen VPS-service)" },
+  { id: "hermes", label: "Hermes-agent (eigen VPS-service)" },
   { id: "codex", label: "Codex / OpenAI" },
 ];
 

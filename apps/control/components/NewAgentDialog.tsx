@@ -25,12 +25,13 @@ type Props = {
 };
 
 const PROVIDERS: { id: Provider; label: string; defaultModel?: string }[] = [
-  { id: "claude", label: "Claude (Anthropic)", defaultModel: "claude-sonnet-4-6" },
+  { id: "claude", label: "Claude (Anthropic API key)", defaultModel: "claude-sonnet-4-6" },
+  { id: "claude_cli", label: "Claude CLI (subscription, geen API key)", defaultModel: "sonnet" },
   { id: "openrouter", label: "OpenRouter", defaultModel: "openrouter/auto" },
   { id: "minimax", label: "MiniMax (Coder Plan)", defaultModel: "MiniMax-M2.7-Highspeed" },
   { id: "ollama", label: "Ollama (lokaal/VPS)", defaultModel: "llama3" },
-  { id: "openclaw", label: "OpenClaw (eigen)" },
-  { id: "hermes", label: "Hermes-agent (eigen)" },
+  { id: "openclaw", label: "OpenClaw (eigen VPS-service)" },
+  { id: "hermes", label: "Hermes-agent (eigen VPS-service)" },
   { id: "codex", label: "Codex / OpenAI" },
 ];
 
@@ -196,15 +197,38 @@ export function NewAgentDialog({
         </Field>
 
         {needsEndpoint && (
-          <Field label="Endpoint URL">
+          <Field label="Endpoint URL (optioneel — env default wordt gebruikt als leeg)">
             <input
               value={endpoint}
               onChange={(e) => setEndpoint(e.target.value)}
-              placeholder="https://hermes.tromptech.life/v1/chat"
+              placeholder={
+                provider === "openclaw"
+                  ? "http://127.0.0.1:8001/v1/chat/completions  (of laat leeg voor OPENCLAW_URL env)"
+                  : "http://127.0.0.1:8002/v1/chat/completions  (of laat leeg voor HERMES_URL env)"
+              }
               style={inputStyle}
-              required
             />
           </Field>
+        )}
+
+        {provider === "claude_cli" && (
+          <p
+            style={{
+              fontSize: 11.5,
+              color: "var(--app-fg-3)",
+              background: "var(--app-card-2)",
+              border: "1px solid var(--app-border-2)",
+              borderRadius: 8,
+              padding: "8px 10px",
+              margin: "0 0 12px",
+              lineHeight: 1.45,
+            }}
+          >
+            Gebruikt de <code>claude</code> CLI op de VPS. Geen API key nodig
+            — quotum komt uit je Claude Pro/Max/Team abonnement. Model-veld
+            accepteert <code>sonnet</code>, <code>opus</code>, <code>haiku</code>{" "}
+            of een full model id.
+          </p>
         )}
 
         <Field label="System prompt (optioneel)">

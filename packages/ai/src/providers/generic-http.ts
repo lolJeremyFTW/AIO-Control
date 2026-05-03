@@ -1,7 +1,18 @@
-// Generic HTTP relay used by openclaw + hermes-agent (Jeremy's own services
-// running on the VPS). Expects an OpenAI-compatible streaming endpoint at
-// agent.config.endpoint. If the user's services use a different shape we'll
-// add per-provider mappers next to this file.
+// Generic HTTP relay used by openclaw + hermes-agent (Jeremy's own
+// services running on the VPS) — and any future custom OpenAI-shape
+// chat completions endpoint.
+//
+// Endpoint resolution order:
+//   1. agent.config.endpoint                         (per-agent override)
+//   2. process.env[`${PROVIDER}_URL`]                (env default — set
+//      OPENCLAW_URL / HERMES_URL on the VPS once)
+//   3. error
+//
+// Auth header resolution order (per request):
+//   1. agent.config.headers                          (per-agent literal)
+//   2. opts.apiKey via "Authorization: Bearer …"     (tiered API key)
+//   3. process.env[`${PROVIDER}_API_KEY`]            (env fallback)
+//   4. no auth header
 
 import { randomUUID } from "node:crypto";
 
@@ -11,18 +22,33 @@ import type { StreamChatOptions } from "../router";
 export async function* streamGenericHttp(
   opts: StreamChatOptions,
 ): AsyncIterable<AGUIEvent> {
-  const endpoint = opts.config.endpoint;
+  const provider = opts.provider.toUpperCase();
+  const endpoint =
+    opts.config.endpoint ?? process.env[`${provider}_URL`];
   if (!endpoint) {
     yield {
       type: "error",
       code: "missing_endpoint",
-      message: `Provider "${opts.provider}" has no endpoint configured.`,
+      message:
+        `Provider "${opts.provider}" heeft geen endpoint. ` +
+        `Zet \`${provider}_URL\` in env (bv. http://127.0.0.1:8001/v1/chat/completions) ` +
+        `of vul agent.config.endpoint in.`,
     };
     return;
   }
 
   const messageId = randomUUID();
   yield { type: "message_start", message_id: messageId, role: "assistant" };
+
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    ...(opts.config.headers ?? {}),
+  };
+  const envKey = process.env[`${provider}_API_KEY`];
+  const bearer = opts.apiKey || envKey;
+  if (bearer && !headers["authorization"] && !headers["Authorization"]) {
+    headers["authorization"] = `Bearer ${bearer}`;
+  }
 
   let response: Response;
   try {
@@ -31,10 +57,7 @@ export async function* streamGenericHttp(
       : opts.messages;
     response = await fetch(endpoint, {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        ...(opts.config.headers ?? {}),
-      },
+      headers,
       body: JSON.stringify({
         model: opts.config.model,
         stream: true,
@@ -47,16 +70,37 @@ export async function* streamGenericHttp(
     yield {
       type: "error",
       code: "http_network",
-      message: err instanceof Error ? err.message : "Network error",
+      message:
+        err instanceof Error
+          ? `${err.message} (kan ${endpoint} bereiken? Check of de service draait.)`
+          : "Network error",
     };
     return;
   }
 
   if (!response.ok || !response.body) {
+    const body = await response.text().catch(() => response.statusText);
     yield {
       type: "error",
       code: `http_${response.status}`,
-      message: await response.text().catch(() => response.statusText),
+      message: `${response.status} ${response.statusText}: ${body.slice(0, 500)}`,
+    };
+    return;
+  }
+
+  // Some self-hosted services return non-streaming JSON even when
+  // stream=true is requested. Detect that and handle as one-shot.
+  const ctype = response.headers.get("content-type") ?? "";
+  if (ctype.includes("application/json") && !ctype.includes("event-stream")) {
+    const json = (await response.json().catch(() => null)) as {
+      choices?: { message?: { content?: string } }[];
+    } | null;
+    const text = json?.choices?.[0]?.message?.content ?? "";
+    if (text) yield { type: "token", message_id: messageId, delta: text };
+    yield {
+      type: "message_end",
+      message_id: messageId,
+      usage: { input_tokens: 0, output_tokens: 0, cost_cents: 0 },
     };
     return;
   }

@@ -16,6 +16,7 @@ export type AgentInput = {
   kind?: "chat" | "worker" | "reviewer" | "generator" | "router";
   provider:
     | "claude"
+    | "claude_cli"
     | "openrouter"
     | "minimax"
     | "ollama"

@@ -4,6 +4,7 @@
 
 import type { AGUIEvent, ChatMessage } from "./ag-ui";
 import { streamClaude } from "./providers/claude";
+import { streamClaudeCli } from "./providers/claude-cli";
 import { streamOpenRouter } from "./providers/openrouter";
 import { streamOllama } from "./providers/ollama";
 import { streamMinimax } from "./providers/minimax";
@@ -13,6 +14,7 @@ import { streamNotConfigured } from "./providers/stub";
 
 export type ProviderId =
   | "claude"
+  | "claude_cli"
   | "openrouter"
   | "minimax"
   | "ollama"
@@ -127,6 +129,11 @@ export async function* streamChat(
   switch (opts.provider) {
     case "claude":
       yield* streamClaude(opts);
+      return;
+    case "claude_cli":
+      // Subscription-based — spawns the local `claude` CLI. No API
+      // key needed; quotas come from the user's Claude Code plan.
+      yield* streamClaudeCli(opts);
       return;
     case "openrouter":
       yield* streamOpenRouter(opts);
