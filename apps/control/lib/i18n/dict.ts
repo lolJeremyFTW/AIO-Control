@@ -99,6 +99,18 @@ const nl: Dict = {
   "page.marketplace": "Marketplace",
   "page.marketplace.sub": "Curated AI agent presets",
 
+  "page.business.overview.sub": "Per-business overzicht",
+  "page.business.agents.title": "{business} — agents",
+  "page.business.agents.sub": "Providers · prompts · schedules",
+  "page.business.schedules.title": "{business} — schedules",
+  "page.business.schedules.sub": "Cron · webhooks · run-historie",
+  "page.business.integrations.title": "{business} — integraties",
+  "page.business.integrations.sub":
+    "Externe services die deze business gebruikt",
+  "page.business.runs.title": "{business} — runs",
+  "page.business.runs.sub": "Volledige run-historie van alle agents",
+  "page.business.subnav": "Sub-navigatie",
+
   "rail.empty": "Geen businesses nog",
   "rail.emptyTopics": "Nog geen subtopics — maak er een aan ↓",
 
@@ -409,6 +421,17 @@ const en: Partial<Dict> = {
     "Spend per business · per agent · per provider — last 30 days",
   "page.marketplace": "Marketplace",
   "page.marketplace.sub": "Curated AI agent presets",
+
+  "page.business.overview.sub": "Per-business overview",
+  "page.business.agents.title": "{business} — agents",
+  "page.business.agents.sub": "Providers · prompts · schedules",
+  "page.business.schedules.title": "{business} — schedules",
+  "page.business.schedules.sub": "Cron · webhooks · run history",
+  "page.business.integrations.title": "{business} — integrations",
+  "page.business.integrations.sub": "External services this business uses",
+  "page.business.runs.title": "{business} — runs",
+  "page.business.runs.sub": "Full run history across every agent",
+  "page.business.subnav": "Sub-navigation",
 
   "settings.sub": "Account · workspace · automations",
   "settings.section.agentDefaults": "Agent defaults",

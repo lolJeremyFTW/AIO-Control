@@ -27,6 +27,12 @@ export type Lang = "NL" | "EN" | "DE";
 
 type Props = {
   crumb: Crumb;
+  /** Click-handler for the workspace name in the breadcrumb. When set
+   *  the workspace half becomes a button; when omitted it stays a span. */
+  onCrumbWorkspaceClick?: () => void;
+  /** Click-handler for the page title (right side) in the breadcrumb.
+   *  Used to jump back from a drilled business → all businesses. */
+  onCrumbPageClick?: () => void;
   lang?: Lang;
   onLangChange?: (lang: Lang) => void;
   notifications?: number;
@@ -60,6 +66,8 @@ type Props = {
 
 export function Header({
   crumb,
+  onCrumbWorkspaceClick,
+  onCrumbPageClick,
   lang = "NL",
   onLangChange,
   notifications = 0,
@@ -120,15 +128,38 @@ export function Header({
           </button>
         )}
         <div className="crumb">
-          <span className="biz">
-            <span className="swatch">{crumb.workspaceLetter}</span>{" "}
-            {crumb.workspaceName}
-          </span>
+          {onCrumbWorkspaceClick ? (
+            <button
+              type="button"
+              className="biz biz-clickable"
+              onClick={onCrumbWorkspaceClick}
+              title="Terug naar workspace dashboard"
+            >
+              <span className="swatch">{crumb.workspaceLetter}</span>{" "}
+              {crumb.workspaceName}
+            </button>
+          ) : (
+            <span className="biz">
+              <span className="swatch">{crumb.workspaceLetter}</span>{" "}
+              {crumb.workspaceName}
+            </span>
+          )}
           <span className="sep">
             <ChevronRightIcon />
           </span>
           <span className="topic-with-status">
-            <span className="topic">{crumb.pageTitle}</span>
+            {onCrumbPageClick ? (
+              <button
+                type="button"
+                className="topic topic-clickable"
+                onClick={onCrumbPageClick}
+                title="Terug naar alle businesses"
+              >
+                {crumb.pageTitle}
+              </button>
+            ) : (
+              <span className="topic">{crumb.pageTitle}</span>
+            )}
             {crumb.showRunningDot && (
               <span className="running-dot" title="Automation running" />
             )}

@@ -9,7 +9,21 @@ import { useMemo, useState, useTransition, type ReactNode } from "react";
 
 import { ContextMenu, type ContextMenuItem } from "@aio/ui/context-menu";
 import { Header } from "@aio/ui/header";
-import { getAppIcon } from "@aio/ui/icon";
+import {
+  ArchiveIcon,
+  ArrowDownIcon,
+  ArrowUpIcon,
+  CalendarIcon,
+  CopyIcon,
+  ExternalLinkIcon,
+  LinkIcon,
+  MoveIcon,
+  OpenIcon,
+  PlusIcon,
+  RobotIcon,
+  SettingsIcon,
+  getAppIcon,
+} from "@aio/ui/icon";
 import {
   Rail,
   type ContextMenuOrigin,
@@ -366,7 +380,7 @@ export function WorkspaceShell({
       return [
         {
           label: t("ctx.newBusiness"),
-          icon: <span style={{ fontWeight: 700 }}>+</span>,
+          icon: <PlusIcon />,
           onClick: () => setNewBusinessOpen(true),
         },
       ];
@@ -376,14 +390,20 @@ export function WorkspaceShell({
       if (!biz) return [];
       const path = `/${workspace.slug}/business/${biz.id}`;
       return [
-        { label: t("ctx.open"), onClick: () => router.push(path) },
+        {
+          label: t("ctx.open"),
+          icon: <OpenIcon />,
+          onClick: () => router.push(path),
+        },
         {
           label: t("ctx.openNewTab"),
+          icon: <ExternalLinkIcon />,
           onClick: () => window.open(path, "_blank", "noopener"),
         },
         { kind: "separator" },
         {
           label: t("ctx.newTopic"),
+          icon: <PlusIcon />,
           onClick: () =>
             setCreatingChildOf({
               businessId: biz.id,
@@ -393,15 +413,18 @@ export function WorkspaceShell({
         },
         {
           label: t("ctx.agents"),
+          icon: <RobotIcon />,
           onClick: () => router.push(`${path}/agents`),
         },
         {
           label: t("ctx.schedules"),
+          icon: <CalendarIcon />,
           onClick: () => router.push(`${path}/schedules`),
         },
         { kind: "separator" },
         {
           label: t("ctx.settings"),
+          icon: <SettingsIcon />,
           onClick: () =>
             setEditing({
               kind: "business",
@@ -424,6 +447,7 @@ export function WorkspaceShell({
         },
         {
           label: t("ctx.duplicate"),
+          icon: <CopyIcon />,
           onClick: async () => {
             const res = await duplicateBusiness({
               workspace_slug: workspace.slug,
@@ -436,6 +460,7 @@ export function WorkspaceShell({
         },
         {
           label: t("ctx.copyLink"),
+          icon: <LinkIcon />,
           onClick: () =>
             navigator.clipboard.writeText(
               `${window.location.origin}${path}`,
@@ -444,6 +469,7 @@ export function WorkspaceShell({
         { kind: "separator" },
         {
           label: t("ctx.archive"),
+          icon: <ArchiveIcon />,
           danger: true,
           onClick: async () => {
             if (!confirm(t("ctx.confirmArchiveBiz", { name: biz.name })))
@@ -472,6 +498,7 @@ export function WorkspaceShell({
         return [
           {
             label: t("ctx.open"),
+            icon: <OpenIcon />,
             onClick: () => {
               const topic = railTopics.find((x) => x.id === origin.id);
               if (topic && drilledBiz) {
@@ -501,14 +528,20 @@ export function WorkspaceShell({
         )
         .slice(0, 12);
       return [
-        { label: t("ctx.open"), onClick: () => router.push(fullPath) },
+        {
+          label: t("ctx.open"),
+          icon: <OpenIcon />,
+          onClick: () => router.push(fullPath),
+        },
         {
           label: t("ctx.openNewTab"),
+          icon: <ExternalLinkIcon />,
           onClick: () => window.open(fullPath, "_blank", "noopener"),
         },
         { kind: "separator" },
         {
           label: t("ctx.newSubtopic"),
+          icon: <PlusIcon />,
           onClick: () =>
             setCreatingChildOf({
               businessId: drilledBiz.biz.id,
@@ -518,6 +551,7 @@ export function WorkspaceShell({
         },
         {
           label: t("ctx.settings"),
+          icon: <SettingsIcon />,
           onClick: () =>
             setEditing({
               kind: "navnode",
@@ -534,6 +568,7 @@ export function WorkspaceShell({
         },
         {
           label: t("ctx.duplicate"),
+          icon: <CopyIcon />,
           onClick: async () => {
             const res = await duplicateNavNode({
               workspace_slug: workspace.slug,
@@ -548,6 +583,7 @@ export function WorkspaceShell({
         { kind: "separator" },
         {
           label: t("ctx.moveUp"),
+          icon: <ArrowUpIcon />,
           onClick: async () => {
             const res = await reorderNavNode({
               workspace_slug: workspace.slug,
@@ -561,6 +597,7 @@ export function WorkspaceShell({
         },
         {
           label: t("ctx.moveDown"),
+          icon: <ArrowDownIcon />,
           onClick: async () => {
             const res = await reorderNavNode({
               workspace_slug: workspace.slug,
@@ -575,6 +612,7 @@ export function WorkspaceShell({
         { kind: "separator" },
         {
           label: t("ctx.moveToRoot"),
+          icon: <MoveIcon />,
           onClick: async () => {
             const res = await moveNavNode({
               workspace_slug: workspace.slug,
@@ -591,6 +629,7 @@ export function WorkspaceShell({
             label: t("ctx.moveUnder", {
               name: `${target.icon ?? ""}${target.name}`,
             }),
+            icon: <MoveIcon />,
             onClick: async () => {
               const res = await moveNavNode({
                 workspace_slug: workspace.slug,
@@ -606,6 +645,7 @@ export function WorkspaceShell({
         { kind: "separator" },
         {
           label: t("ctx.copyLink"),
+          icon: <LinkIcon />,
           onClick: () =>
             navigator.clipboard.writeText(
               `${window.location.origin}${fullPath}`,
@@ -614,6 +654,7 @@ export function WorkspaceShell({
         { kind: "separator" },
         {
           label: t("ctx.archive"),
+          icon: <ArchiveIcon />,
           danger: true,
           onClick: async () => {
             if (!confirm(t("ctx.confirmArchiveTopic", { name: node.name })))
@@ -777,6 +818,20 @@ export function WorkspaceShell({
                     : t("page.dashboard"),
             pageSub: drilledBiz?.biz.sub ?? undefined,
           }}
+          onCrumbWorkspaceClick={() => {
+            closeRail();
+            router.push(`/${workspace.slug}/dashboard`);
+          }}
+          onCrumbPageClick={
+            drilledBiz
+              ? () => {
+                  // Click on the right-side crumb (the business name)
+                  // exits drill-mode → workspace dashboard.
+                  closeRail();
+                  router.push(`/${workspace.slug}/dashboard`);
+                }
+              : undefined
+          }
           notifications={0}
           avatarLetter={profile.letter}
           weather={weather}

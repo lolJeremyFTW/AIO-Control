@@ -266,8 +266,15 @@ export function Rail({
           /* Drilled in: top slot shows the BUSINESS as the primary
              label. Click → back to all businesses. Hover tooltip
              confirms the back-action. The drillChain (Instagram →
-             Instagram post → …) lives below the divider in rail-mid. */
-          <div title={`← ${L.allBusinesses}`}>
+             Instagram post → …) lives below the divider in rail-mid.
+             The wrapper div carries `rail-drilled-back` so the hover
+             state can render a "← Alle businesses" hint visibly via
+             CSS, not just through the title attribute. */
+          <div
+            className="rail-drilled-back"
+            title={`← ${L.allBusinesses}`}
+            data-back-label={L.allBusinesses}
+          >
             <NavRow
               item={drilledInto!}
               expanded={expanded}
