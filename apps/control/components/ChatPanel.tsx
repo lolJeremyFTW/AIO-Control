@@ -647,47 +647,55 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
               >
                 <div
                   style={{
-                    background:
-                      m.role === "user"
-                        ? "var(--tt-green)"
-                        : m.role === "error"
-                          ? "rgba(230,82,107,0.10)"
-                          : "var(--app-card-2)",
-                    color:
-                      m.role === "user"
-                        ? "#fff"
-                        : m.role === "error"
-                          ? "var(--rose)"
-                          : "var(--app-fg)",
-                    border:
-                      m.role === "error"
-                        ? "1px solid rgba(230,82,107,0.4)"
-                        : "1px solid var(--app-border-2)",
-                    borderRadius: 12,
-                    padding: "8px 11px",
-                    // assistant text already structures itself via
-                    // MarkdownText; user/error stay literal so newlines
-                    // they typed render verbatim.
-                    whiteSpace: m.role === "assistant" ? "normal" : "pre-wrap",
-                    lineHeight: 1.42,
+                    display: "flex",
+                    justifyContent: m.role === "user" ? "flex-end" : "flex-start",
+                    alignItems: "flex-end",
+                    gap: 6,
+                    width: "100%",
                   }}
                 >
-                  {m.role === "assistant" && m.text ? (
-                    <MarkdownText text={m.text} />
-                  ) : (
-                    m.text || (m.pending ? "…" : "")
-                  )}
-                </div>
-
-                {/* Timestamp */}
-                <div
-                  style={{
-                    fontSize: 10,
-                    color: "var(--app-fg-3)",
-                    padding: "0 2px",
-                  }}
-                >
-                  {m.createdAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  <div
+                    style={{
+                      background:
+                        m.role === "user"
+                          ? "var(--tt-green)"
+                          : m.role === "error"
+                            ? "rgba(230,82,107,0.10)"
+                            : "var(--app-card-2)",
+                      color:
+                        m.role === "user"
+                          ? "#fff"
+                          : m.role === "error"
+                            ? "var(--rose)"
+                            : "var(--app-fg)",
+                      border:
+                        m.role === "error"
+                          ? "1px solid rgba(230,82,107,0.4)"
+                          : "1px solid var(--app-border-2)",
+                      borderRadius: 12,
+                      padding: "8px 11px",
+                      maxWidth: "80%",
+                      whiteSpace: m.role === "assistant" ? "normal" : "pre-wrap",
+                      lineHeight: 1.42,
+                    }}
+                  >
+                    {m.role === "assistant" && m.text ? (
+                      <MarkdownText text={m.text} />
+                    ) : (
+                      m.text || (m.pending ? "…" : "")
+                    )}
+                  </div>
+                  <span
+                    style={{
+                      fontSize: 10.5,
+                      color: "var(--app-fg-3)",
+                      padding: "0 2px",
+                      flexShrink: 0,
+                      fontFamily: "var(--mono, monospace)",
+                    }}
+                  >
+                    {m.createdAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </span>
                 </div>
 
                 {/* Tool-call chips so the user sees what the agent is
