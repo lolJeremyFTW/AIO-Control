@@ -195,7 +195,7 @@ export function TalkModule({ agents, workspaceSlug, defaultAgentId }: Props) {
         disabled={isBusy}
       >
         <span className="talk-mic-pulse">
-          <MicIcon size={14} />
+          {isError ? <span style={{ fontSize: 10 }}>✕</span> : <MicIcon size={14} />}
         </span>
 
         {isRecording && <Waveform volume={volume} />}

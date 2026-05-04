@@ -119,7 +119,8 @@ export function useRecorder(): UseRecorderReturn {
       }
 
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true },
+        audio: true,
+        // audio: { echoCancellation: true, noiseSuppression: true },
       });
       streamRef.current = stream;
 
@@ -272,5 +273,37 @@ export function useRecorder(): UseRecorderReturn {
     discard,
     setTtsUrl,
     onAudioEnded,
+  };
+}
+
+// Debug helper — attach to window for console testing
+if (typeof window !== "undefined") {
+  (window as unknown as Record<string, unknown>).debugRecorder = {
+    async testMic() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        console.info("[debugRecorder] getUserMedia OK, tracks:", stream.getAudioTracks().length);
+        stream.getTracks().forEach(t => t.stop());
+        return "MIC OK";
+      } catch (e) {
+        const err = e as Error;
+        console.error("[debugRecorder] getUserMedia FAILED:", err.name, err.message);
+        return `${err.name}: ${err.message}`;
+      }
+    },
+    async testMicWithConstraints() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true },
+        });
+        console.info("[debugRecorder] getUserMedia with constraints OK");
+        stream.getTracks().forEach(t => t.stop());
+        return "OK";
+      } catch (e) {
+        const err = e as Error;
+        console.error("[debugRecorder] constraints FAILED:", err.name, err.message);
+        return `${err.name}: ${err.message}`;
+      }
+    },
   };
 }
