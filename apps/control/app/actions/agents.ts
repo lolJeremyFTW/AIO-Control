@@ -48,9 +48,13 @@ export type AgentInput = {
    *  belongs to the business as a whole (current behaviour). */
   nav_node_id?: string | null;
   /** Names of MCP servers this agent should host. For provider="minimax"
-   *  set to ["minimax"] to expose the Coder Plan MCP (web_search +
-   *  understand_image) — routes the run through Claude Code as MCP host. */
+   *  pick from "minimax", "filesystem", "fetch". streamMinimax spawns
+   *  each native via @aio/ai/mcp/host. */
   mcpServers?: string[];
+  /** Per-MCP-server scope (today: filesystem off/ro/rw). */
+  mcpPermissions?: {
+    filesystem?: "off" | "ro" | "rw";
+  };
 };
 
 export type ActionResult<T> =
@@ -118,6 +122,10 @@ export async function createAgent(
         ...(input.mcpServers && input.mcpServers.length > 0
           ? { mcpServers: input.mcpServers }
           : {}),
+        ...(input.mcpPermissions &&
+        Object.keys(input.mcpPermissions).length > 0
+          ? { mcpPermissions: input.mcpPermissions }
+          : {}),
         routingRules,
       },
       telegram_target_id: input.telegram_target_id ?? null,
@@ -167,11 +175,15 @@ export async function updateAgent(input: {
      *  migration 043. */
     nav_node_id?: string | null;
     /** Names of MCP servers the agent should host (provider-specific).
-     *  For provider="minimax" the only known server is "minimax" — the
-     *  Coder Plan MCP exposing web_search + understand_image. Setting
-     *  this routes the run through Claude Code as MCP host. Empty
-     *  array / null disables MCP. */
+     *  For provider="minimax" the known servers are "minimax",
+     *  "filesystem", "fetch". streamMinimax spawns each via
+     *  @aio/ai/mcp/host and exposes their tools to the model. */
     mcpServers?: string[] | null;
+    /** Per-MCP-server scope rules. Today only filesystem honours these
+     *  ("off" / "ro" / "rw"). Stored as agent.config.mcpPermissions. */
+    mcpPermissions?: {
+      filesystem?: "off" | "ro" | "rw";
+    } | null;
   };
 }): Promise<ActionResult<null>> {
   const patch: Record<string, unknown> = {};
@@ -204,7 +216,8 @@ export async function updateAgent(input: {
   if (
     input.patch.systemPrompt !== undefined ||
     input.patch.endpoint !== undefined ||
-    input.patch.mcpServers !== undefined
+    input.patch.mcpServers !== undefined ||
+    input.patch.mcpPermissions !== undefined
   ) {
     const supabase = await createSupabaseServerClient();
     const { data: cur } = await supabase
@@ -223,6 +236,16 @@ export async function updateAgent(input: {
       // (config.mcpServers ?? []).length check stays clean.
       if (arr.length === 0) delete config.mcpServers;
       else config.mcpServers = arr;
+    }
+    if (input.patch.mcpPermissions !== undefined) {
+      const perms = input.patch.mcpPermissions;
+      // Empty / null → drop the field. Otherwise store as-is so the
+      // router's mcpPermissions.filesystem check reads it directly.
+      if (!perms || Object.keys(perms).length === 0) {
+        delete config.mcpPermissions;
+      } else {
+        config.mcpPermissions = perms;
+      }
     }
     patch.config = config;
   }

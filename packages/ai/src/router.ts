@@ -30,6 +30,12 @@ export interface AgentConfig {
   temperature?: number;
   maxTokens?: number;
   mcpServers?: string[];
+  /** Per-MCP-server scope flags. Today only filesystem honours this:
+   *  "off" skips spawning, "ro" filters out write/edit/delete tools,
+   *  "rw" (default) is full access. Other servers ignore this. */
+  mcpPermissions?: {
+    filesystem?: "off" | "ro" | "rw";
+  };
   endpoint?: string; // for openclaw / hermes / custom HTTP
   headers?: Record<string, string>;
   /**

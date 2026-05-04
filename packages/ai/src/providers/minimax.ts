@@ -145,7 +145,15 @@ async function* streamMinimaxWithTools(
       // it works even when the Next worker forked us without inheriting
       // env vars from the parent service. The MiniMax MCP server bails
       // with "MINIMAX_API_KEY env or header cannot be empty" otherwise.
-      await host.connect(serverIds, { MINIMAX_API_KEY: apiKey });
+      const permissions =
+        (opts.config.mcpPermissions as
+          | { filesystem?: "off" | "ro" | "rw" }
+          | undefined) ?? {};
+      await host.connect(
+        serverIds,
+        { MINIMAX_API_KEY: apiKey },
+        permissions,
+      );
     } catch (err) {
       yield {
         type: "error",

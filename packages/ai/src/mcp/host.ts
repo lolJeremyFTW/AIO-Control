@@ -28,6 +28,30 @@ export type McpToolDef = {
   parameters: Record<string, unknown>;
 };
 
+/** Per-server scope rules. The agent dialog stores these as
+ *  agent.config.mcpPermissions; the host honours them when listing
+ *  tools (e.g. drops write tools when filesystem is "ro").
+ */
+export type McpPermissions = {
+  /** off | ro | rw — default rw when omitted. */
+  filesystem?: "off" | "ro" | "rw";
+};
+
+// Tool-name patterns that should be dropped when a server is in
+// read-only mode. Filesystem servers (the Anthropic reference and most
+// community ones) follow this naming.
+const WRITE_TOOL_PATTERNS = [
+  /^write[-_]/i,
+  /^edit[-_]/i,
+  /^create[-_]/i,
+  /^delete[-_]/i,
+  /^remove[-_]/i,
+  /^move[-_]/i,
+  /^rename[-_]/i,
+  /[-_]write$/i,
+  /[-_]edit$/i,
+];
+
 type ServerSpec = {
   command: string;
   args: string[];
@@ -95,6 +119,7 @@ export class McpHost {
   async connect(
     serverIds: string[],
     envOverrides?: Record<string, string>,
+    permissions: McpPermissions = {},
   ): Promise<void> {
     const tasks: Promise<Connected | null>[] = [];
     for (const id of serverIds) {
@@ -103,7 +128,12 @@ export class McpHost {
         console.warn(`[mcp] unknown server id: ${id} — skipping`);
         continue;
       }
-      tasks.push(this.connectOne(id, spec, envOverrides ?? {}));
+      // Skip a server entirely when the user set its scope to "off"
+      // — we honour the agent-level permission gate before spawning.
+      if (id === "filesystem" && permissions.filesystem === "off") continue;
+      tasks.push(
+        this.connectOne(id, spec, envOverrides ?? {}, permissions),
+      );
     }
     const results = await Promise.all(tasks);
     for (const r of results) {
@@ -115,6 +145,7 @@ export class McpHost {
     id: string,
     spec: ServerSpec,
     envOverrides: Record<string, string>,
+    permissions: McpPermissions,
   ): Promise<Connected> {
     // Strip undefined values from process.env before spreading (some
     // Node versions throw when a spawn env contains undefined values).
@@ -138,16 +169,27 @@ export class McpHost {
     );
     await client.connect(transport);
     const list = await client.listTools();
-    const tools: McpToolDef[] = list.tools.map((t) => ({
-      name: `${id}__${t.name}`,
-      raw_name: t.name,
-      server: id,
-      description: t.description ?? "",
-      parameters: (t.inputSchema as Record<string, unknown>) ?? {
-        type: "object",
-        properties: {},
-      },
-    }));
+    const fsScope = permissions.filesystem ?? "rw";
+    const tools: McpToolDef[] = list.tools
+      .filter((t) => {
+        // Filesystem read-only mode: drop any tool whose name matches
+        // write/edit/delete/move patterns. Server keeps running so
+        // read tools (read_file, list_directory, …) stay available.
+        if (id === "filesystem" && fsScope === "ro") {
+          return !WRITE_TOOL_PATTERNS.some((re) => re.test(t.name));
+        }
+        return true;
+      })
+      .map((t) => ({
+        name: `${id}__${t.name}`,
+        raw_name: t.name,
+        server: id,
+        description: t.description ?? "",
+        parameters: (t.inputSchema as Record<string, unknown>) ?? {
+          type: "object",
+          properties: {},
+        },
+      }));
     return { server: id, client, tools };
   }
 

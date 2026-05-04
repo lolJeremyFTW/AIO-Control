@@ -95,6 +95,7 @@ export function EditAgentDialog({
     systemPrompt?: string | null;
     endpoint?: string | null;
     mcpServers?: string[] | null;
+    mcpPermissions?: { filesystem?: "off" | "ro" | "rw" } | null;
   };
 
   const [name, setName] = useState(agent.name);
@@ -114,6 +115,9 @@ export function EditAgentDialog({
     setMcpServers((prev) =>
       prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id],
     );
+  const [mcpPermissions, setMcpPermissions] = useState<{
+    filesystem?: "off" | "ro" | "rw";
+  }>(cfg.mcpPermissions ?? {});
   const [telegramTargetId, setTelegramTargetId] = useState(
     agent.telegram_target_id ?? "",
   );
@@ -168,6 +172,8 @@ export function EditAgentDialog({
         // providers we send an empty array which the action strips
         // out of config.
         mcpServers: provider === "minimax" ? mcpServers : [],
+        mcpPermissions:
+          provider === "minimax" ? mcpPermissions : null,
       },
     });
     setPending(false);
@@ -315,6 +321,8 @@ export function EditAgentDialog({
           <McpServersField
             value={mcpServers}
             onToggle={toggleMcp}
+            permissions={mcpPermissions}
+            onPermissionsChange={setMcpPermissions}
           />
         )}
 

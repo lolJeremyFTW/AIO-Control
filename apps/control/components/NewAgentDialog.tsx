@@ -106,6 +106,9 @@ export function NewAgentDialog({
     setMcpServers((prev) =>
       prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id],
     );
+  const [mcpPermissions, setMcpPermissions] = useState<{
+    filesystem?: "off" | "ro" | "rw";
+  }>({});
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -140,6 +143,10 @@ export function NewAgentDialog({
       mcpServers:
         provider === "minimax" && mcpServers.length > 0
           ? mcpServers
+          : undefined,
+      mcpPermissions:
+        provider === "minimax" && Object.keys(mcpPermissions).length > 0
+          ? mcpPermissions
           : undefined,
     });
     setPending(false);
@@ -353,7 +360,12 @@ export function NewAgentDialog({
         </Field>
 
         {provider === "minimax" && (
-          <McpServersField value={mcpServers} onToggle={toggleMcp} />
+          <McpServersField
+            value={mcpServers}
+            onToggle={toggleMcp}
+            permissions={mcpPermissions}
+            onPermissionsChange={setMcpPermissions}
+          />
         )}
 
         {navOptions.length > 0 && (
