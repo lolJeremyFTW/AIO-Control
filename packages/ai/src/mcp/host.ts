@@ -115,6 +115,17 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
       AIO_WORKSPACE_ID: process.env.AIO_WORKSPACE_ID ?? "default",
     }),
   },
+  // Bash shell access — executes commands locally on the VPS.
+  // Dangerous commands (rm -rf, shutdown, dd, etc.) are blocked
+  // unless prefixed with "Approved: " (user approved via ask_followup).
+  bash: {
+    command: "npx",
+    args: [
+      "-y",
+      "tsx",
+      "packages/ai/src/mcp/servers/bash-server.ts",
+    ],
+  },
 };
 
 type Connected = {
