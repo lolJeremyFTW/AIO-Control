@@ -21,6 +21,10 @@ type RunRow = {
   id: string;
   workspace_id: string;
   business_id: string | null;
+  /** Optional nav_node id when the run was pinned to a topic (set by
+   *  the agent's nav_node_id or the schedule's, propagated by the
+   *  cron-scheduler). Drives per-topic Telegram routing. */
+  nav_node_id?: string | null;
   agent_id: string | null;
   schedule_id: string | null;
   status: string;
@@ -74,9 +78,41 @@ export async function dispatchRunEvent(
     schedule = (data as ScheduleLite | null) ?? null;
   }
 
-  // 2. Pick the target IDs — schedule overrides agent.
+  // 2. Resolve the per-business / per-topic auto-created topic-targets
+  //    so reports from BusinessA's agent end up in BusinessA's topic
+  //    instead of being lobbed at whichever workspace-scope target was
+  //    created first. Order from most → least specific:
+  //      schedule → agent → nav_node → business → workspace fallback
+  let businessTopicTargetId: string | null = null;
+  if (run.business_id) {
+    const { data: bizRow } = await supabase
+      .from("businesses")
+      .select("telegram_topic_target_id")
+      .eq("id", run.business_id)
+      .maybeSingle();
+    businessTopicTargetId =
+      (bizRow?.telegram_topic_target_id as string | null) ?? null;
+  }
+  let navTopicTargetId: string | null = null;
+  if (run.nav_node_id) {
+    const { data: nodeRow } = await supabase
+      .from("nav_nodes")
+      .select("telegram_topic_target_id")
+      .eq("id", run.nav_node_id)
+      .maybeSingle();
+    navTopicTargetId =
+      (nodeRow?.telegram_topic_target_id as string | null) ?? null;
+  }
+
+  // 3. Pick the target IDs — schedule wins over agent wins over
+  //    nav_node wins over business; final fallback is "any enabled
+  //    workspace-scope target" inside fireTelegram below.
   const telegramId =
-    schedule?.telegram_target_id ?? agent?.telegram_target_id ?? null;
+    schedule?.telegram_target_id ??
+    agent?.telegram_target_id ??
+    navTopicTargetId ??
+    businessTopicTargetId ??
+    null;
   const customId =
     schedule?.custom_integration_id ?? agent?.custom_integration_id ?? null;
 

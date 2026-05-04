@@ -297,6 +297,42 @@ export async function archiveBusiness({
 
 type AutoCreateResult = { ok: true } | { ok: false; error: string };
 
+/**
+ * Server action wrapper around the internal auto-create. Lets the
+ * EditBusinessDialog (and any other future caller) backfill a topic
+ * for an existing business that was created before the bot had the
+ * "Manage Topics" permission. RLS gates the read of the business row
+ * via the service-role helper inside.
+ */
+export async function backfillBusinessTelegramTopic(input: {
+  workspace_slug: string;
+  business_id: string;
+}): Promise<ActionResult<null>> {
+  const supabase = await createSupabaseServerClient();
+  const { data: biz, error } = await supabase
+    .from("businesses")
+    .select("workspace_id, name, icon, telegram_topic_target_id")
+    .eq("id", input.business_id)
+    .maybeSingle();
+  if (error || !biz) return { ok: false, error: "Business niet gevonden." };
+  if (biz.telegram_topic_target_id) {
+    return {
+      ok: false,
+      error:
+        "Business heeft al een Telegram topic gekoppeld. Verwijder eerst de bestaande binding via Settings → Telegram.",
+    };
+  }
+  const result = await autoCreateTelegramTopicForBusiness({
+    workspace_id: biz.workspace_id as string,
+    business_id: input.business_id,
+    business_name: (biz.name as string) ?? "Business",
+    icon: (biz.icon as string | null) ?? null,
+  });
+  if (!result.ok) return { ok: false, error: result.error };
+  revalidatePath(`/${input.workspace_slug}/dashboard`);
+  return { ok: true, data: null };
+}
+
 async function autoCreateTelegramTopicForBusiness(opts: {
   workspace_id: string;
   business_id: string;

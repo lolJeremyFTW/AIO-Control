@@ -10,7 +10,10 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
-import { updateBusiness } from "../app/actions/businesses";
+import {
+  backfillBusinessTelegramTopic,
+  updateBusiness,
+} from "../app/actions/businesses";
 import { updateNavNode } from "../app/actions/nav-nodes";
 import { AppearancePicker, type AppearanceValue } from "./AppearancePicker";
 import { TargetsEditor, type Target } from "./TargetsEditor";
@@ -264,6 +267,11 @@ export function EditNodeDialog({ workspaceSlug, target, onClose }: Props) {
               <TargetsEditor value={bizTargets} onChange={setBizTargets} />
             </Field>
 
+            <BackfillTelegramTopicRow
+              workspaceSlug={workspaceSlug}
+              businessId={target.id}
+            />
+
           <div
             style={{
               border: "1.5px solid var(--app-border-2)",
@@ -470,5 +478,101 @@ function Field({
       <span style={{ display: "block", marginBottom: 4 }}>{label}</span>
       {children}
     </label>
+  );
+}
+
+// Inline button so an existing business that was created before the bot
+// had "Manage Topics" can backfill its Telegram topic without going
+// through the BusinessSetupWizard again. The action handles the
+// "already bound" case server-side.
+function BackfillTelegramTopicRow({
+  workspaceSlug,
+  businessId,
+}: {
+  workspaceSlug: string;
+  businessId: string;
+}) {
+  const router = useRouter();
+  const [pending, setPending] = useState(false);
+  const [feedback, setFeedback] = useState<
+    | { kind: "ok"; msg: string }
+    | { kind: "err"; msg: string }
+    | null
+  >(null);
+
+  const onClick = async () => {
+    setPending(true);
+    setFeedback(null);
+    const res = await backfillBusinessTelegramTopic({
+      workspace_slug: workspaceSlug,
+      business_id: businessId,
+    });
+    setPending(false);
+    if (!res.ok) {
+      setFeedback({ kind: "err", msg: res.error });
+      return;
+    }
+    setFeedback({
+      kind: "ok",
+      msg: "Topic aangemaakt. Volgende run rapporteert in de juiste topic.",
+    });
+    router.refresh();
+  };
+
+  return (
+    <div
+      style={{
+        border: "1.5px dashed var(--app-border-2)",
+        borderRadius: 10,
+        padding: "10px 12px",
+        background: "var(--app-card-2)",
+        marginBottom: 12,
+      }}
+    >
+      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--app-fg-2)" }}>
+        Telegram topic
+      </div>
+      <p
+        style={{
+          fontSize: 11,
+          color: "var(--app-fg-3)",
+          margin: "4px 0 8px",
+          lineHeight: 1.5,
+        }}
+      >
+        Maak (of opnieuw) een forum-topic in je Telegram-groep voor deze
+        business aan. Vereist dat de bot admin is met "Manage Topics".
+      </p>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <button
+          type="button"
+          onClick={() => void onClick()}
+          disabled={pending}
+          style={{
+            padding: "6px 12px",
+            border: "1.5px solid var(--tt-green)",
+            background: pending ? "rgba(57,178,85,0.15)" : "var(--tt-green)",
+            color: pending ? "var(--tt-green)" : "#fff",
+            borderRadius: 8,
+            fontSize: 11.5,
+            fontWeight: 700,
+            cursor: pending ? "wait" : "pointer",
+          }}
+        >
+          {pending ? "Bezig…" : "+ Topic aanmaken"}
+        </button>
+        {feedback && (
+          <span
+            style={{
+              fontSize: 11,
+              color:
+                feedback.kind === "ok" ? "var(--tt-green)" : "var(--rose)",
+            }}
+          >
+            {feedback.msg}
+          </span>
+        )}
+      </div>
+    </div>
   );
 }
