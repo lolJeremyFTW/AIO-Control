@@ -107,7 +107,7 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
     args: [
       "-y",
       "tsx",
-      "packages/ai/src/mcp/servers/aio-server.ts",
+      "/home/jeremy/mcp-servers/aio-server.ts",
     ],
     env: () => ({
       SUPABASE_URL: process.env.SUPABASE_URL ?? "",
@@ -123,7 +123,7 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
     args: [
       "-y",
       "tsx",
-      "packages/ai/src/mcp/servers/bash-server.ts",
+      "/home/jeremy/mcp-servers/bash-server.ts",
     ],
   },
 };
