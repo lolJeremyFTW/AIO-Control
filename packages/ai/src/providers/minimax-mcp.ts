@@ -78,6 +78,12 @@ export async function* streamMinimaxViaClaude(
       "--print",
       "--output-format",
       "stream-json",
+      // Claude CLI rejects --output-format=stream-json without --verbose
+      // ("When using --print, --output-format=stream-json requires
+      // --verbose"). The flag enables the per-message events we already
+      // parse below; without it the CLI would only emit a final result
+      // envelope.
+      "--verbose",
       "--mcp-config",
       cfgPath,
       ...(opts.config.systemPrompt

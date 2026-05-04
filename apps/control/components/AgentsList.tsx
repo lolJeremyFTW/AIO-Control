@@ -336,23 +336,56 @@ function AgentCard({
           alignItems: "center",
         }}
       >
-        <span
-          style={{
-            fontSize: 10,
-            fontWeight: 700,
-            letterSpacing: "0.14em",
-            textTransform: "uppercase",
-            padding: "3px 7px",
-            borderRadius: 999,
-            border: `1px solid ${keyOk ? "var(--tt-green)" : "var(--rose)"}`,
-            color: keyOk ? "var(--tt-green)" : "var(--rose)",
-            background: keyOk
-              ? "rgba(57,178,85,0.10)"
-              : "rgba(230,82,107,0.10)",
-          }}
-        >
-          {keyOk ? "key set" : "key missing"}
-        </span>
+        {(() => {
+          // CLI-based providers (hermes, openclaw, claude_cli, ollama)
+          // authenticate at the CLI level, not via an AIO Control
+          // workspace key — so the "KEY MISSING" badge would be a
+          // false alarm. Show a neutral "CLI" pill instead.
+          const keyless =
+            agent.provider === "hermes" ||
+            agent.provider === "openclaw" ||
+            agent.provider === "claude_cli" ||
+            agent.provider === "ollama";
+          if (keyless) {
+            return (
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  letterSpacing: "0.14em",
+                  textTransform: "uppercase",
+                  padding: "3px 7px",
+                  borderRadius: 999,
+                  border: "1px solid var(--app-border-2)",
+                  color: "var(--app-fg-3)",
+                  background: "var(--app-card-2)",
+                }}
+                title="CLI provider — auth via de lokale CLI installatie, geen API key nodig"
+              >
+                CLI
+              </span>
+            );
+          }
+          return (
+            <span
+              style={{
+                fontSize: 10,
+                fontWeight: 700,
+                letterSpacing: "0.14em",
+                textTransform: "uppercase",
+                padding: "3px 7px",
+                borderRadius: 999,
+                border: `1px solid ${keyOk ? "var(--tt-green)" : "var(--rose)"}`,
+                color: keyOk ? "var(--tt-green)" : "var(--rose)",
+                background: keyOk
+                  ? "rgba(57,178,85,0.10)"
+                  : "rgba(230,82,107,0.10)",
+              }}
+            >
+              {keyOk ? "key set" : "key missing"}
+            </span>
+          );
+        })()}
         <span
           style={{ fontSize: 10.5, color: "var(--app-fg-3)" }}
           title="Klik om te bewerken · rechts-klik voor menu"

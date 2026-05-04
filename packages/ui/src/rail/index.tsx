@@ -264,36 +264,26 @@ export function Rail({
           />
         ) : (
           /* Drilled in: top slot shows the BUSINESS as the primary
-             label. Click → back to all businesses. Hover tooltip
-             confirms the back-action. The drillChain (Instagram →
-             Instagram post → …) lives below the divider in rail-mid.
-             The wrapper div carries `rail-drilled-back` so the hover
-             state can render a "← Alle businesses" hint visibly via
-             CSS, not just through the title attribute. */
-          <div
-            className="rail-drilled-back"
-            title={`← ${L.allBusinesses}`}
-            data-back-label={L.allBusinesses}
-          >
-            <NavRow
-              item={drilledInto!}
-              expanded={expanded}
-              /* Highlighted as the active context; clicking always
-                 routes to the workspace root (see WorkspaceShell's
-                 onBack handler — it pops to /dashboard when at
-                 business root). */
-              selected={drillChain.length === 0}
-              onClick={onBack}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onContextMenuRail?.(e, {
-                  kind: "drilled-business",
-                  id: drilledInto!.id,
-                });
-              }}
-            />
-          </div>
+             label. On hover the avatar morphs into a back-arrow and
+             the name flips to "Alle businesses" so the back-action
+             is obvious without an OS-level title tooltip (which on
+             Windows renders an ugly grey popover and on Mac depends
+             on the user enabling tooltips). */
+          <DrilledBackRow
+            business={drilledInto!}
+            expanded={expanded}
+            selected={drillChain.length === 0}
+            backLabel={L.allBusinesses}
+            onBack={onBack}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onContextMenuRail?.(e, {
+                kind: "drilled-business",
+                id: drilledInto!.id,
+              });
+            }}
+          />
         )}
       </div>
       <div className="rail-divider" />
@@ -496,6 +486,59 @@ type NavRowProps = {
    *  business can't be dropped on a topic and vice versa. */
   dataType?: "business" | "topic";
 };
+
+// Top-of-rail row when drilled into a business. On hover the avatar
+// flips to a back-arrow and the label swaps to "Alle businesses" so
+// the back-action reads in the row itself instead of via a native
+// title-attribute tooltip (which renders ugly on Windows). Click still
+// fires onBack — same target as before.
+function DrilledBackRow({
+  business,
+  expanded,
+  selected,
+  backLabel,
+  onBack,
+  onContextMenu,
+}: {
+  business: RailItem;
+  expanded: boolean;
+  selected: boolean;
+  backLabel: string;
+  onBack?: () => void;
+  onContextMenu?: (e: ReactMouseEvent) => void;
+}) {
+  const [hover, setHover] = useState(false);
+
+  const display: RailItem = hover
+    ? {
+        ...business,
+        // Keep variant + color so the chip stays the same hue; only the
+        // glyph + name swap.
+        letter: "←",
+        // Drop the uploaded logo / icon so the arrow renders in their place.
+        icon: undefined,
+        logoUrl: null,
+        name: backLabel,
+        sub: business.name,
+      }
+    : business;
+
+  return (
+    <div
+      className="rail-drilled-back"
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
+      <NavRow
+        item={display}
+        expanded={expanded}
+        selected={selected}
+        onClick={onBack}
+        onContextMenu={onContextMenu}
+      />
+    </div>
+  );
+}
 
 function NavRow({
   item,
