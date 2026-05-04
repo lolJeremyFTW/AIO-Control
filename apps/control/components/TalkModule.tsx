@@ -105,6 +105,7 @@ export function TalkModule({ agents, workspaceSlug, defaultAgentId }: Props) {
   };
 
   const handleMicClick = useCallback(async () => {
+    window.alert("DEBUG: click fired, state=" + state);
     console.info("[TalkModule] mic click, isRecording:", isRecording, "state:", state);
     setUiError(null);
 
