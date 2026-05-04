@@ -60,6 +60,15 @@ export async function* streamOpenclaw(
   // under ~/.openclaw/agents/<id>/sessions. Otherwise fall back to
   // the ad-hoc `--local` mode.
   const agentName = opts.tenant?.openclawAgentName?.trim() || null;
+  // Pass the AIO Control model picker through to OpenClaw via --model
+  // when set. Without this OpenClaw falls back to its own default
+  // mapping which on most installs routes "gpt-5.5" to provider
+  // "openai" (and fails with "No API key found for provider 'openai'"
+  // when the user only configured the "codex" / "openai-codex" key).
+  // Format expected by OpenClaw: "<provider>/<model>" or bare
+  // "<model>" — we trust whatever the user typed in the AIO dropdown.
+  const modelArg = (opts.config.model ?? "").trim();
+  const modelArgs = modelArg ? ["--model", modelArg] : [];
   // OpenClaw 2026.4+ moved the agent name from a positional arg to a
   // --agent flag — passing it positional now errors with
   // "too many arguments for 'agent'. Expected 0 arguments but got 1."
@@ -70,6 +79,7 @@ export async function* streamOpenclaw(
         "--agent",
         agentName,
         "--json",
+        ...modelArgs,
         ...extra,
         "--session-id",
         sessionId,
@@ -80,6 +90,7 @@ export async function* streamOpenclaw(
         "agent",
         "--local",
         "--json",
+        ...modelArgs,
         ...extra,
         "--session-id",
         sessionId,
