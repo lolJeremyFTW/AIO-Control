@@ -20,6 +20,7 @@ import { updateAgent } from "../app/actions/agents";
 import type { AgentRow } from "../lib/queries/agents";
 import { translate } from "../lib/i18n/dict";
 import { useLocale } from "../lib/i18n/client";
+import { ProviderModelPicker } from "./ProviderModelPicker";
 import { WorkflowGraph } from "./WorkflowGraph";
 
 type Provider = AgentRow["provider"];
@@ -268,12 +269,21 @@ export function EditAgentDialog({
               : t("agent.field.model")
           }
         >
-          <input
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
-            placeholder={providerSpec.defaultModel ?? "model id"}
-            style={inp}
-          />
+          {provider === "openclaw" || provider === "hermes" ? (
+            <ProviderModelPicker
+              provider={provider}
+              value={model}
+              onChange={setModel}
+              placeholder={providerSpec.defaultModel ?? "model id"}
+            />
+          ) : (
+            <input
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              placeholder={providerSpec.defaultModel ?? "model id"}
+              style={inp}
+            />
+          )}
         </Field>
 
         {needsEndpoint && (
@@ -281,9 +291,8 @@ export function EditAgentDialog({
             <input
               value={endpoint}
               onChange={(e) => setEndpoint(e.target.value)}
-              placeholder="https://hermes.tromptech.life/v1/chat"
+              placeholder="https://hermes.tromptech.life/v1/chat (leeg = env default)"
               style={inp}
-              required
             />
           </Field>
         )}

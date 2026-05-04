@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import { createAgent, type AgentInput } from "../app/actions/agents";
 import { translate, type Locale } from "../lib/i18n/dict";
 import { useLocale } from "../lib/i18n/client";
+import { ProviderModelPicker } from "./ProviderModelPicker";
 import { RoutingRulesEditor } from "./RoutingRulesEditor";
 
 type Provider = AgentInput["provider"];
@@ -245,12 +246,21 @@ export function NewAgentDialog({
               : t("agent.field.model")
           }
         >
-          <input
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
-            placeholder={providerSpec.defaultModel ?? "model id"}
-            style={inputStyle}
-          />
+          {provider === "openclaw" || provider === "hermes" ? (
+            <ProviderModelPicker
+              provider={provider}
+              value={model}
+              onChange={setModel}
+              placeholder={providerSpec.defaultModel ?? "model id"}
+            />
+          ) : (
+            <input
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              placeholder={providerSpec.defaultModel ?? "model id"}
+              style={inputStyle}
+            />
+          )}
         </Field>
 
         {needsEndpoint && (
