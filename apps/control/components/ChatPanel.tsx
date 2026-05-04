@@ -93,7 +93,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
 
   // Switch threads → load history.
   const switchThread = useCallback(async (threadId: string | null) => {
-    setOpen(false);
+    setShowSidebar(false);
     setActiveThreadId(threadId);
     if (!threadId) {
       setMessages([]);
@@ -114,17 +114,17 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
     if (open) listRef.current?.scrollTo({ top: 99999 });
   }, [messages, open]);
 
-  // Close panel when clicking outside.
+  // Close sidebar when clicking outside (but not when clicking the chatbox bubble).
   useEffect(() => {
     if (!open) return;
-    // Delay listener attachment so the click that opened the panel doesn't immediately close it.
+    // Delay listener attachment so the click that opened the panel doesn't immediately close the sidebar.
     const timeoutId = setTimeout(() => {
       const handleClickOutside = (e: MouseEvent) => {
         const target = e.target as HTMLElement;
         // Don't close if clicking the chatbox bubble
         if (target.closest(".chatbox")) return;
         if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
-          setOpen(false);
+          setShowSidebar(false);
         }
       };
       document.addEventListener("click", handleClickOutside);
