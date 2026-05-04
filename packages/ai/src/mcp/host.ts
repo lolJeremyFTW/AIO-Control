@@ -84,8 +84,18 @@ export class McpHost {
   /** Spawn + handshake every requested server in parallel and cache
    *  their tool lists. Throws when a known server fails to start so
    *  the caller can surface a real error instead of silently dropping
-   *  the tools. Unknown server ids are skipped with a warning. */
-  async connect(serverIds: string[]): Promise<void> {
+   *  the tools. Unknown server ids are skipped with a warning.
+   *
+   *  `envOverrides` lets the caller force-set vars the MCP child needs
+   *  even when the worker process running this code was forked with
+   *  a stripped env (Next.js standalone occasionally does that). The
+   *  most common case: passing the resolved MINIMAX_API_KEY from the
+   *  workspace's tiered API-key store, since the MiniMax MCP rejects
+   *  with "MINIMAX_API_KEY env or header cannot be empty" otherwise. */
+  async connect(
+    serverIds: string[],
+    envOverrides?: Record<string, string>,
+  ): Promise<void> {
     const tasks: Promise<Connected | null>[] = [];
     for (const id of serverIds) {
       const spec = SERVER_REGISTRY[id];
@@ -93,7 +103,7 @@ export class McpHost {
         console.warn(`[mcp] unknown server id: ${id} — skipping`);
         continue;
       }
-      tasks.push(this.connectOne(id, spec));
+      tasks.push(this.connectOne(id, spec, envOverrides ?? {}));
     }
     const results = await Promise.all(tasks);
     for (const r of results) {
@@ -101,11 +111,25 @@ export class McpHost {
     }
   }
 
-  private async connectOne(id: string, spec: ServerSpec): Promise<Connected> {
+  private async connectOne(
+    id: string,
+    spec: ServerSpec,
+    envOverrides: Record<string, string>,
+  ): Promise<Connected> {
+    // Strip undefined values from process.env before spreading (some
+    // Node versions throw when a spawn env contains undefined values).
+    const cleanProcessEnv: Record<string, string> = {};
+    for (const [k, v] of Object.entries(process.env)) {
+      if (typeof v === "string") cleanProcessEnv[k] = v;
+    }
     const transport = new StdioClientTransport({
       command: spec.command,
       args: spec.args,
-      env: { ...(process.env as Record<string, string>), ...(spec.env?.() ?? {}) },
+      env: {
+        ...cleanProcessEnv,
+        ...(spec.env?.() ?? {}),
+        ...envOverrides,
+      },
       stderr: "pipe",
     });
     const client = new Client(
