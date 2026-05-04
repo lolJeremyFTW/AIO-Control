@@ -8,7 +8,6 @@ import { streamClaudeCli } from "./providers/claude-cli";
 import { streamOpenRouter } from "./providers/openrouter";
 import { streamOllama } from "./providers/ollama";
 import { streamMinimax } from "./providers/minimax";
-import { streamMinimaxViaClaude } from "./providers/minimax-mcp";
 // streamGenericHttp is kept for future custom HTTP providers; not
 // currently routed since openclaw + hermes moved to subprocess.
 import { streamHermes } from "./providers/hermes";
@@ -188,15 +187,12 @@ export async function* streamChat(
       yield* streamHermes(opts);
       return;
     case "minimax":
-      // Two-track: when the agent declares MCP servers (config.mcpServers
-      // includes "minimax" or anything else we know how to spawn) we
-      // route through Claude Code as an MCP host. Otherwise we hit the
-      // normal MiniMax HTTP API directly with the user's Coder Plan key.
-      if ((opts.config.mcpServers ?? []).length > 0) {
-        yield* streamMinimaxViaClaude(opts);
-      } else {
-        yield* streamMinimax(opts);
-      }
+      // streamMinimax decides internally: plain HTTP when no MCP
+      // servers are configured, native multi-turn tool loop (via our
+      // own MCP host, no Claude in the loop) when config.mcpServers
+      // is set. The old streamMinimaxViaClaude path is gone — it
+      // required Anthropic auth which most users don't have.
+      yield* streamMinimax(opts);
       return;
     case "codex":
       // Codex models are reachable through OpenRouter with an alias prefix;
