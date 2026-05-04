@@ -29,25 +29,11 @@ export interface UseRecorderReturn {
   onAudioEnded: () => void;
 }
 
-/** Convert a display label to an ElevenLabs voice ID. */
-function resolveVoiceId(label: string): string {
-  const MAP: Record<string, string> = {
-    rachel: "EXAVITQm4R8VDqDW9Pei",
-    adam: "pFZP5JQG7iQjIQuC4Bku",
-    bella: "xrHel9SFnCep49fNMvW0",
-    daniel: "iC98bXHCLPXjlN4hNVNx",
-    sarah: "EXwk3nR0cGBLbfpEzxe6",
-    antoni: "nPMa2Z5C8Z7xhJFPvFxz",
-  };
-  return MAP[label.toLowerCase()] ?? "EXAVITQm4R8VDqDW9Pei";
-}
-
 export function useRecorder(): UseRecorderReturn {
   const [state, setState] = useState<RecorderState>("idle");
   const [error, setError] = useState<string | null>(null);
   const [volume, setVolume] = useState(0);
 
-  // All mutable recorder state lives in refs — no stale closures possible
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -93,7 +79,6 @@ export function useRecorder(): UseRecorderReturn {
   const startVolumeLoop = useCallback(() => {
     const analyser = analyserRef.current;
     if (!analyser) return;
-
     const tick = () => {
       const data = new Uint8Array(analyser.frequencyBinCount);
       analyser.getByteFrequencyData(data);
@@ -111,20 +96,43 @@ export function useRecorder(): UseRecorderReturn {
     try {
       setError(null);
       setStateSync("requesting");
+    } catch {
+      guardRef.current = false;
+      return;
+    }
 
-      // Stop any existing stream first
+    try {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        // audio: { echoCancellation: true, noiseSuppression: true },
-      });
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch (err) {
+        const e = err as Error;
+        console.error("[useRecorder] getUserMedia failed:", e.name, e.message);
+        setError(e.name === "NotFoundError"
+          ? "Geen microfoon gevonden. Check of andere apps de microfoon niet blokkeren."
+          : `${e.name}: ${e.message}`);
+        setStateSync("idle");
+        guardRef.current = false;
+        return;
+      }
+
       streamRef.current = stream;
 
-      // Set up volume analysis
+      if (stream.getAudioTracks().length === 0) {
+        setError("Geen audio tracks in stream.");
+        setStateSync("idle");
+        guardRef.current = false;
+        return;
+      }
+
+      console.info("[useRecorder] getUserMedia OK, tracks:", stream.getAudioTracks().map(t => t.label));
+
+      // Volume analysis
       try {
         const audioCtx = new AudioContext();
         audioCtxRef.current = audioCtx;
@@ -196,6 +204,11 @@ export function useRecorder(): UseRecorderReturn {
 
       rec.start(250);
       setStateSync("recording");
+    } catch (err) {
+      const e = err as Error;
+      console.error("[useRecorder] start unexpected error:", e.message);
+      setError(e.message);
+      setStateSync("error");
     } finally {
       guardRef.current = false;
     }
@@ -218,7 +231,6 @@ export function useRecorder(): UseRecorderReturn {
         resolve(null);
         return;
       }
-      // Safety: if onstop hasn't fired in 5s, resolve anyway
       const timeout = setTimeout(() => {
         if (stopResolveRef.current === resolve) {
           console.warn("[useRecorder] stop timeout — forcing resolve");
@@ -229,7 +241,6 @@ export function useRecorder(): UseRecorderReturn {
           resolve(null);
         }
       }, 5000);
-      // Replace resolve to also clear timeout
       stopResolveRef.current = (blob: Blob | null) => {
         clearTimeout(timeout);
         resolve(blob);
@@ -276,34 +287,41 @@ export function useRecorder(): UseRecorderReturn {
   };
 }
 
-// Debug helper — attach to window for console testing
+// Debug helpers
 if (typeof window !== "undefined") {
   (window as unknown as Record<string, unknown>).debugRecorder = {
-    async testMic() {
+    async status() {
+      const md = navigator.mediaDevices;
+      return {
+        mediaDevices: !!md,
+        getUserMedia: !!md?.getUserMedia,
+        enumerateDevices: !!md?.enumerateDevices,
+        constraints: md?.getSupportedConstraints?.() ?? null,
+      };
+    },
+    async listDevices() {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        console.info("[debugRecorder] getUserMedia OK, tracks:", stream.getAudioTracks().length);
-        stream.getTracks().forEach(t => t.stop());
-        return "MIC OK";
+        const devs = await navigator.mediaDevices.enumerateDevices();
+        const audio = devs.filter(d => d.kind === "audioinput");
+        console.info("[debug] audio devices:", audio.map(d => ({ label: d.label, id: d.deviceId })));
+        return audio;
       } catch (e) {
-        const err = e as Error;
-        console.error("[debugRecorder] getUserMedia FAILED:", err.name, err.message);
-        return `${err.name}: ${err.message}`;
+        console.error("[debug] enumerateDevices failed:", e);
+        return [];
       }
     },
-    async testMicWithConstraints() {
+    async testMic() {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true },
-        });
-        console.info("[debugRecorder] getUserMedia with constraints OK");
-        stream.getTracks().forEach(t => t.stop());
+        const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+        console.info("[debug] testMic OK, tracks:", s.getAudioTracks().length);
+        s.getTracks().forEach(t => t.stop());
         return "OK";
       } catch (e) {
         const err = e as Error;
-        console.error("[debugRecorder] constraints FAILED:", err.name, err.message);
+        console.error("[debug] testMic FAILED:", err.name, err.message);
         return `${err.name}: ${err.message}`;
       }
     },
   };
+  console.info("[useRecorder] debugRecorder ready — call window.debugRecorder.testMic() in console");
 }
