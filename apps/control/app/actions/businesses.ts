@@ -38,7 +38,7 @@ export type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string
 
 export async function createBusiness(
   input: BusinessInput,
-): Promise<ActionResult<{ id: string }>> {
+): Promise<ActionResult<{ id: string; telegram_warning?: string }>> {
   if (!input.name.trim()) {
     return { ok: false, error: "Naam mag niet leeg zijn." };
   }
@@ -75,19 +75,43 @@ export async function createBusiness(
     return { ok: false, error: error.message };
   }
 
-  // Best-effort: if a workspace-scope telegram_target has the
-  // auto_create_topics_for_businesses flag set, create a forum topic
-  // in that group and bind it to this business. Failure is logged
-  // but never blocks business creation.
-  void autoCreateTelegramTopicForBusiness({
-    workspace_id: input.workspace_id,
-    business_id: data.id,
-    business_name: input.name.trim(),
-    icon: input.icon ?? null,
-  }).catch((err) => console.error("autoCreateTelegramTopic failed", err));
+  // Wait briefly for the auto-topic create so we can surface a
+  // "your bot is missing can_manage_topics" message in the UI instead
+  // of silently swallowing it. 6s is generous — the Telegram API
+  // typically replies in well under a second; on timeout we fall
+  // through with a friendly hint.
+  let telegramWarning: string | undefined;
+  try {
+    const result = await Promise.race([
+      autoCreateTelegramTopicForBusiness({
+        workspace_id: input.workspace_id,
+        business_id: data.id,
+        business_name: input.name.trim(),
+        icon: input.icon ?? null,
+      }),
+      new Promise<{ ok: false; error: string }>((resolve) =>
+        setTimeout(
+          () =>
+            resolve({
+              ok: false,
+              error:
+                "Telegram API duurde te lang — controleer of de bot in de groep zit en als admin staat met 'Manage Topics' aan.",
+            }),
+          6000,
+        ),
+      ),
+    ]);
+    if (result && result.ok === false) telegramWarning = result.error;
+  } catch (err) {
+    telegramWarning =
+      err instanceof Error ? err.message : "Telegram topic create faalde";
+  }
 
   revalidatePath(`/${input.workspace_slug}/dashboard`);
-  return { ok: true, data: { id: data.id } };
+  return {
+    ok: true,
+    data: { id: data.id, telegram_warning: telegramWarning },
+  };
 }
 
 export async function updateBusiness(input: {
@@ -271,18 +295,36 @@ export async function archiveBusiness({
 // update. Permission check happens in the calling action via the
 // regular cookie-bound client.
 
+type AutoCreateResult = { ok: true } | { ok: false; error: string };
+
 async function autoCreateTelegramTopicForBusiness(opts: {
   workspace_id: string;
   business_id: string;
   business_name: string;
   icon: string | null;
-}): Promise<void> {
+}): Promise<AutoCreateResult> {
   const admin = getServiceRoleSupabase();
+
+  // Skip silently when the workspace hasn't opted into auto-topics.
+  // We surface a warning only when the topology IS set but the
+  // creation failed, so the user has actionable feedback.
+  const { data: ws } = await admin
+    .from("workspaces")
+    .select("telegram_topology")
+    .eq("id", opts.workspace_id)
+    .maybeSingle();
+  const topology = ws?.telegram_topology as string | null | undefined;
+  if (
+    topology !== "topic_per_business" &&
+    topology !== "topic_per_business_and_node"
+  ) {
+    return { ok: true };
+  }
+
   // Find the parent group. Prefer the explicit auto_create_topics flag
   // when set; fall back to any enabled workspace-scope target so that
   // users who flip telegram_topology to topic_per_business without
-  // explicitly marking a parent still get topics auto-created. Avoids
-  // the silent skip footgun.
+  // explicitly marking a parent still get topics auto-created.
   const { data: parent } = await admin
     .from("telegram_targets")
     .select("id, chat_id, auto_create_topics_for_businesses")
@@ -294,11 +336,11 @@ async function autoCreateTelegramTopicForBusiness(opts: {
     .limit(1)
     .maybeSingle();
   if (!parent?.chat_id) {
-    console.warn(
-      "auto-topic create skipped — no enabled workspace-scope telegram target for workspace",
-      opts.workspace_id,
-    );
-    return;
+    return {
+      ok: false,
+      error:
+        "Geen workspace-Telegram target gevonden — voeg er een toe in Settings → Telegram met de chat_id van je groep.",
+    };
   }
 
   const topicName = opts.icon
@@ -310,8 +352,15 @@ async function autoCreateTelegramTopicForBusiness(opts: {
     name: topicName,
   });
   if (!created.ok) {
-    console.warn("auto-topic create failed:", created.error);
-    return;
+    // Translate the most common Telegram error so the user sees the
+    // fix instead of the raw API string.
+    const raw = created.error ?? "";
+    const friendly = /not enough rights|can_manage_topics/i.test(raw)
+      ? "Telegram weigert: de bot mist de 'Manage Topics' permissie. Maak de bot admin in de groep en zet 'Manage Topics' aan."
+      : /chat not found|invalid chat/i.test(raw)
+        ? `Telegram chat_id '${parent.chat_id}' niet gevonden — controleer of de bot in de groep zit.`
+        : `Telegram: ${raw}`;
+    return { ok: false, error: friendly };
   }
 
   // Mint a per-business telegram_targets row pointing at the new
@@ -332,13 +381,20 @@ async function autoCreateTelegramTopicForBusiness(opts: {
     })
     .select("id")
     .single();
-  if (!newTarget) return;
+  if (!newTarget) {
+    return {
+      ok: false,
+      error: "Topic aangemaakt in Telegram, maar opslaan in DB faalde.",
+    };
+  }
 
   // Bind the target to the business so we can rename/close later.
   await admin
     .from("businesses")
     .update({ telegram_topic_target_id: newTarget.id })
     .eq("id", opts.business_id);
+
+  return { ok: true };
 }
 
 async function renameTelegramTopicForBusiness(opts: {

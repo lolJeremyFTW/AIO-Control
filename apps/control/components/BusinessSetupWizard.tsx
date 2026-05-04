@@ -211,6 +211,12 @@ export function BusinessSetupWizard({
         return;
       }
       const newBizId = res.data.id;
+      // Telegram topic create may have failed even though the business
+      // itself was saved. Surface the reason in-place so the user knows
+      // why no topic appeared (usually: bot lacks 'Manage Topics' rights).
+      if (res.data.telegram_warning) {
+        setError(`Telegram: ${res.data.telegram_warning}`);
+      }
 
       // Topics — best-effort, sequentially.
       for (const t of topicNames) {

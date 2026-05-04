@@ -56,6 +56,14 @@ export function NewBusinessDialog({
       setError(res.error);
       return;
     }
+    // Business itself was created; if Telegram auto-topic failed,
+    // show a non-blocking warning before closing so the user knows
+    // why no topic appeared.
+    if (res.data.telegram_warning) {
+      window.alert(
+        `Business aangemaakt, maar Telegram-topic faalde:\n\n${res.data.telegram_warning}`,
+      );
+    }
     onClose();
     router.refresh();
   };
