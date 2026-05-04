@@ -56,6 +56,8 @@ type UIMessage = {
   };
   /** Optional clickable navigation hint emitted by open_ui_at. */
   navHint?: { path: string; label?: string };
+  /** Timestamp when this message was created. */
+  createdAt: Date;
 };
 
 export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
@@ -72,6 +74,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
   const [showSidebar, setShowSidebar] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Reload thread list whenever the open agent changes.
   useEffect(() => {
@@ -102,6 +105,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
         id: r.id,
         role: r.role === "system" ? "assistant" : (r.role as "user" | "assistant"),
         text: r.content?.text ?? "",
+        createdAt: r.created_at ? new Date(r.created_at) : new Date(),
       })),
     );
   }, []);
@@ -156,11 +160,11 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
       // For approval requests we don't add a user bubble; we just
       // append a fresh assistant placeholder for the continuation.
       const next = isApproval
-        ? [...m, { id: assistantId, role: "assistant" as const, text: "", pending: true }]
+        ? [...m, { id: assistantId, role: "assistant" as const, text: "", pending: true, createdAt: new Date() }]
         : [
             ...m,
-            { id: userId, role: "user" as const, text },
-            { id: assistantId, role: "assistant" as const, text: "", pending: true },
+            { id: userId, role: "user" as const, text, createdAt: new Date() },
+            { id: assistantId, role: "assistant" as const, text: "", pending: true, createdAt: new Date() },
           ];
       // Mark the original confirm bubble as decided so its buttons
       // disable + the card swaps to a status pill.
@@ -182,6 +186,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
 
     try {
       const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+      abortControllerRef.current = new AbortController();
       const res = await fetch(`${base}/api/chat/${agentId}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -190,6 +195,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
           thread_id: activeThreadId,
           approve_tool: opts?.approveTool,
         }),
+        signal: abortControllerRef.current.signal,
       });
       // Capture the server-issued thread id so subsequent turns reuse it.
       const newThreadId = res.headers.get("x-aio-thread-id");
@@ -209,11 +215,26 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
       }
       const decoder = new TextDecoder();
       let buf = "";
+      let aborted = false;
       const reader = res.body.getReader();
       // eslint-disable-next-line no-constant-condition
       while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+        let value: Uint8Array | undefined;
+        try {
+          ({ done, value } = await reader.read());
+          if (done) break;
+        } catch (err) {
+          if ((err as Error).name === "AbortError") {
+            aborted = true;
+            setMessages((m) =>
+              m.map((mm) =>
+                mm.id === assistantId ? { ...mm, pending: false } : mm,
+              ),
+            );
+            break;
+          }
+          throw err;
+        }
         buf += decoder.decode(value, { stream: true });
         let idx: number;
         while ((idx = buf.indexOf("\n\n")) !== -1) {
@@ -657,6 +678,17 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
                   )}
                 </div>
 
+                {/* Timestamp */}
+                <div
+                  style={{
+                    fontSize: 10,
+                    color: "var(--app-fg-3)",
+                    padding: "0 2px",
+                  }}
+                >
+                  {m.createdAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                </div>
+
                 {/* Tool-call chips so the user sees what the agent is
                     doing while it runs. */}
                 {m.toolCalls && m.toolCalls.length > 0 && (
@@ -917,21 +949,24 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
               }}
             />
             <button
-              type="submit"
-              disabled={sending || !input.trim()}
+              type={sending ? "button" : "submit"}
+              onClick={sending ? () => abortControllerRef.current?.abort() : undefined}
+              disabled={sending ? false : !input.trim()}
               style={{
-                background: "var(--tt-green)",
-                border: "1.5px solid var(--tt-green)",
+                background: sending ? "var(--rose)" : "var(--tt-green)",
+                border: `1.5px solid ${sending ? "var(--rose)" : "var(--tt-green)"}`,
                 color: "#fff",
                 borderRadius: 10,
                 padding: "0 14px",
                 fontWeight: 700,
                 fontSize: 12.5,
-                cursor: sending ? "wait" : "pointer",
-                opacity: sending || !input.trim() ? 0.7 : 1,
+                cursor: sending ? "pointer" : !input.trim() ? "not-allowed" : "pointer",
+                opacity: sending ? 1 : !input.trim() ? 0.7 : 1,
+                minWidth: 42,
+                textAlign: "center",
               }}
             >
-              ↵
+              {sending ? "⏹" : "↵"}
             </button>
           </form>
         </div>
