@@ -114,24 +114,35 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
     if (open) listRef.current?.scrollTo({ top: 99999 });
   }, [messages, open]);
 
-  // Close sidebar when clicking outside (but not when clicking the chatbox bubble).
+  // Handle clicks outside the panel or inside the panel but outside the sidebar.
   useEffect(() => {
     if (!open) return;
-    // Delay listener attachment so the click that opened the panel doesn't immediately close the sidebar.
     const timeoutId = setTimeout(() => {
       const handleClickOutside = (e: MouseEvent) => {
         const target = e.target as HTMLElement;
-        // Don't close if clicking the chatbox bubble
+        // Don't trigger if clicking the chatbox bubble
         if (target.closest(".chatbox")) return;
-        if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
-          setShowSidebar(false);
+
+        // Find the sidebar element (the thread list container)
+        const sidebar = panelRef.current?.querySelector('[data-sidebar]');
+        const clickedInsidePanel = panelRef.current?.contains(target);
+        const clickedInsideSidebar = sidebar?.contains(target);
+
+        if (clickedInsidePanel) {
+          // Inside panel — close sidebar if clicking outside it (but not on sidebar toggle button)
+          if (!clickedInsideSidebar && showSidebar) {
+            setShowSidebar(false);
+          }
+        } else {
+          // Outside panel entirely — close the whole chat window
+          setOpen(false);
         }
       };
-      document.addEventListener("click", handleClickOutside);
-      return () => document.removeEventListener("click", handleClickOutside);
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
     }, 0);
     return () => clearTimeout(timeoutId);
-  }, [open]);
+  }, [open, showSidebar]);
 
   const send = useCallback(
     async (
@@ -497,6 +508,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
 
           {showSidebar && (
             <div
+              data-sidebar
               style={{
                 borderBottom: "1px solid var(--app-border-2)",
                 background: "var(--app-card-2)",
