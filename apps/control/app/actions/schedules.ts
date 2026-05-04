@@ -332,6 +332,10 @@ export async function updateSchedule(input: {
   workspace_slug: string;
   schedule_id: string;
   patch: {
+    /** Repoint the schedule at a different agent. Useful when the
+     *  original agent was on the wrong provider — no need to delete
+     *  + recreate the cron schedule + Routine. */
+    agent_id?: string;
     title?: string | null;
     description?: string | null;
     instructions?: string | null;
@@ -343,6 +347,7 @@ export async function updateSchedule(input: {
   };
 }): Promise<ActionResult<null>> {
   const patch: Record<string, unknown> = {};
+  if (input.patch.agent_id !== undefined) patch.agent_id = input.patch.agent_id;
   if (input.patch.title !== undefined) patch.title = input.patch.title;
   if (input.patch.description !== undefined)
     patch.description = input.patch.description;

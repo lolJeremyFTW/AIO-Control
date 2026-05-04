@@ -599,6 +599,11 @@ export function SchedulesPanel({
         <EditScheduleDialog
           workspaceSlug={workspaceSlug}
           schedule={editingSchedule}
+          agents={agents.map((a) => ({
+            id: a.id,
+            name: a.name,
+            provider: a.provider,
+          }))}
           onClose={() => {
             setEditingSchedule(null);
             router.refresh();

@@ -7,15 +7,19 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import { getAppIcon } from "@aio/ui/icon";
+
 import {
   getCurrentUser,
   getWorkspaceBySlug,
 } from "../../../../../../lib/auth/workspace";
+import { listAgentsForWorkspace } from "../../../../../../lib/queries/agents";
 import { listBusinesses } from "../../../../../../lib/queries/businesses";
 import {
   listNavNodes,
   resolveNavPath,
 } from "../../../../../../lib/queries/nav-nodes";
+import { GenerateDashboardCard } from "../../../../../../components/GenerateDashboardCard";
 import { NewNavNodeButton } from "../../../../../../components/NewNavNodeButton";
 import { TopicDashboard } from "../../../../../../components/TopicDashboard";
 import { TopicRoutinesList } from "../../../../../../components/TopicRoutinesList";
@@ -36,9 +40,10 @@ export default async function NavNodePage({ params }: Props) {
   const workspace = await getWorkspaceBySlug(workspace_slug);
   if (!workspace) notFound();
 
-  const [businesses, chain] = await Promise.all([
+  const [businesses, chain, allAgents] = await Promise.all([
     listBusinesses(workspace.id),
     resolveNavPath(bizId, path),
+    listAgentsForWorkspace(workspace.id),
   ]);
   const biz = businesses.find((b) => b.id === bizId);
   if (!biz) notFound();
@@ -137,6 +142,16 @@ export default async function NavNodePage({ params }: Props) {
             navNodeId={current.id}
             includeDescendants
           />
+          <GenerateDashboardCard
+            workspaceSlug={workspace.slug}
+            workspaceId={workspace.id}
+            businessId={biz.id}
+            navNodeId={current.id}
+            navNodeName={current.name}
+            agents={allAgents.filter(
+              (a) => a.business_id === biz.id || a.business_id === null,
+            )}
+          />
           <TopicRoutinesList
             workspaceSlug={workspace.slug}
             workspaceId={workspace.id}
@@ -177,7 +192,12 @@ export default async function NavNodePage({ params }: Props) {
                 fontSize: c.icon ? 18 : 14,
               }}
             >
-              {c.icon || c.letter}
+              {/* Render registered icons through the icon component
+                  registry so they pick up the variant's foreground
+                  color via currentColor. Used to render the literal
+                  string "folder" which showed up as black text on the
+                  variant background. */}
+              {getAppIcon(c.icon, 20) ?? c.letter}
             </span>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontWeight: 700, fontSize: 14 }}>{c.name}</div>

@@ -22,12 +22,16 @@ const DAYS = [
 
 type Mode = "interval" | "hourly" | "daily" | "weekly" | "custom";
 type Target = { id: string; name: string };
+type AgentChoice = { id: string; name: string; provider: string };
 
 type Props = {
   workspaceSlug: string;
   schedule: ScheduleRow;
   telegramTargets?: Target[];
   customIntegrations?: Target[];
+  /** Agents in this business — used to repoint the schedule at a
+   *  different agent without recreating the cron + Routine. */
+  agents?: AgentChoice[];
   onClose: () => void;
 };
 
@@ -36,6 +40,7 @@ export function EditScheduleDialog({
   schedule,
   telegramTargets = [],
   customIntegrations = [],
+  agents = [],
   onClose,
 }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -60,6 +65,7 @@ export function EditScheduleDialog({
     schedule.custom_integration_id ?? "",
   );
   const [enabled, setEnabled] = useState(schedule.enabled);
+  const [agentId, setAgentId] = useState(schedule.agent_id);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
@@ -87,6 +93,7 @@ export function EditScheduleDialog({
       workspace_slug: workspaceSlug,
       schedule_id: schedule.id,
       patch: {
+        agent_id: agentId,
         title: title || null,
         description: description || null,
         instructions: instructions || null,
@@ -140,6 +147,22 @@ export function EditScheduleDialog({
         >
           Schedule bewerken
         </h2>
+
+        {agents.length > 1 && (
+          <Field label="Agent (welke draait deze schedule)">
+            <select
+              value={agentId}
+              onChange={(e) => setAgentId(e.target.value)}
+              style={inp}
+            >
+              {agents.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name} · {a.provider}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
 
         <Field label="Titel">
           <input
