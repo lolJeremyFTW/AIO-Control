@@ -52,33 +52,53 @@ export async function buildAgentSystemPrompt(
 ): Promise<string> {
   const admin = getServiceRoleSupabase();
 
+  // First fetch this agent's allowed_skills array — drives the
+  // skills lookup below (skip the lookup entirely when empty).
+  const { data: agentSelfRow } = await admin
+    .from("agents")
+    .select("allowed_skills")
+    .eq("id", agent.id)
+    .maybeSingle();
+  const allowedSkillIds = ((agentSelfRow?.allowed_skills as string[] | null) ??
+    []) as string[];
+
   // Fan out the lookups in parallel — single round-trip total.
-  const [bizRes, wsRes, integrations, siblings, spend] = await Promise.all([
-    agent.business_id
-      ? admin
-          .from("businesses")
-          .select("name, sub, description, mission, targets")
-          .eq("id", agent.business_id)
-          .maybeSingle()
-      : Promise.resolve({ data: null }),
-    admin
-      .from("workspaces")
-      .select("name, default_system_prompt")
-      .eq("id", agent.workspace_id)
-      .maybeSingle(),
-    admin
-      .from("integrations")
-      .select("provider, name, status, business_id")
-      .eq("workspace_id", agent.workspace_id)
-      .eq("status", "connected"),
-    admin
-      .from("agents")
-      .select("id, name, kind, provider, business_id")
-      .eq("workspace_id", agent.workspace_id)
-      .is("archived_at", null)
-      .neq("id", agent.id),
-    agent.business_id ? getSpendSnapshot(agent.business_id) : Promise.resolve(null),
-  ]);
+  const [bizRes, wsRes, integrations, siblings, spend, skillsRes] =
+    await Promise.all([
+      agent.business_id
+        ? admin
+            .from("businesses")
+            .select("name, sub, description, mission, targets")
+            .eq("id", agent.business_id)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+      admin
+        .from("workspaces")
+        .select("name, default_system_prompt")
+        .eq("id", agent.workspace_id)
+        .maybeSingle(),
+      admin
+        .from("integrations")
+        .select("provider, name, status, business_id")
+        .eq("workspace_id", agent.workspace_id)
+        .eq("status", "connected"),
+      admin
+        .from("agents")
+        .select("id, name, kind, provider, business_id")
+        .eq("workspace_id", agent.workspace_id)
+        .is("archived_at", null)
+        .neq("id", agent.id),
+      agent.business_id
+        ? getSpendSnapshot(agent.business_id)
+        : Promise.resolve(null),
+      allowedSkillIds.length > 0
+        ? admin
+            .from("skills")
+            .select("id, name, description, body")
+            .in("id", allowedSkillIds)
+            .is("archived_at", null)
+        : Promise.resolve({ data: [] }),
+    ]);
 
   const lines: string[] = [];
 
@@ -242,6 +262,38 @@ export async function buildAgentSystemPrompt(
     }
     if (sibs.length > 30) {
       lines.push(`- … plus ${sibs.length - 30} more`);
+    }
+  }
+
+  // ── Skills (per-agent allow-list) ─────────────────────────────────
+  // Pattern lifted from OpenClaw's SKILL.md design: each skill has a
+  // name + short description + markdown body. We inject the FULL body
+  // for each enabled skill so the model has the procedural knowledge
+  // available without an extra tool call. OpenClaw uses an on-demand
+  // load (name+desc only, body via tool); we go full-inject for now
+  // because we have no skill-load tool yet — keeping skills compact
+  // (< 500 words each) keeps context manageable.
+  type SkillRow = {
+    id: string;
+    name: string;
+    description: string;
+    body: string;
+  };
+  const skills = (skillsRes.data ?? []) as SkillRow[];
+  if (skills.length > 0) {
+    lines.push("");
+    lines.push("## Skills (extra procedural kennis voor deze agent)");
+    lines.push(
+      "Hieronder staan skill-snippets die deze agent mag gebruiken. " +
+        "Pak de relevante skill als de taak erbij past — niet voor elke " +
+        "vraag alle skills langsgaan.",
+    );
+    for (const s of skills) {
+      lines.push("");
+      lines.push(`### Skill: ${s.name}`);
+      lines.push(`_${s.description}_`);
+      lines.push("");
+      lines.push(s.body.trim());
     }
   }
 

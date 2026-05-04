@@ -46,6 +46,10 @@ type Props = {
    *  the edit dialog. Empty = no topics defined yet (or workspace-
    *  global agents page) so the picker stays hidden. */
   navOptions?: { id: string; name: string; depth: number }[];
+  /** Workspace skills — populates the per-agent skills picker in
+   *  the edit dialog. Empty = no skills defined yet. Pulled from
+   *  /[ws]/skills via listSkillsForWorkspace. */
+  availableSkills?: { id: string; name: string; description: string }[];
 };
 
 export function AgentsList({
@@ -58,6 +62,7 @@ export function AgentsList({
   customIntegrations = [],
   workspaceDefaults,
   navOptions = [],
+  availableSkills = [],
 }: Props) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<AgentRow | null>(null);
@@ -236,6 +241,7 @@ export function AgentsList({
           customIntegrations={customIntegrations}
           siblingAgents={agents.map((a) => ({ id: a.id, name: a.name }))}
           navOptions={navOptions}
+          availableSkills={availableSkills}
           onClose={() => setEditing(null)}
         />
       )}

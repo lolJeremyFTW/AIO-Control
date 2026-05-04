@@ -22,6 +22,7 @@ import { translate } from "../lib/i18n/dict";
 import { useLocale } from "../lib/i18n/client";
 import { McpServersField } from "./McpServersField";
 import { ProviderModelPicker } from "./ProviderModelPicker";
+import { SkillsPickerField } from "./SkillsPickerField";
 import { WorkflowGraph } from "./WorkflowGraph";
 
 type Provider = AgentRow["provider"];
@@ -42,7 +43,13 @@ type Props = {
     /** Allow-list of AIO Control tool names. null = use defaults for
      *  agent kind (see @aio/ai/aio-tools defaultToolsForKind). */
     allowed_tools?: string[] | null;
+    /** Allow-list of workspace skill ids whose markdown bodies the
+     *  system-prompt builder injects into the preamble. */
+    allowed_skills?: string[] | null;
   };
+  /** Workspace skills available for selection. Empty list collapses
+   *  the picker into a "create your first skill" hint. */
+  availableSkills?: { id: string; name: string; description: string }[];
   telegramTargets?: Target[];
   customIntegrations?: Target[];
   /** Other agents in the same workspace — used as options for the
@@ -83,6 +90,7 @@ export function EditAgentDialog({
   customIntegrations = [],
   siblingAgents = [],
   navOptions = [],
+  availableSkills = [],
   onClose,
 }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -136,6 +144,15 @@ export function EditAgentDialog({
   const [allowedTools, setAllowedTools] = useState<string[]>(
     agent.allowed_tools ?? defaultToolsForKind(agent.kind),
   );
+  // Skills allow-list. Stored as uuid[] on the row; empty = no extra
+  // skills injected into the system prompt.
+  const [allowedSkills, setAllowedSkills] = useState<string[]>(
+    agent.allowed_skills ?? [],
+  );
+  const toggleSkill = (id: string) =>
+    setAllowedSkills((prev) =>
+      prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id],
+    );
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -166,6 +183,7 @@ export function EditAgentDialog({
         next_agent_on_fail: nextOnFail || null,
         notify_email: notifyEmail || null,
         allowed_tools: useToolsDefault ? null : allowedTools,
+        allowed_skills: allowedSkills,
         nav_node_id: navNodeId || null,
         // MCP servers are only wired through the minimax provider for
         // now (claude / openrouter come in a later phase). For other
@@ -325,6 +343,13 @@ export function EditAgentDialog({
             onPermissionsChange={setMcpPermissions}
           />
         )}
+
+        <SkillsPickerField
+          options={availableSkills}
+          value={allowedSkills}
+          onToggle={toggleSkill}
+          workspaceSlug={workspaceSlug}
+        />
 
         <Field label={t("agent.field.notifyEmail")}>
           <input

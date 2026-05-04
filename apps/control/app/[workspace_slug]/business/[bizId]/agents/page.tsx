@@ -12,6 +12,7 @@ import { getDict } from "../../../../../lib/i18n/server";
 import { listAgentsForWorkspace } from "../../../../../lib/queries/agents";
 import { listBusinesses } from "../../../../../lib/queries/businesses";
 import { listFlatNavNodes } from "../../../../../lib/queries/nav-nodes";
+import { listSkillsForWorkspace } from "../../../../../lib/queries/skills";
 import { AgentsList } from "../../../../../components/AgentsList";
 import { createSupabaseServerClient } from "../../../../../lib/supabase/server";
 
@@ -32,6 +33,7 @@ export default async function BusinessAgentsPage({ params }: Props) {
     businesses,
     allAgents,
     navOptions,
+    skills,
     { data: telegramRows },
     { data: customRows },
     { data: wsDefaults },
@@ -39,6 +41,7 @@ export default async function BusinessAgentsPage({ params }: Props) {
     listBusinesses(workspace.id),
     listAgentsForWorkspace(workspace.id),
     listFlatNavNodes(bizId),
+    listSkillsForWorkspace(workspace.id),
     supabase
       .from("telegram_targets")
       .select("id, name")
@@ -99,6 +102,11 @@ export default async function BusinessAgentsPage({ params }: Props) {
             (wsDefaults?.default_system_prompt as string | null) ?? null,
         }}
         navOptions={navOptions}
+        availableSkills={skills.map((s) => ({
+          id: s.id,
+          name: s.name,
+          description: s.description,
+        }))}
       />
     </div>
   );

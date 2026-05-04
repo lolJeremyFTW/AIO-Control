@@ -170,6 +170,10 @@ export async function updateAgent(input: {
     notify_email?: string | null;
     /** Workstream H. null = use kind defaults; explicit array = allow-list. */
     allowed_tools?: string[] | null;
+    /** Workspace-scoped skill ids the agent is allowed to use. Their
+     *  markdown bodies get injected into the system-prompt preamble.
+     *  NULL / empty array = no extra skills. */
+    allowed_skills?: string[] | null;
     /** Pin to a topic (nav_node). null = unpin (belongs to the
      *  business as a whole). Powers the per-topic dashboards via
      *  migration 043. */
@@ -208,6 +212,12 @@ export async function updateAgent(input: {
     patch.notify_email = input.patch.notify_email?.toString().trim() || null;
   if (input.patch.allowed_tools !== undefined)
     patch.allowed_tools = input.patch.allowed_tools;
+  if (input.patch.allowed_skills !== undefined) {
+    // Treat empty array as NULL so the index-condition stays clean
+    // (idx_agents_allowed_skills_present uses WHERE … IS NOT NULL).
+    const v = input.patch.allowed_skills;
+    patch.allowed_skills = !v || v.length === 0 ? null : v;
+  }
   if (input.patch.nav_node_id !== undefined)
     patch.nav_node_id = input.patch.nav_node_id ?? null;
 

@@ -13,6 +13,7 @@ import {
 import { resolveApiKey } from "../../../lib/api-keys/resolve";
 import { listAgentsForWorkspace } from "../../../lib/queries/agents";
 import { listBusinesses } from "../../../lib/queries/businesses";
+import { listSkillsForWorkspace } from "../../../lib/queries/skills";
 import {
   listRecentRunsForWorkspace,
   listSchedulesForWorkspace,
@@ -38,6 +39,7 @@ export default async function WorkspaceAgentsPage({ params }: Props) {
     businesses,
     schedules,
     runs,
+    skills,
     { data: telegramRows },
     { data: customRows },
     { data: wsDefaults },
@@ -47,6 +49,7 @@ export default async function WorkspaceAgentsPage({ params }: Props) {
     listBusinesses(workspace.id),
     listSchedulesForWorkspace(workspace.id),
     listRecentRunsForWorkspace(workspace.id, 200),
+    listSkillsForWorkspace(workspace.id),
     supabase
       .from("telegram_targets")
       .select("id, name")
@@ -64,6 +67,11 @@ export default async function WorkspaceAgentsPage({ params }: Props) {
       .maybeSingle(),
     getDict(),
   ]);
+  const availableSkills = skills.map((s) => ({
+    id: s.id,
+    name: s.name,
+    description: s.description,
+  }));
 
   // Resolve key status across every provider used in the workspace.
   const uniqueProviders = Array.from(
@@ -171,6 +179,7 @@ export default async function WorkspaceAgentsPage({ params }: Props) {
           telegramTargets={telegramTargets}
           customIntegrations={customIntegrations}
           workspaceDefaults={wsDefaultsTyped}
+          availableSkills={availableSkills}
         />
       </section>
 

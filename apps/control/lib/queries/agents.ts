@@ -31,6 +31,13 @@ export type AgentRow = {
   next_agent_on_done?: string | null;
   next_agent_on_fail?: string | null;
   notify_email?: string | null;
+  /** Allow-list of AIO Control function-tool names. NULL = use the
+   *  kind-default set (see @aio/ai/aio-tools defaultToolsForKind). */
+  allowed_tools?: string[] | null;
+  /** Workspace-scoped skill ids whose markdown bodies get injected
+   *  into the agent's system-prompt preamble. NULL / empty = no
+   *  extra skills. Managed via /[ws]/skills + EditAgentDialog. */
+  allowed_skills?: string[] | null;
 };
 
 export async function getAgentById(id: string): Promise<AgentRow | null> {
@@ -38,7 +45,7 @@ export async function getAgentById(id: string): Promise<AgentRow | null> {
   const { data, error } = await supabase
     .from("agents")
     .select(
-      "id, workspace_id, business_id, nav_node_id, name, kind, provider, model, config, key_source, telegram_target_id, custom_integration_id, next_agent_on_done, next_agent_on_fail, notify_email",
+      "id, workspace_id, business_id, nav_node_id, name, kind, provider, model, config, key_source, telegram_target_id, custom_integration_id, next_agent_on_done, next_agent_on_fail, notify_email, allowed_tools, allowed_skills",
     )
     .eq("id", id)
     .is("archived_at", null)
@@ -58,7 +65,7 @@ export async function listAgentsForWorkspace(
   let q = supabase
     .from("agents")
     .select(
-      "id, workspace_id, business_id, nav_node_id, name, kind, provider, model, config, key_source, telegram_target_id, custom_integration_id, next_agent_on_done, next_agent_on_fail, notify_email",
+      "id, workspace_id, business_id, nav_node_id, name, kind, provider, model, config, key_source, telegram_target_id, custom_integration_id, next_agent_on_done, next_agent_on_fail, notify_email, allowed_tools, allowed_skills",
     )
     .eq("workspace_id", workspaceId)
     .is("archived_at", null)
