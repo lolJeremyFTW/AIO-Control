@@ -29,6 +29,10 @@ const PROVIDERS = [
   { id: "minimax", label: "MiniMax (Coder Plan)" },
   { id: "openrouter", label: "OpenRouter" },
   { id: "openai", label: "OpenAI" },
+  // ElevenLabs is wired into the TalkModule (TTS playback) — without
+  // this entry there's no UI path to set the key, which is why the
+  // Talk Settings page's "Beheer →" link landed nowhere useful.
+  { id: "elevenlabs", label: "ElevenLabs (TTS)" },
   { id: "telegram", label: "Telegram bot token" },
   { id: "custom_webhook", label: "Custom webhook secret" },
   // SMTP creds zijn een speciale set; meestal config je ze via de

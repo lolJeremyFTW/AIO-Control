@@ -204,7 +204,10 @@ export function TalkSettings({
             API key
             <small>
               Versleuteld opgeslagen via de workspace api-keys.{" "}
-              <a href="../keys" style={{ color: "var(--tt-green)", fontWeight: 700 }}>
+              <a
+                href="../api-keys"
+                style={{ color: "var(--tt-green)", fontWeight: 700 }}
+              >
                 Beheer →
               </a>
             </small>
