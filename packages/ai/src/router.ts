@@ -35,6 +35,7 @@ export interface AgentConfig {
    *  "rw" (default) is full access. Other servers ignore this. */
   mcpPermissions?: {
     filesystem?: "off" | "ro" | "rw";
+    aio?: "off" | "ro" | "rw";
   };
   endpoint?: string; // for openclaw / hermes / custom HTTP
   headers?: Record<string, string>;

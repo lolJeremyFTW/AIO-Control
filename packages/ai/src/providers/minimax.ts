@@ -147,11 +147,16 @@ async function* streamMinimaxWithTools(
       // with "MINIMAX_API_KEY env or header cannot be empty" otherwise.
       const permissions =
         (opts.config.mcpPermissions as
-          | { filesystem?: "off" | "ro" | "rw" }
+          | { filesystem?: "off" | "ro" | "rw"; aio?: "off" | "ro" | "rw" }
           | undefined) ?? {};
+      const envOverrides: Record<string, string> = { MINIMAX_API_KEY: apiKey };
+      // Forward the workspace id so the AIO MCP server knows which workspace to query.
+      if (opts.tenant?.workspaceId) {
+        envOverrides.AIO_WORKSPACE_ID = opts.tenant.workspaceId;
+      }
       await host.connect(
         serverIds,
-        { MINIMAX_API_KEY: apiKey },
+        envOverrides,
         permissions,
       );
     } catch (err) {

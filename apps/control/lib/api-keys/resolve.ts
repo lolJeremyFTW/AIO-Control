@@ -24,8 +24,11 @@ const ENV_FALLBACK: Record<string, string | undefined> = {
   minimax: "MINIMAX_API_KEY",
   minimax_mcp: "MINIMAX_API_KEY",
   openai: "OPENAI_API_KEY",
+  openai_tts: "OPENAI_API_KEY",
   codex: "OPENAI_API_KEY",
   ollama: "OLLAMA_API_KEY",
+  elevenlabs: "ELEVENLABS_API_KEY",
+  azure_speech: "AZURE_SPEECH_API_KEY",
 };
 
 export async function resolveApiKey(

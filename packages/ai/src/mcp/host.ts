@@ -35,6 +35,8 @@ export type McpToolDef = {
 export type McpPermissions = {
   /** off | ro | rw — default rw when omitted. */
   filesystem?: "off" | "ro" | "rw";
+  /** off | ro | rw — default rw when omitted. */
+  aio?: "off" | "ro" | "rw";
 };
 
 // Tool-name patterns that should be dropped when a server is in
@@ -94,6 +96,25 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
     command: "npx",
     args: ["-y", "@modelcontextprotocol/server-fetch"],
   },
+  // AIO Control platform tools (list_businesses, read_secret, list_agents,
+  // list_runs). Spawns as a local TypeScript subprocess via tsx.
+  // Credentials come via env — SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY
+  // are forwarded by McpHost.connect() via envOverrides.
+  // Workspace is scoped by AIO_WORKSPACE_ID env var (set at the agent/
+  // workspace level in aio-control).
+  aio: {
+    command: "npx",
+    args: [
+      "-y",
+      "tsx",
+      "packages/ai/src/mcp/servers/aio-server.ts",
+    ],
+    env: () => ({
+      SUPABASE_URL: process.env.SUPABASE_URL ?? "",
+      SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
+      AIO_WORKSPACE_ID: process.env.AIO_WORKSPACE_ID ?? "default",
+    }),
+  },
 };
 
 type Connected = {
@@ -131,6 +152,7 @@ export class McpHost {
       // Skip a server entirely when the user set its scope to "off"
       // — we honour the agent-level permission gate before spawning.
       if (id === "filesystem" && permissions.filesystem === "off") continue;
+      if (id === "aio" && permissions.aio === "off") continue;
       tasks.push(
         this.connectOne(id, spec, envOverrides ?? {}, permissions),
       );
