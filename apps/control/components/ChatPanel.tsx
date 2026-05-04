@@ -93,7 +93,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
 
   // Switch threads → load history.
   const switchThread = useCallback(async (threadId: string | null) => {
-    setOpen(false);
+    setShowSidebar(false);
     setActiveThreadId(threadId);
     if (!threadId) {
       setMessages([]);
@@ -114,20 +114,20 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
     if (open) listRef.current?.scrollTo({ top: 99999 });
   }, [messages, open]);
 
-  // Close panel when clicking outside.
+  // Close panel when clicking outside (but not when clicking the chatbox bubble).
   useEffect(() => {
     if (!open) return;
-    // Delay listener attachment so the click that opened the panel doesn't immediately close it.
-    const timeoutId = setTimeout(() => {
-      const handleClickOutside = (e: MouseEvent) => {
-        if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
-          setOpen(false);
-        }
-      };
-      document.addEventListener("click", handleClickOutside);
-      return () => document.removeEventListener("click", handleClickOutside);
-    }, 0);
-    return () => clearTimeout(timeoutId);
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      // Don't close if clicking the chatbox bubble (the green button that opens the panel)
+      if (target.closest(".chatbox")) return;
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    // Use capture phase so we intercept bubbled clicks before they reach the panel
+    document.addEventListener("click", handleClickOutside, true);
+    return () => document.removeEventListener("click", handleClickOutside, true);
   }, [open]);
 
   const send = useCallback(
