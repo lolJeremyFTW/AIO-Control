@@ -25,11 +25,15 @@ type Props = {
   summaries: Map<string, Summary>;
 };
 
+// 2 decimals so the workspace-level grid keeps small spend visible —
+// matches BusinessDashboard / TopicDashboard formatting so the same
+// run shows the same number on every screen.
 const fmtEur = (n: number) =>
   n.toLocaleString("nl-NL", {
     style: "currency",
     currency: "EUR",
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   });
 
 export async function BusinessKpiGrid({

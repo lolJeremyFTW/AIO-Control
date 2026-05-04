@@ -810,14 +810,7 @@ function RunFooter({ run }: { run: RunDetail }) {
       }}
     >
       <Stat label="Trigger" value={run.triggered_by} />
-      <Stat
-        label="Duur"
-        value={
-          run.duration_ms != null
-            ? `${(run.duration_ms / 1000).toFixed(2)}s`
-            : "—"
-        }
-      />
+      <LiveDurationStat run={run} />
       <Stat label="Kosten" value={`€${(run.cost_cents / 100).toFixed(4)}`} />
       <Stat
         label="Provider"
@@ -833,6 +826,43 @@ function RunFooter({ run }: { run: RunDetail }) {
       />
     </footer>
   );
+}
+
+// Duration that ticks live while the run is queued/running, and
+// freezes on the recorded duration_ms once the run is done/failed.
+// Anchors on started_at when present (mid-flight runs) and falls back
+// to created_at for queued rows that haven't promoted yet.
+function LiveDurationStat({ run }: { run: RunDetail }) {
+  const isLive = run.status === "queued" || run.status === "running";
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!isLive) return;
+    const handle = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(handle);
+  }, [isLive]);
+
+  let value = "—";
+  if (run.duration_ms != null) {
+    value = formatDuration(run.duration_ms);
+  } else if (isLive) {
+    const anchor = run.started_at ?? run.created_at;
+    if (anchor) {
+      const elapsed = Math.max(0, now - new Date(anchor).getTime());
+      value = formatDuration(elapsed);
+    }
+  }
+  return <Stat label="Duur" value={value} />;
+}
+
+function formatDuration(ms: number): string {
+  if (ms < 60_000) return `${(ms / 1000).toFixed(ms < 10_000 ? 2 : 1)}s`;
+  const totalSec = Math.floor(ms / 1000);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  if (m < 60) return `${m}m ${s.toString().padStart(2, "0")}s`;
+  const h = Math.floor(m / 60);
+  const mm = m % 60;
+  return `${h}h ${mm.toString().padStart(2, "0")}m`;
 }
 
 function Stat({ label, value }: { label: string; value: string }) {

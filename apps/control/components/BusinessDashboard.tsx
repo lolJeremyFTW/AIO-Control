@@ -19,11 +19,16 @@ type Props = {
   runs: RunRow[];
 };
 
+// 2 decimals so sub-eurocent runs (€0.03 from a quick MiniMax call)
+// don't get visually rounded to "€0" — that was the source of the
+// "outreach module shows €0.03 but parent business shows €0.00"
+// confusion. Topic + workspace dashboards already use 2 decimals.
 const fmtEur = (n: number) =>
   n.toLocaleString("nl-NL", {
     style: "currency",
     currency: "EUR",
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   });
 
 export async function BusinessDashboard({
