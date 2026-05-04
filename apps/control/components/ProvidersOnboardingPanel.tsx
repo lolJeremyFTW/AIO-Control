@@ -918,22 +918,7 @@ function ConfiguredProviderCard({
 }: {
   spec: CloudProviderSpec;
 }) {
-  const [testState, setTestState] = useState<"idle" | "testing">("idle");
-  const [status, setStatus] = useState<"active" | "error">("active");
-  const [error, setError] = useState<string | null>(null);
   const [deleteState, setDeleteState] = useState<"idle" | "confirm">("idle");
-  const [, startTransition] = useTransition();
-
-  const handleRetest = () => {
-    setTestState("testing");
-    setError(null);
-    startTransition(async () => {
-      // We can't retest without the key value - just mark as active for now
-      // A proper implementation would call testCloudProviderKey with stored credential
-      setTestState("idle");
-      setStatus("active");
-    });
-  };
 
   return (
     <div
@@ -962,45 +947,18 @@ function ConfiguredProviderCard({
             fontWeight: 700,
             letterSpacing: "0.18em",
             textTransform: "uppercase" as const,
-            color:
-              status === "active"
-                ? "var(--tt-green)"
-                : "var(--rose)",
-            border: `1.5px solid ${
-              status === "active"
-                ? "var(--tt-green)"
-                : "var(--rose)"
-            }`,
+            color: "var(--tt-green)",
+            border: "1.5px solid var(--tt-green)",
             padding: "2px 7px",
             borderRadius: 999,
             whiteSpace: "nowrap" as const,
           }}
         >
-          {status === "active" ? "actief" : "fout"}
+          actief
         </span>
       </div>
 
-      {error && (
-        <p
-          style={{
-            fontSize: 11.5,
-            color: "var(--rose)",
-            margin: 0,
-          }}
-        >
-          {error}
-        </p>
-      )}
-
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        <button
-          type="button"
-          onClick={handleRetest}
-          disabled={testState === "testing"}
-          style={ctaStyle("ghost")}
-        >
-          {testState === "testing" ? "Wachten…" : "Retest"}
-        </button>
         {deleteState === "idle" ? (
           <button
             type="button"
