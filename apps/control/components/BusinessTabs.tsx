@@ -146,12 +146,14 @@ export function BusinessTabs({
       match: (p) => p.startsWith(`${base}/integrations`),
     },
     {
-      // Topics doesn't have its own root — clicking it routes back to
-      // the business root where the user can pick a topic from the
-      // rail. The tab lights up when the URL is /n/...
-      href: base,
+      // Topics opens a flat list of every nav_node in this business
+      // (./topics) so the user can find a topic without first locating
+      // it in the rail. The tab also lights up when the URL is /n/…
+      // (drilled into a specific topic).
+      href: `${base}/topics`,
       label: L.topics,
-      match: (p) => p.startsWith(`${base}/n/`),
+      match: (p) =>
+        p.startsWith(`${base}/topics`) || p.startsWith(`${base}/n/`),
     },
     {
       href: `${base}/schedules`,
