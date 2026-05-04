@@ -63,7 +63,9 @@ async function* streamMinimaxPlain(
     ? [{ role: "system", content: opts.config.systemPrompt }, ...opts.messages]
     : opts.messages;
 
-  const result = await streamOneTurn({
+  let inputTokens = 0;
+  let outputTokens = 0;
+  for await (const ev of streamOneTurnEvents({
     base,
     apiKey,
     model,
@@ -74,28 +76,25 @@ async function* streamMinimaxPlain(
       temperature: opts.config.temperature,
       max_tokens: opts.config.maxTokens,
     },
-  });
-
-  if (result.kind === "error") {
-    yield { type: "error", code: result.code, message: result.message };
-    return;
-  }
-
-  for (const delta of result.tokens) {
-    yield { type: "token", message_id: messageId, delta };
+  })) {
+    if (ev.kind === "token") {
+      yield { type: "token", message_id: messageId, delta: ev.delta };
+    } else if (ev.kind === "error") {
+      yield { type: "error", code: ev.code, message: ev.message };
+      return;
+    } else if (ev.kind === "done") {
+      inputTokens = ev.inputTokens;
+      outputTokens = ev.outputTokens;
+    }
   }
 
   yield {
     type: "message_end",
     message_id: messageId,
     usage: {
-      input_tokens: result.inputTokens,
-      output_tokens: result.outputTokens,
-      cost_cents: priceTokens(
-        model,
-        result.inputTokens,
-        result.outputTokens,
-      ),
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      cost_cents: priceTokens(model, inputTokens, outputTokens),
     },
   };
 }
@@ -188,7 +187,16 @@ async function* streamMinimaxWithTools(
     let assistantTextSoFar = "";
 
     for (let hop = 0; hop < HOPS_MAX; hop++) {
-      const turn = await streamOneTurn({
+      // Live-stream tokens as they come in. We buffer the per-turn
+      // text alongside so we can feed the assistant turn back into
+      // `messages` once the turn closes.
+      let turnText = "";
+      let turnToolCalls: ToolCall[] = [];
+      let turnInputTokens = 0;
+      let turnOutputTokens = 0;
+      let turnError: { code: string; message: string } | null = null;
+
+      for await (const ev of streamOneTurnEvents({
         base,
         apiKey,
         model,
@@ -201,27 +209,30 @@ async function* streamMinimaxWithTools(
           temperature: opts.config.temperature,
           max_tokens: opts.config.maxTokens,
         },
-      });
+      })) {
+        if (ev.kind === "token") {
+          turnText += ev.delta;
+          yield { type: "token", message_id: messageId, delta: ev.delta };
+        } else if (ev.kind === "error") {
+          turnError = { code: ev.code, message: ev.message };
+        } else if (ev.kind === "done") {
+          turnToolCalls = ev.toolCalls;
+          turnInputTokens = ev.inputTokens;
+          turnOutputTokens = ev.outputTokens;
+        }
+      }
 
-      if (turn.kind === "error") {
-        yield { type: "error", code: turn.code, message: turn.message };
+      if (turnError) {
+        yield { type: "error", code: turnError.code, message: turnError.message };
         return;
       }
 
-      const turnText = turn.tokens.join("");
-      // Stream the assistant text out as tokens so the drawer / chat
-      // panel see it in near real time. We collected it server-side
-      // because we needed to know whether tool_calls came after.
-      for (const delta of turn.tokens) {
-        if (delta) yield { type: "token", message_id: messageId, delta };
-      }
-
-      totalInputTokens += turn.inputTokens;
-      totalOutputTokens += turn.outputTokens;
+      totalInputTokens += turnInputTokens;
+      totalOutputTokens += turnOutputTokens;
       assistantTextSoFar += turnText;
 
       // No tool calls → final assistant turn complete.
-      if (turn.toolCalls.length === 0) {
+      if (turnToolCalls.length === 0) {
         yield {
           type: "message_end",
           message_id: messageId,
@@ -243,11 +254,11 @@ async function* streamMinimaxWithTools(
       messages.push({
         role: "assistant",
         content: turnText || null,
-        tool_calls: turn.toolCalls,
+        tool_calls: turnToolCalls,
       });
 
       // Dispatch each tool call against the MCP host.
-      for (const tc of turn.toolCalls) {
+      for (const tc of turnToolCalls) {
         let argsObj: unknown = {};
         try {
           argsObj = tc.function.arguments
@@ -300,11 +311,24 @@ async function* streamMinimaxWithTools(
 
 // ── shared single-turn helper ──────────────────────────────────────
 //
-// One round-trip to MiniMax. Returns either the raw stream (text
-// deltas + accumulated tool_calls) or a structured error. The caller
-// chooses what to do with each (yield deltas as tokens, dispatch
-// tool_calls, etc).
+// One round-trip to MiniMax. Async-generator so token deltas yield as
+// they arrive — that's what powers the run drawer's live streaming.
+// At the very end we also yield a single "done" envelope with the
+// accumulated tool_calls + usage. Errors come through as a single
+// "error" event and short-circuit the stream.
 
+type TurnEvent =
+  | { kind: "token"; delta: string }
+  | { kind: "error"; code: string; message: string }
+  | {
+      kind: "done";
+      toolCalls: ToolCall[];
+      inputTokens: number;
+      outputTokens: number;
+    };
+
+// Plain HTTP path doesn't need tool_calls; uses this as a back-compat
+// wrapper that just collects all events.
 type TurnResult =
   | { kind: "error"; code: string; message: string }
   | {
@@ -321,6 +345,29 @@ async function streamOneTurn(args: {
   model: string;
   body: Record<string, unknown>;
 }): Promise<TurnResult> {
+  const tokens: string[] = [];
+  let toolCalls: ToolCall[] = [];
+  let inputTokens = 0;
+  let outputTokens = 0;
+  for await (const ev of streamOneTurnEvents(args)) {
+    if (ev.kind === "token") tokens.push(ev.delta);
+    else if (ev.kind === "error")
+      return { kind: "error", code: ev.code, message: ev.message };
+    else if (ev.kind === "done") {
+      toolCalls = ev.toolCalls;
+      inputTokens = ev.inputTokens;
+      outputTokens = ev.outputTokens;
+    }
+  }
+  return { kind: "ok", tokens, toolCalls, inputTokens, outputTokens };
+}
+
+async function* streamOneTurnEvents(args: {
+  base: string;
+  apiKey: string;
+  model: string;
+  body: Record<string, unknown>;
+}): AsyncGenerator<TurnEvent> {
   let response: Response;
   try {
     response = await fetch(`${args.base}/text/chatcompletion_v2`, {
@@ -332,19 +379,21 @@ async function streamOneTurn(args: {
       body: JSON.stringify(args.body),
     });
   } catch (err) {
-    return {
+    yield {
       kind: "error",
       code: "minimax_network",
       message: err instanceof Error ? err.message : "Network error",
     };
+    return;
   }
 
   if (!response.ok || !response.body) {
-    return {
+    yield {
       kind: "error",
       code: `minimax_${response.status}`,
       message: await response.text().catch(() => response.statusText),
     };
+    return;
   }
 
   // MiniMax returns HTTP 200 + a JSON envelope when the key is missing
@@ -361,16 +410,16 @@ async function streamOneTurn(args: {
     } catch {
       /* keep raw body */
     }
-    return {
+    yield {
       kind: "error",
       code: "minimax_invalid_response",
       message: `MiniMax: ${msg}`,
     };
+    return;
   }
 
   const decoder = new TextDecoder();
   let buf = "";
-  const tokens: string[] = [];
   // tool_calls arrive in delta-fragments keyed by index. We accumulate
   // each slot and finalise once the stream ends.
   const toolCallSlots: Map<
@@ -404,7 +453,7 @@ async function streamOneTurn(args: {
           usage?: { prompt_tokens?: number; completion_tokens?: number };
         };
         const delta = json.choices?.[0]?.delta;
-        if (delta?.content) tokens.push(delta.content);
+        if (delta?.content) yield { kind: "token", delta: delta.content };
         if (delta?.tool_calls) {
           for (const tc of delta.tool_calls) {
             const i = tc.index ?? 0;
@@ -442,11 +491,5 @@ async function streamOneTurn(args: {
     });
   }
 
-  return {
-    kind: "ok",
-    tokens,
-    toolCalls,
-    inputTokens,
-    outputTokens,
-  };
+  yield { kind: "done", toolCalls, inputTokens, outputTokens };
 }

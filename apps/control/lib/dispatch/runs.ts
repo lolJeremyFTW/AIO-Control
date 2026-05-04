@@ -217,7 +217,10 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
   // for the full duration. Throttled to once per 1.2 s so we don't
   // hammer Postgres on token-heavy runs.
   let lastFlushAt = 0;
-  const FLUSH_INTERVAL_MS = 1200;
+  // Tighter than the original 1.2s — the run drawer subscribes to
+  // realtime UPDATEs on this row so a faster cadence makes the
+  // streaming feel actually live without a manual refresh.
+  const FLUSH_INTERVAL_MS = 500;
   const flushHistory = async () => {
     lastFlushAt = Date.now();
     try {

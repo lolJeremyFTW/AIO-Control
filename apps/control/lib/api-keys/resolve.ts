@@ -10,6 +10,7 @@
 import "server-only";
 
 import { createSupabaseServerClient } from "../supabase/server";
+import { getServiceRoleSupabase } from "../supabase/service";
 
 export type ResolveContext = {
   workspaceId: string;
@@ -41,7 +42,34 @@ export async function resolveApiKey(
   }
 
   try {
-    const supabase = await createSupabaseServerClient();
+    // Cron / webhook / chain dispatch contexts run without a user
+    // cookie, so a regular cookie-bound supabase client gets blocked
+    // by RLS on every read inside this function (api_keys is locked
+    // to workspace members). We need to be able to read via the
+    // service role in those contexts. The RPC itself is SECURITY
+    // DEFINER + checks workspace_id + master_key, so using admin
+    // here doesn't widen the security surface — it just lets the
+    // function work when invoked from a background dispatcher.
+    let supabase: Awaited<
+      ReturnType<typeof createSupabaseServerClient>
+    >;
+    try {
+      supabase = await createSupabaseServerClient();
+    } catch {
+      supabase = getServiceRoleSupabase() as unknown as Awaited<
+        ReturnType<typeof createSupabaseServerClient>
+      >;
+    }
+    const { data: authData } = await supabase.auth.getUser();
+    if (!authData?.user) {
+      // No user session → use the service-role client so we can read
+      // through RLS. Same intent as the catch above; this catches the
+      // case where createSupabaseServerClient succeeded but the
+      // session is empty.
+      supabase = getServiceRoleSupabase() as unknown as Awaited<
+        ReturnType<typeof createSupabaseServerClient>
+      >;
+    }
 
     // Check the business's isolated flag. Isolated businesses do
     // NOT inherit workspace defaults — only their own keys count.

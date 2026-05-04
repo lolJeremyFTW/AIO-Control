@@ -51,6 +51,7 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [redispatching, setRedispatching] = useState(false);
+  const [stopping, setStopping] = useState(false);
   const [followupText, setFollowupText] = useState("");
   const [followupSending, setFollowupSending] = useState(false);
 
@@ -140,6 +141,30 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
     }
   };
 
+  // Mark this run as cancelled. The dispatcher may still be mid-call
+  // — the API just flips status to "failed" with a clear error_text
+  // so the drawer stops the spinner; full interruption needs an
+  // AbortController in streamChat, follow-up work.
+  const stopRun = async () => {
+    setStopping(true);
+    setError(null);
+    const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+    try {
+      const res = await fetch(`${base}/api/runs/${currentRunId}/stop`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        setError(text || `Stop faalde (${res.status})`);
+      }
+      setTick((t) => t + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "stop error");
+    } finally {
+      setStopping(false);
+    }
+  };
+
   // Post a follow-up message: server creates a new run with the prior
   // message_history merged + the new user turn appended. We pivot the
   // drawer to the new run id so the realtime subscription above streams
@@ -225,6 +250,30 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
             {run?.agents?.name ?? "Run detail"}
           </span>
           {run && <StatusPill status={run.status} />}
+          {run &&
+            (run.status === "queued" || run.status === "running") && (
+              <button
+                type="button"
+                onClick={() => void stopRun()}
+                disabled={stopping}
+                aria-label="Stop deze run"
+                style={{
+                  padding: "6px 10px",
+                  border: "1.5px solid var(--rose)",
+                  background: stopping
+                    ? "rgba(230,82,107,0.18)"
+                    : "rgba(230,82,107,0.08)",
+                  color: "var(--rose)",
+                  borderRadius: 8,
+                  fontWeight: 700,
+                  fontSize: 12,
+                  cursor: stopping ? "wait" : "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {stopping ? "Stoppen…" : "■ Stop"}
+              </button>
+            )}
           {run && (run.status === "failed" || run.status === "done") && (
             <button
               type="button"
@@ -391,17 +440,38 @@ function RunBody({ run }: { run: RunDetail }) {
       </p>
     );
   }
+  // Build a one-liner summary of what the agent is currently doing
+  // based on the most recent history step. Tool calls win because
+  // they're the most informative ("calling minimax__web_search…");
+  // otherwise we report partial assistant text length.
+  const last = steps[steps.length - 1];
+  let thinking: string | null = null;
+  if (isLive) {
+    if (last?.kind === "tool_call") {
+      thinking = `Roept tool ${last.name} aan…`;
+    } else if (last?.kind === "assistant") {
+      const len = last.text.length;
+      thinking = len > 0 ? `Schrijft antwoord (${len} tekens)…` : null;
+    }
+  }
   return (
     <>
       {steps.map((step, i) => (
         <StepBubble key={i} step={step} />
       ))}
-      {isLive && <PendingBubble status={run.status} />}
+      {isLive && <PendingBubble status={run.status} thinking={thinking} />}
     </>
   );
 }
 
-function PendingBubble({ status }: { status: string }) {
+function PendingBubble({
+  status,
+  thinking,
+}: {
+  status: string;
+  thinking?: string | null;
+}) {
+  const fallback = status === "queued" ? "In wachtrij…" : "Agent is bezig…";
   return (
     <div
       style={{
@@ -419,19 +489,13 @@ function PendingBubble({ status }: { status: string }) {
         gap: 8,
       }}
     >
-      <span
-        aria-hidden
-        style={{
-          display: "inline-flex",
-          gap: 3,
-        }}
-      >
+      <span aria-hidden style={{ display: "inline-flex", gap: 3 }}>
         <Dot delay={0} />
         <Dot delay={150} />
         <Dot delay={300} />
       </span>
       <span style={{ fontSize: 11.5, fontStyle: "italic" }}>
-        {status === "queued" ? "In wachtrij…" : "Agent is bezig…"}
+        {thinking ?? fallback}
       </span>
     </div>
   );
@@ -483,14 +547,14 @@ function stepsFor(run: RunDetail): RunStep[] {
 function StepBubble({ step }: { step: RunStep }) {
   if (step.kind === "user") {
     return (
-      <Bubble side="right" tone="user">
+      <Bubble side="right" tone="user" at={step.at}>
         {step.text}
       </Bubble>
     );
   }
   if (step.kind === "assistant") {
     return (
-      <Bubble side="left" tone="assistant">
+      <Bubble side="left" tone="assistant" at={step.at}>
         {step.text ? (
           <MarkdownText text={step.text} />
         ) : (
@@ -516,20 +580,49 @@ function StepBubble({ step }: { step: RunStep }) {
         fontFamily: "var(--mono, ui-monospace, SFMono-Regular)",
       }}
     >
-      <strong style={{ display: "block", marginBottom: 4 }}>Error</strong>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "baseline",
+          marginBottom: 4,
+        }}
+      >
+        <strong>Error</strong>
+        {step.at && (
+          <span style={{ fontSize: 10, color: "var(--rose)", opacity: 0.7 }}>
+            {fmtTime(step.at)}
+          </span>
+        )}
+      </div>
       {step.message}
     </div>
   );
+}
+
+function fmtTime(at?: string): string {
+  if (!at) return "";
+  try {
+    return new Date(at).toLocaleTimeString("nl-NL", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  } catch {
+    return "";
+  }
 }
 
 function Bubble({
   side,
   tone,
   children,
+  at,
 }: {
   side: "left" | "right";
   tone: "user" | "assistant";
   children: React.ReactNode;
+  at?: string;
 }) {
   const isUser = tone === "user";
   return (
@@ -554,15 +647,36 @@ function Bubble({
     >
       <div
         style={{
-          fontSize: 9.5,
-          fontWeight: 700,
-          letterSpacing: "0.18em",
-          textTransform: "uppercase",
-          color: isUser ? "var(--tt-green)" : "var(--app-fg-3)",
+          display: "flex",
+          alignItems: "baseline",
+          justifyContent: "space-between",
+          gap: 6,
           marginBottom: 4,
         }}
       >
-        {isUser ? "Input" : "Assistant"}
+        <span
+          style={{
+            fontSize: 9.5,
+            fontWeight: 700,
+            letterSpacing: "0.18em",
+            textTransform: "uppercase",
+            color: isUser ? "var(--tt-green)" : "var(--app-fg-3)",
+          }}
+        >
+          {isUser ? "Input" : "Assistant"}
+        </span>
+        {at && (
+          <span
+            style={{
+              fontSize: 10,
+              color: "var(--app-fg-3)",
+              fontFamily: "ui-monospace, Menlo, monospace",
+              opacity: 0.7,
+            }}
+          >
+            {fmtTime(at)}
+          </span>
+        )}
       </div>
       {children}
     </div>
@@ -609,7 +723,20 @@ function ToolCallCard({
         >
           Tool · {step.name}
         </span>
-        <span style={{ color: "var(--app-fg-3)", fontSize: 11, marginLeft: "auto" }}>
+        {step.at && (
+          <span
+            style={{
+              marginLeft: "auto",
+              fontSize: 10,
+              color: "var(--app-fg-3)",
+              fontFamily: "ui-monospace, Menlo, monospace",
+              opacity: 0.7,
+            }}
+          >
+            {fmtTime(step.at)}
+          </span>
+        )}
+        <span style={{ color: "var(--app-fg-3)", fontSize: 11, marginLeft: step.at ? 8 : "auto" }}>
           {open ? "▾" : "▸"}
         </span>
       </div>
