@@ -15,6 +15,7 @@
 
 "use client";
 
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import {
@@ -178,7 +179,7 @@ export function BusinessTabs({
       {tabs.map((t) => {
         const active = t.match(path);
         return (
-          <a
+          <Link
             key={t.label + t.href}
             href={t.href}
             style={{
@@ -193,6 +194,7 @@ export function BusinessTabs({
                 : "2px solid transparent",
               color: active ? "var(--app-fg)" : "var(--app-fg-3)",
               transform: "translateY(1px)",
+              textDecoration: "none",
             }}
           >
             {t.label}
@@ -217,7 +219,7 @@ export function BusinessTabs({
                 {t.badge}
               </span>
             )}
-          </a>
+          </Link>
         );
       })}
 

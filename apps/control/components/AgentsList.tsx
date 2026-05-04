@@ -5,7 +5,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 
 import { ContextMenu, type ContextMenuItem } from "@aio/ui/context-menu";
 import { ChatIcon, EditPenIcon, PlusIcon } from "@aio/ui/icon";
@@ -208,6 +208,7 @@ export function AgentsList({
               onContextMenu={(e) =>
                 setMenu({ x: e.clientX, y: e.clientY, agent: a })
               }
+              onClick={() => setEditing(a)}
             />
           ))}
         </div>
@@ -253,14 +254,35 @@ function AgentCard({
   workspaceSlug,
   keyOk,
   onContextMenu,
+  onClick,
 }: {
   agent: AgentRow;
   workspaceSlug: string;
   keyOk: boolean;
   onContextMenu: (e: React.MouseEvent) => void;
+  onClick: () => void;
 }) {
+  // Pick the platform-correct hint glyph. SSR can't see navigator, so
+  // we render the neutral form first and swap on mount via a state set
+  // in a useEffect — avoids hydration mismatch.
+  const [isMac, setIsMac] = useState(false);
+  useEffect(() => {
+    if (typeof navigator !== "undefined") {
+      setIsMac(/Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent));
+    }
+  }, []);
+
   return (
     <div
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
       onContextMenu={(e) => {
         e.preventDefault();
         // stopPropagation prevents the global AppContextMenu from
@@ -276,7 +298,16 @@ function AgentCard({
         display: "flex",
         flexDirection: "column",
         gap: 6,
-        cursor: "context-menu",
+        cursor: "pointer",
+        transition: "background 0.12s, border-color 0.12s",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = "var(--app-card-2)";
+        e.currentTarget.style.borderColor = "var(--app-border-2)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = "var(--app-card)";
+        e.currentTarget.style.borderColor = "var(--app-border)";
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -324,9 +355,9 @@ function AgentCard({
         </span>
         <span
           style={{ fontSize: 10.5, color: "var(--app-fg-3)" }}
-          title="Right-click voor menu"
+          title="Klik om te bewerken · rechts-klik voor menu"
         >
-          ⌘ rechts-klik voor menu
+          {isMac ? "⌘ " : ""}klik = bewerk · rechts-klik = menu
         </span>
       </div>
       <AgentRunsPanel agentId={agent.id} workspaceSlug={workspaceSlug} />

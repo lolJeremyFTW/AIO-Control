@@ -18,6 +18,7 @@ import { join } from "node:path";
 
 import type { AGUIEvent } from "../ag-ui";
 import type { StreamChatOptions } from "../router";
+import { resolveCliBin } from "./cli-bin";
 
 // Known MCP servers we can spawn inside the Claude subprocess. Add more
 // here as we onboard them; agents reference them by name.
@@ -66,11 +67,11 @@ export async function* streamMinimaxViaClaude(
 
   yield { type: "message_start", message_id: messageId, role: "assistant" };
 
-  // The systemd service runs with a minimal PATH that doesn't include
-  // ~/.npm-global/bin where Claude Code installs. Operators can pin the
-  // absolute path via CLAUDE_BIN; otherwise we fall back to the bare
-  // name and hope it's on PATH.
-  const claudeBin = process.env.CLAUDE_BIN || "claude";
+  // resolveCliBin walks ~/.npm-global, /opt/homebrew, /usr/local, /usr,
+  // /snap so a default Linux/Mac install of Claude Code is found
+  // automatically. Operators can still pin the absolute path via
+  // CLAUDE_BIN.
+  const claudeBin = resolveCliBin("claude", "CLAUDE_BIN");
   const child = spawn(
     claudeBin,
     [

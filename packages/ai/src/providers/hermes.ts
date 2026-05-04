@@ -16,6 +16,7 @@ import { randomUUID } from "node:crypto";
 
 import type { AGUIEvent } from "../ag-ui";
 import type { StreamChatOptions } from "../router";
+import { resolveCliBin } from "./cli-bin";
 
 export async function* streamHermes(
   opts: StreamChatOptions,
@@ -42,7 +43,7 @@ export async function* streamHermes(
   // bare `hermes chat` when no name is set keeps existing workspaces
   // running on the shared default profile.
   const profileName = opts.tenant?.hermesAgentName?.trim() || null;
-  const binary = profileName ?? process.env.HERMES_BIN ?? "hermes";
+  const binary = profileName ?? resolveCliBin("hermes", "HERMES_BIN");
 
   const extra = (process.env.HERMES_DEFAULT_ARGS ?? "")
     .split(/\s+/)

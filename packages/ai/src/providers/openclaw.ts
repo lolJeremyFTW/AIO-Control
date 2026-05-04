@@ -21,6 +21,7 @@ import { randomUUID } from "node:crypto";
 
 import type { AGUIEvent } from "../ag-ui";
 import type { StreamChatOptions } from "../router";
+import { resolveCliBin } from "./cli-bin";
 
 export async function* streamOpenclaw(
   opts: StreamChatOptions,
@@ -43,7 +44,7 @@ export async function* streamOpenclaw(
 
   yield { type: "message_start", message_id: messageId, role: "assistant" };
 
-  const binary = process.env.OPENCLAW_BIN || "openclaw";
+  const binary = resolveCliBin("openclaw", "OPENCLAW_BIN");
   const extra = (process.env.OPENCLAW_DEFAULT_ARGS ?? "")
     .split(/\s+/)
     .filter(Boolean);

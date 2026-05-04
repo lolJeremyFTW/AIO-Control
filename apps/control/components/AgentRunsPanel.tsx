@@ -53,7 +53,12 @@ export function AgentRunsPanel({ agentId, workspaceSlug }: Props) {
     <div style={{ marginTop: 10 }}>
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={(e) => {
+          // The whole AgentCard is clickable to open the edit dialog;
+          // stop the bubble so toggling runs doesn't also fire edit.
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
         style={{
           background: "transparent",
           border: "1px solid var(--app-border-2)",

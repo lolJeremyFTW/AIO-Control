@@ -16,6 +16,7 @@ import { randomUUID } from "node:crypto";
 
 import type { AGUIEvent } from "../ag-ui";
 import type { StreamChatOptions } from "../router";
+import { resolveCliBin } from "./cli-bin";
 
 export async function* streamClaudeCli(
   opts: StreamChatOptions,
@@ -61,9 +62,10 @@ export async function* streamClaudeCli(
     // Skip silently.
   }
 
-  // Allow an explicit binary path via CLAUDE_BIN env so we don't
-  // rely on the systemd unit's PATH including ~/.npm-global/bin.
-  const binary = process.env.CLAUDE_BIN || "claude";
+  // resolveCliBin walks ~/.npm-global, /opt/homebrew, /usr/local, /usr,
+  // /snap so a default Linux/Mac install of Claude Code is found
+  // automatically. CLAUDE_BIN env still overrides for non-standard paths.
+  const binary = resolveCliBin("claude", "CLAUDE_BIN");
   const child = spawn(binary, args, { stdio: ["pipe", "pipe", "pipe"] });
   child.stdin.write(prompt);
   child.stdin.end();
