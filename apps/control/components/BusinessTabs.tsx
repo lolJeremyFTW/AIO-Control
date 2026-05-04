@@ -85,6 +85,13 @@ type Props = {
     topics?: string;
     /** Right-aligned status pill prefix, e.g. "Laatste run". */
     lastRun?: string;
+    /** Relative-time templates with {n} placeholder. Used by the
+     *  status pill so "1m geleden" / "1m ago" / "vor 1m" follow the
+     *  user's locale. relNow has no placeholder. */
+    relNow?: string;
+    relMin?: string;
+    relHr?: string;
+    relDay?: string;
   };
 };
 
@@ -100,6 +107,10 @@ export function BusinessTabs({
   const base = `/${workspaceSlug}/business/${businessId}`;
 
   const L = {
+    relNow: labels?.relNow ?? "net",
+    relMin: labels?.relMin ?? "{n}m geleden",
+    relHr: labels?.relHr ?? "{n}u geleden",
+    relDay: labels?.relDay ?? "{n}d geleden",
     overview: labels?.overview ?? "Overzicht",
     agents: labels?.agents ?? "Agents",
     routines: labels?.routines ?? "Routines",
@@ -227,7 +238,17 @@ export function BusinessTabs({
           the last-run state. */}
       {lastRun && (
         <span style={{ marginLeft: "auto" }}>
-          <LastRunPill prefix={L.lastRun} at={lastRun.at} status={lastRun.status} />
+          <LastRunPill
+            prefix={L.lastRun}
+            at={lastRun.at}
+            status={lastRun.status}
+            relTemplates={{
+              now: L.relNow,
+              min: L.relMin,
+              hr: L.relHr,
+              day: L.relDay,
+            }}
+          />
         </span>
       )}
     </div>
@@ -238,24 +259,28 @@ function LastRunPill({
   prefix,
   at,
   status,
+  relTemplates,
 }: {
   prefix: string;
   at: string;
   status: "queued" | "running" | "done" | "failed" | "review";
+  relTemplates: { now: string; min: string; hr: string; day: string };
 }) {
-  // Friendly relative time — no external dep. "2m geleden" /
-  // "1u geleden" / "3d geleden". Falls back to ISO.
+  // Friendly relative time. Templates are passed in pre-translated so
+  // the pill follows the user's UI locale (NL/EN/DE) instead of being
+  // hardcoded Dutch. Each template has a {n} placeholder for the count;
+  // `now` is a literal.
   const rel = (() => {
     try {
       const dt = new Date(at).getTime();
       const diff = Math.max(0, Date.now() - dt);
       const m = Math.round(diff / 60_000);
-      if (m < 1) return "net";
-      if (m < 60) return `${m}m geleden`;
+      if (m < 1) return relTemplates.now;
+      if (m < 60) return relTemplates.min.replace("{n}", String(m));
       const h = Math.round(m / 60);
-      if (h < 24) return `${h}u geleden`;
+      if (h < 24) return relTemplates.hr.replace("{n}", String(h));
       const d = Math.round(h / 24);
-      return `${d}d geleden`;
+      return relTemplates.day.replace("{n}", String(d));
     } catch {
       return at;
     }

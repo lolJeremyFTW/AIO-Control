@@ -155,18 +155,10 @@ body[data-theme="light"] .rail-drill-stack {
   position: relative;
 }
 
-/* Drilled-business top chip in the rail. The hover swap is now driven
-   by React state (DrilledBackRow swaps the avatar letter to "←" and the
-   name to "Alle businesses") so we no longer need the floating ::after
-   tooltip — that one rendered as a tiny badge to the right of the chip
-   which collided with Windows native tooltips and looked off-brand. We
-   keep a subtle outline on hover so the chip still highlights as
-   actionable. */
-.rail-drilled-back:hover .nav-row {
-  background: rgba(57, 178, 85, 0.1);
-  outline: 1.5px solid var(--tt-green);
-  outline-offset: -1.5px;
-}
+/* Drilled-business top chip in the rail. The whole hover affordance is
+   now in-row — DrilledBackRow swaps the avatar letter to "←" and the
+   name to "Alle businesses" — so we don't add any extra outline /
+   background here; the avatar morph + label change is the signal. */
 
 .nav-row {
   display: grid;

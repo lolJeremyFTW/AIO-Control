@@ -93,6 +93,10 @@ export default async function BusinessLayout({ children, params }: Props) {
           integrations: t("biztabs.integrations"),
           topics: t("biztabs.topics"),
           lastRun: t("biztabs.lastRun"),
+          relNow: t("rel.now"),
+          relMin: t("rel.m"),
+          relHr: t("rel.h"),
+          relDay: t("rel.d"),
         }}
       />
       {children}

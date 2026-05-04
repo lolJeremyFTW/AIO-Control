@@ -385,6 +385,7 @@ const nl: Dict = {
   "ollama.modelsCount": "{count} models beschikbaar",
   "ollama.empty":
     "Nog geen models gescand. Vul host + poort in en klik \"Scan models\".",
+  "rel.now": "net",
   "rel.s": "{n}s geleden",
   "rel.m": "{n}m geleden",
   "rel.h": "{n}u geleden",
@@ -764,6 +765,7 @@ const en: Partial<Dict> = {
   "ollama.modelsCount": "{count} models available",
   "ollama.empty":
     "No models scanned yet. Fill host + port and click \"Scan models\".",
+  "rel.now": "just now",
   "rel.s": "{n}s ago",
   "rel.m": "{n}m ago",
   "rel.h": "{n}h ago",
@@ -1334,6 +1336,7 @@ const de: Partial<Dict> = {
   "ollama.modelsCount": "{count} Modelle verfügbar",
   "ollama.empty":
     "Noch keine Modelle gescannt. Host + Port ausfüllen und \"Scan models\" klicken.",
+  "rel.now": "gerade eben",
   "rel.s": "vor {n}s",
   "rel.m": "vor {n}m",
   "rel.h": "vor {n}h",

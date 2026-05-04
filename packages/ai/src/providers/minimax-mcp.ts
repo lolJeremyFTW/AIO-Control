@@ -125,9 +125,13 @@ export async function* streamMinimaxViaClaude(
 
   // stream-json: one JSON object per line. We translate the subset we
   // care about (text deltas, tool calls/results) into AG-UI events.
+  // Lines that don't parse as JSON usually carry the actual error text
+  // (claude prints things like "Error: invalid api key" to stdout, not
+  // stderr) — we keep them so the failure path can surface them.
   let buf = "";
   let inputTokens = 0;
   let outputTokens = 0;
+  const nonJsonLines: string[] = [];
 
   const it = child.stdout[Symbol.asyncIterator]();
   while (true) {
@@ -163,7 +167,7 @@ export async function* streamMinimaxViaClaude(
           outputTokens = u.output_tokens ?? outputTokens;
         }
       } catch {
-        /* ignore */
+        if (nonJsonLines.length < 30) nonJsonLines.push(line);
       }
     }
   }
@@ -172,10 +176,17 @@ export async function* streamMinimaxViaClaude(
     child.once("close", (code) => resolve(typeof code === "number" ? code : 1));
   });
   if (exitCode !== 0) {
+    // Combine stderr + any non-JSON stdout lines so the run row carries
+    // the real error message instead of a bare "Claude exited with 1".
+    const stdoutTail = nonJsonLines.join("\n").slice(0, 1024);
+    const stderrTail = stderr.slice(0, 1024);
+    const detail =
+      [stderrTail, stdoutTail].filter(Boolean).join("\n---\n") ||
+      `Claude exited with ${exitCode}`;
     yield {
       type: "error",
       code: `claude_exit_${exitCode}`,
-      message: stderr.slice(0, 1024) || `Claude exited with ${exitCode}`,
+      message: detail,
     };
     return;
   }

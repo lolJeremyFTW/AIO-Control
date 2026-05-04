@@ -60,9 +60,14 @@ export async function* streamOpenclaw(
   // under ~/.openclaw/agents/<id>/sessions. Otherwise fall back to
   // the ad-hoc `--local` mode.
   const agentName = opts.tenant?.openclawAgentName?.trim() || null;
+  // OpenClaw 2026.4+ moved the agent name from a positional arg to a
+  // --agent flag — passing it positional now errors with
+  // "too many arguments for 'agent'. Expected 0 arguments but got 1."
+  // The flag-based form below works on both old and new versions.
   const args = agentName
     ? [
         "agent",
+        "--agent",
         agentName,
         "--json",
         ...extra,
