@@ -13,32 +13,23 @@ export type AudioCaptureState =
 interface UseAudioCaptureOptions {
   silenceThreshold?: number;
   silenceDurationMs?: number;
-  timesliceMs?: number;
   maxDurationMs?: number;
 }
 
 interface UseAudioCaptureReturn {
   state: AudioCaptureState;
   error: string | null;
-  /** Volume level 0–255 for visualization. */
   currentVolume: number;
-  /** Start recording. Resolves when capture begins. */
   startCapture: () => Promise<void>;
-  /** Stop recording. Resolves with the audio blob. */
   stopCapture: () => Promise<Blob | null>;
-  /** Cancel and discard the current recording. */
   cancelCapture: () => void;
-  /** Call with a blob URL to set audio for playback. */
   setAudioUrl: (url: string | null) => void;
-  /** Call when playback finishes so state resets to idle. */
   onPlaybackEnded: () => void;
 }
 
 function getMimeType(): string {
   if (typeof window === "undefined") return "audio/webm";
-  if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
-    return "audio/webm;codecs=opus";
-  }
+  if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) return "audio/webm;codecs=opus";
   if (MediaRecorder.isTypeSupported("audio/webm")) return "audio/webm";
   if (MediaRecorder.isTypeSupported("audio/mp4")) return "audio/mp4";
   return "audio/webm";
@@ -50,7 +41,6 @@ export function useAudioCapture(
   const {
     silenceThreshold = 10,
     silenceDurationMs = 1500,
-    timesliceMs = 250,
     maxDurationMs = 30000,
   } = options;
 
@@ -59,22 +49,20 @@ export function useAudioCapture(
   const [currentVolume, setCurrentVolume] = useState(0);
   const [audioUrl, setAudioUrlState] = useState<string | null>(null);
 
+  // All mutable recorder state lives in refs — no closure staleness
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
-  const volumeRafRef = useRef<number | null>(null);
-  const maxDurationRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stopResolveRef = useRef<((blob: Blob | null) => void) | null>(null);
   const silenceCounterRef = useRef(0);
-  const silenceIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isCapturingRef = useRef(false);
 
-  const cleanupIntervals = useCallback(() => {
-    if (volumeRafRef.current !== null) {
-      cancelAnimationFrame(volumeRafRef.current);
-      volumeRafRef.current = null;
-    }
+  const silenceIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const maxDurationRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cleanup = useCallback(() => {
     if (silenceIntervalRef.current !== null) {
       clearInterval(silenceIntervalRef.current);
       silenceIntervalRef.current = null;
@@ -84,6 +72,7 @@ export function useAudioCapture(
       maxDurationRef.current = null;
     }
     silenceCounterRef.current = 0;
+    isCapturingRef.current = false;
   }, []);
 
   const stopMediaTracks = useCallback(() => {
@@ -98,56 +87,41 @@ export function useAudioCapture(
     analyserRef.current = null;
   }, []);
 
-  const tickVolume = useCallback(() => {
-    const analyser = analyserRef.current;
-    if (analyser) {
-      const data = new Uint8Array(analyser.frequencyBinCount);
-      analyser.getByteFrequencyData(data);
-      const avg = data.reduce((a, b) => a + b, 0) / data.length;
-      setCurrentVolume(Math.round(avg));
-    }
-    volumeRafRef.current = requestAnimationFrame(tickVolume);
-  }, []);
-
   const startCapture = useCallback(async () => {
-    console.info("[useAudioCapture] startCapture called, state:", state);
+    console.info("[useAudioCapture] startCapture");
     setError(null);
     setAudioUrlState(null);
     chunksRef.current = [];
     silenceCounterRef.current = 0;
     setCurrentVolume(0);
     setState("requesting");
+    isCapturingRef.current = true;
 
     let stream: MediaStream;
     try {
-      console.info("[useAudioCapture] requesting microphone access...");
       stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-        },
+        audio: { echoCancellation: true, noiseSuppression: true },
       });
-      console.info("[useAudioCapture] microphone access granted!");
     } catch (err) {
-      const msg =
-        err instanceof Error
-          ? err.name === "NotAllowedError"
-            ? "Mikrofon toegang geweigerd. Check je browser permissies (adresbalk 🔒 → toestemming geven)."
-            : err.name === "NotFoundError"
-              ? "Geen microfoon gevonden op dit apparaat."
-              : err.name === "NotReadableError"
-                ? "Microfoon wordt gebruikt door een ander programma."
-                : err.message
-          : "Kon geen microfoon krijgen.";
+      const msg = err instanceof Error
+        ? err.name === "NotAllowedError"
+          ? "Mikrofon toegang geweigerd. Check 🔒 in adresbalk → toestemming geven."
+          : err.name === "NotFoundError"
+            ? "Geen microfoon gevonden. Check of andere apps de microfoon blokkeren."
+            : err.name === "NotReadableError"
+              ? "Microfoon in gebruik door ander programma."
+              : err.message
+        : "Kon geen microfoon krijgen.";
       console.error("[useAudioCapture] getUserMedia failed:", err);
       setError(msg);
       setState("error");
+      isCapturingRef.current = false;
       return;
     }
 
     mediaStreamRef.current = stream;
 
-    // Audio context for volume analysis
+    // Volume analysis
     try {
       const audioCtx = new AudioContext();
       audioCtxRef.current = audioCtx;
@@ -161,10 +135,7 @@ export function useAudioCapture(
       // Non-fatal
     }
 
-    // Start volume polling via rAF (~60fps)
-    volumeRafRef.current = requestAnimationFrame(tickVolume);
-
-    // Silence detection via interval
+    // Silence detection
     silenceIntervalRef.current = setInterval(() => {
       const analyser = analyserRef.current;
       if (!analyser) return;
@@ -172,25 +143,26 @@ export function useAudioCapture(
       analyser.getByteFrequencyData(data);
       const avg = data.reduce((a, b) => a + b, 0) / data.length;
       setCurrentVolume(Math.round(avg));
-
       if (avg < silenceThreshold) {
         silenceCounterRef.current += 100;
         if (silenceCounterRef.current >= silenceDurationMs) {
+          silenceCounterRef.current = 0;
           const rec = recorderRef.current;
           if (rec && rec.state === "recording") {
+            console.info("[useAudioCapture] silence auto-stop");
             rec.stop();
           }
-          silenceCounterRef.current = 0;
         }
       } else {
         silenceCounterRef.current = 0;
       }
     }, 100);
 
-    // Max duration fallback
+    // Max duration
     maxDurationRef.current = setTimeout(() => {
       const rec = recorderRef.current;
       if (rec && rec.state === "recording") {
+        console.info("[useAudioCapture] max duration auto-stop");
         rec.stop();
       }
     }, maxDurationMs);
@@ -199,67 +171,71 @@ export function useAudioCapture(
     const recorder = new MediaRecorder(stream, { mimeType });
     recorderRef.current = recorder;
 
-    // Single onstop handler — used for both manual stop and auto-stop
-    recorder.onstop = () => {
-      cleanupIntervals();
-      stopMediaTracks();
-
-      const chunks = chunksRef.current;
-      if (chunks.length === 0) {
-        setState("idle");
-        stopResolveRef.current?.(null);
-        stopResolveRef.current = null;
-        return;
-      }
-
-      const blob = new Blob(chunks, { type: mimeType });
-      chunksRef.current = [];
-      setState("processing");
-      stopResolveRef.current?.(blob);
-      stopResolveRef.current = null;
+    recorder.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
     };
 
-    recorder.ondataavailable = (e) => {
-      if (e.data && e.data.size > 0) {
-        chunksRef.current.push(e.data);
+    recorder.onstop = () => {
+      console.info("[useAudioCapture] recorder onstop, chunks:", chunksRef.current.length);
+      cleanup();
+      stopMediaTracks();
+      const chunks = chunksRef.current;
+      chunksRef.current = [];
+      const resolve = stopResolveRef.current;
+      stopResolveRef.current = null;
+      if (chunks.length === 0) {
+        setState("idle");
+        resolve?.(null);
+        return;
       }
+      const blob = new Blob(chunks, { type: mimeType });
+      setState("processing");
+      resolve?.(blob);
     };
 
     recorder.onerror = (e) => {
-      cleanupIntervals();
+      console.error("[useAudioCapture] recorder error:", e);
+      cleanup();
       stopMediaTracks();
+      const resolve = stopResolveRef.current;
+      stopResolveRef.current = null;
       setError(`Opname fout: ${(e as ErrorEvent).message ?? "onbekend"}`);
       setState("error");
-      stopResolveRef.current?.(null);
-      stopResolveRef.current = null;
+      resolve?.(null);
     };
 
-    recorder.start(timesliceMs);
+    recorder.start(250);
     setState("listening");
-  }, [timesliceMs, maxDurationMs, silenceThreshold, silenceDurationMs, tickVolume, cleanupIntervals, stopMediaTracks]);
+    console.info("[useAudioCapture] recording started, state=idle");
+  }, [silenceThreshold, silenceDurationMs, maxDurationMs, cleanup, stopMediaTracks]);
 
   const stopCapture = useCallback(async (): Promise<Blob | null> => {
+    console.info("[useAudioCapture] stopCapture, recorder state:", recorderRef.current?.state);
     return new Promise((resolve) => {
       stopResolveRef.current = resolve;
-      const recorder = recorderRef.current;
-      if (!recorder || recorder.state === "inactive") {
+      const rec = recorderRef.current;
+      if (!rec) {
+        console.info("[useAudioCapture] stopCapture: no recorder");
         stopResolveRef.current = null;
         setState("idle");
         resolve(null);
         return;
       }
-      if (recorder.state === "recording") {
-        recorder.stop();
-      } else {
+      if (rec.state === "inactive") {
+        console.info("[useAudioCapture] stopCapture: already inactive");
         stopResolveRef.current = null;
         setState("idle");
         resolve(null);
+        return;
       }
+      console.info("[useAudioCapture] calling recorder.stop()");
+      rec.stop();
     });
   }, []);
 
   const cancelCapture = useCallback(() => {
-    cleanupIntervals();
+    console.info("[useAudioCapture] cancelCapture");
+    cleanup();
     stopMediaTracks();
     stopResolveRef.current = null;
     if (recorderRef.current?.state === "recording") {
@@ -269,7 +245,7 @@ export function useAudioCapture(
     setState("idle");
     setCurrentVolume(0);
     setError(null);
-  }, [cleanupIntervals, stopMediaTracks]);
+  }, [cleanup, stopMediaTracks]);
 
   const setAudioUrl = useCallback((url: string | null) => {
     setAudioUrlState(url);

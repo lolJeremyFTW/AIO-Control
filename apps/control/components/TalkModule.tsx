@@ -83,6 +83,8 @@ export function TalkModule({ agents, workspaceSlug, defaultAgentId }: Props) {
   });
 
   const [uiError, setUiError] = useState<string | null>(null);
+  // Guard against re-entrant clicks while a start/stop is in flight
+  const clickGuardRef = useRef(false);
 
   const isListening = state === "listening";
   const isProcessing = state === "processing";
@@ -115,51 +117,51 @@ export function TalkModule({ agents, workspaceSlug, defaultAgentId }: Props) {
   };
 
   const handleMicClick = useCallback(async () => {
-    console.info("[TalkModule] handleMicClick, isListening:", isListening, "state:", state);
-    setUiError(null);
-
-    if (isListening) {
-      // Second click: stop recording → send to server
-      console.info("[TalkModule] calling stopCapture...");
-      const blob = await stopCapture();
-      console.info("[TalkModule] stopCapture resolved, blob:", blob ? "yes" : "null");
-      if (!blob) return;
-
-      const form = new FormData();
-      form.append("audio", blob, "recording.webm");
-      form.append("agent_id", agentId);
-      form.append("workspace_slug", workspaceSlug);
-
-      try {
-        const res = await fetch("/api/talk", { method: "POST", body: form });
-
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({ error: "Onbekende fout" }));
-          setUiError((err as { error?: string }).error ?? "Fout bij verwerken.");
-          return;
-        }
-
-        const audioBlob = await res.blob();
-        const url = URL.createObjectURL(audioBlob);
-        setAudioUrl(url);
-
-        if (audioRef.current) {
-          audioRef.current.src = url;
-          await audioRef.current.play();
-        }
-      } catch {
-        setUiError("Kon server niet bereiken. Check je verbinding.");
-      }
-    } else if (isIdle) {
-      // First click: start recording
-      console.info("[TalkModule] calling startCapture...");
-      await startCapture();
-      console.info("[TalkModule] startCapture done, state:", state);
-    } else {
-      console.info("[TalkModule] click ignored, isBusy:", isBusy, "isListening:", isListening);
+    if (clickGuardRef.current) {
+      console.info("[TalkModule] click blocked by guard");
+      return;
     }
-    // isBusy clicks are ignored (button is disabled)
-  }, [isListening, isIdle, isBusy, stopCapture, startCapture, agentId, workspaceSlug, setAudioUrl]);
+    clickGuardRef.current = true;
+    try {
+      console.info("[TalkModule] handleMicClick, state:", state);
+      setUiError(null);
+
+      if (isListening) {
+        console.info("[TalkModule] -> stopCapture");
+        const blob = await stopCapture();
+        console.info("[TalkModule] stopCapture returned, blob:", blob ? "yes" : "null");
+        if (!blob) return;
+
+        const form = new FormData();
+        form.append("audio", blob, "recording.webm");
+        form.append("agent_id", agentId);
+        form.append("workspace_slug", workspaceSlug);
+
+        try {
+          const res = await fetch("/api/talk", { method: "POST", body: form });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: "Onbekende fout" }));
+            setUiError((err as { error?: string }).error ?? "Fout bij verwerken.");
+            return;
+          }
+          const audioBlob = await res.blob();
+          const url = URL.createObjectURL(audioBlob);
+          setAudioUrl(url);
+          if (audioRef.current) {
+            audioRef.current.src = url;
+            await audioRef.current.play();
+          }
+        } catch {
+          setUiError("Kon server niet bereiken. Check je verbinding.");
+        }
+      } else if (isIdle) {
+        console.info("[TalkModule] -> startCapture");
+        await startCapture();
+      }
+    } finally {
+      clickGuardRef.current = false;
+    }
+  }, [state, isListening, isIdle, isBusy, stopCapture, startCapture, agentId, workspaceSlug, setAudioUrl]);
 
   // Reset error when state clears
   useEffect(() => {
