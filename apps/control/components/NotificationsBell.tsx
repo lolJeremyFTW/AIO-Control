@@ -74,6 +74,7 @@ export function NotificationsBell({
     void fetch(`${base}/api/notifications/dismiss`, {
       method: "POST",
       headers: { "content-type": "application/json" },
+      credentials: "same-origin",
       body: JSON.stringify({ kind, id }),
     }).catch(() => {
       // On failure the next refresh() will repopulate it — better than
@@ -89,6 +90,7 @@ export function NotificationsBell({
       void fetch(`${base}/api/notifications/dismiss`, {
         method: "POST",
         headers: { "content-type": "application/json" },
+        credentials: "same-origin",
         body: JSON.stringify({ kind: n.kind, id: n.id }),
       }).catch(() => {});
     }
