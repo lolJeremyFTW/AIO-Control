@@ -59,29 +59,52 @@ export default async function WorkspaceLayout({ children, params }: Props) {
   // Per-business notification counts → power the small numeric
   // badges on each business chip in the rail. Same data the bell
   // groups by; we just bucket it server-side here so the rail
-  // doesn't need its own subscription.
-  const [{ data: openQueue }, { data: failedRuns }] = await Promise.all([
-    supabase
-      .from("queue_items")
-      .select("business_id")
-      .eq("workspace_id", workspace.id)
-      .in("state", ["review", "fail"])
-      .is("resolved_at", null),
-    supabase
-      .from("runs")
-      .select("business_id")
-      .eq("workspace_id", workspace.id)
-      .eq("status", "failed")
-      .order("created_at", { ascending: false })
-      .limit(50),
-  ]);
+  // doesn't need its own subscription. Filter by the user's
+  // notification_dismissals so the rail count matches what the bell
+  // shows after they hit "Wis alles".
+  const [{ data: openQueue }, { data: failedRuns }, { data: dismissals }] =
+    await Promise.all([
+      supabase
+        .from("queue_items")
+        .select("id, business_id")
+        .eq("workspace_id", workspace.id)
+        .in("state", ["review", "fail"])
+        .is("resolved_at", null),
+      supabase
+        .from("runs")
+        .select("id, business_id")
+        .eq("workspace_id", workspace.id)
+        .eq("status", "failed")
+        .order("created_at", { ascending: false })
+        .limit(50),
+      supabase
+        .from("notification_dismissals")
+        .select("source_kind, source_id")
+        .eq("user_id", user.id),
+    ]);
+  const dismissedQueue = new Set(
+    ((dismissals ?? []) as { source_kind: string; source_id: string }[])
+      .filter((d) => d.source_kind === "queue")
+      .map((d) => d.source_id),
+  );
+  const dismissedRuns = new Set(
+    ((dismissals ?? []) as { source_kind: string; source_id: string }[])
+      .filter((d) => d.source_kind === "run")
+      .map((d) => d.source_id),
+  );
   const notifCounts: Record<string, number> = {};
-  for (const r of (openQueue ?? []) as { business_id: string | null }[]) {
-    if (r.business_id)
+  for (const r of (openQueue ?? []) as {
+    id: string;
+    business_id: string | null;
+  }[]) {
+    if (r.business_id && !dismissedQueue.has(r.id))
       notifCounts[r.business_id] = (notifCounts[r.business_id] ?? 0) + 1;
   }
-  for (const r of (failedRuns ?? []) as { business_id: string | null }[]) {
-    if (r.business_id)
+  for (const r of (failedRuns ?? []) as {
+    id: string;
+    business_id: string | null;
+  }[]) {
+    if (r.business_id && !dismissedRuns.has(r.id))
       notifCounts[r.business_id] = (notifCounts[r.business_id] ?? 0) + 1;
   }
   // We pass the locale string (serializable) to the client. The client

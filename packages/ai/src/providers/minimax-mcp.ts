@@ -66,8 +66,13 @@ export async function* streamMinimaxViaClaude(
 
   yield { type: "message_start", message_id: messageId, role: "assistant" };
 
+  // The systemd service runs with a minimal PATH that doesn't include
+  // ~/.npm-global/bin where Claude Code installs. Operators can pin the
+  // absolute path via CLAUDE_BIN; otherwise we fall back to the bare
+  // name and hope it's on PATH.
+  const claudeBin = process.env.CLAUDE_BIN || "claude";
   const child = spawn(
-    "claude",
+    claudeBin,
     [
       "--print",
       "--output-format",
@@ -104,8 +109,9 @@ export async function* streamMinimaxViaClaude(
       type: "error",
       code: "claude_cli_missing",
       message:
-        `Kon 'claude' CLI niet starten (${earlyErr.message}). Installeer ` +
-        `Claude Code op de host om MCP-via-Claude te gebruiken.`,
+        `Kon '${claudeBin}' niet starten (${earlyErr.message}). ` +
+        `Installeer Claude Code op de host, of zet CLAUDE_BIN in env naar ` +
+        `het absolute pad (bijv. /home/jeremy/.npm-global/bin/claude).`,
     };
     return;
   }

@@ -111,6 +111,29 @@ async function tick(): Promise<void> {
 
   for (const sched of due) {
     try {
+      // Atomic claim: only the tick that wins this UPDATE proceeds. We
+      // guard on `last_fired_at` being either null or older than 60s
+      // (matches the JS-side shouldFire window). Postgres serializes
+      // the writes per row, so concurrent ticks from the two service
+      // instances (aio-control + aio-control-root) collapse into one
+      // run-insert without needing an advisory lock.
+      const cutoff = new Date(now.getTime() - 60_000).toISOString();
+      const { data: claimed, error: claimErr } = await admin
+        .from("schedules")
+        .update({ last_fired_at: now.toISOString() })
+        .eq("id", sched.id)
+        .or(`last_fired_at.is.null,last_fired_at.lt.${cutoff}`)
+        .select("id")
+        .maybeSingle();
+      if (claimErr) {
+        console.error("[cron-scheduler] claim update failed", claimErr);
+        continue;
+      }
+      if (!claimed) {
+        // Another tick (other service instance) won. Skip silently.
+        continue;
+      }
+
       const { data: run, error: runErr } = await admin
         .from("runs")
         .insert({
@@ -135,12 +158,6 @@ async function tick(): Promise<void> {
         console.error("[cron-scheduler] run insert failed", runErr);
         continue;
       }
-      // Update watermark BEFORE dispatch so a slow dispatch doesn't
-      // double-fire on the next tick.
-      await admin
-        .from("schedules")
-        .update({ last_fired_at: now.toISOString() })
-        .eq("id", sched.id);
       // Dispatch async — we don't want one slow agent to block other
       // schedules in the same tick.
       void dispatchRun(run.id).catch((err) => {
