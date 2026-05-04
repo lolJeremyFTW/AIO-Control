@@ -49,6 +49,11 @@ export function NotificationsBell({
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<Notif[]>([]);
   const ref = useRef<HTMLDivElement>(null);
+  // Two-step confirm for the bulk dismiss — avoids the "I clicked the
+  // wrong button and lost my whole list" footgun. First click flips the
+  // label; a second click within 4 s commits, otherwise it resets.
+  const [confirmingClear, setConfirmingClear] = useState(false);
+  const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const refresh = async () => {
     const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
@@ -88,6 +93,32 @@ export function NotificationsBell({
       }).catch(() => {});
     }
   };
+
+  // Two-step confirm: first click arms, second click within 4s commits.
+  const armOrClearAll = () => {
+    if (confirmingClear) {
+      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+      confirmTimerRef.current = null;
+      setConfirmingClear(false);
+      dismissAll();
+      return;
+    }
+    setConfirmingClear(true);
+    confirmTimerRef.current = setTimeout(() => {
+      setConfirmingClear(false);
+      confirmTimerRef.current = null;
+    }, 4000);
+  };
+
+  // Always reset the arm state when the popover closes so the user
+  // doesn't reopen it later and hit a hot button by accident.
+  useEffect(() => {
+    if (!open) {
+      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+      confirmTimerRef.current = null;
+      setConfirmingClear(false);
+    }
+  }, [open]);
 
   useEffect(() => {
     void refresh();
@@ -217,19 +248,31 @@ export function NotificationsBell({
                 </span>
                 <button
                   type="button"
-                  onClick={dismissAll}
+                  onClick={armOrClearAll}
                   style={{
-                    background: "transparent",
-                    border: "none",
-                    color: "var(--app-fg-2)",
+                    background: confirmingClear
+                      ? "rgba(230,82,107,0.12)"
+                      : "transparent",
+                    border: confirmingClear
+                      ? "1px solid rgba(230,82,107,0.5)"
+                      : "1px solid transparent",
+                    color: confirmingClear
+                      ? "var(--rose)"
+                      : "var(--app-fg-2)",
                     fontSize: 11,
-                    fontWeight: 600,
+                    fontWeight: 700,
                     cursor: "pointer",
-                    padding: "2px 6px",
+                    padding: "2px 8px",
                     borderRadius: 6,
+                    transition: "background 0.12s, color 0.12s",
                   }}
+                  title={
+                    confirmingClear
+                      ? "Klik nogmaals om te bevestigen"
+                      : "Wis alle notificaties voor jou"
+                  }
                 >
-                  Wis alles
+                  {confirmingClear ? "Bevestig?" : "Wis alles"}
                 </button>
               </div>
             </>

@@ -462,31 +462,48 @@ export function TelegramPanel({
                   chat {t.chat_id}
                   {t.topic_id != null && ` · topic ${t.topic_id}`}
                 </div>
-                {t.scope === "workspace" && (
-                  <label
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 6,
-                      fontSize: 10.5,
-                      color: "var(--app-fg-2)",
-                      marginTop: 6,
-                      cursor: "pointer",
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={
-                        t.auto_create_topics_for_businesses ?? false
-                      }
-                      onChange={(e) =>
-                        toggleAutoCreate(t.id, e.target.checked)
-                      }
-                      style={{ accentColor: "var(--tt-green)" }}
-                    />
-                    {tt("tg.row.autoCreateLabel")}
-                  </label>
-                )}
+                {t.scope === "workspace" &&
+                  (t.auto_create_topics_for_businesses ? (
+                    <button
+                      type="button"
+                      onClick={() => toggleAutoCreate(t.id, false)}
+                      title="Klik om de auto-create vlag uit te zetten"
+                      style={{
+                        marginTop: 6,
+                        padding: "3px 9px",
+                        fontSize: 10.5,
+                        fontWeight: 700,
+                        letterSpacing: 0.3,
+                        border: "1px solid var(--tt-green)",
+                        background: "rgba(57,178,85,0.10)",
+                        color: "var(--tt-green)",
+                        borderRadius: 6,
+                        cursor: "pointer",
+                      }}
+                    >
+                      ✓ Auto-create parent · klik om uit te zetten
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => toggleAutoCreate(t.id, true)}
+                      title="Stel deze groep in als bron voor auto-aangemaakte topics. Andere workspace-targets verliezen de vlag automatisch."
+                      style={{
+                        marginTop: 6,
+                        padding: "3px 9px",
+                        fontSize: 10.5,
+                        fontWeight: 700,
+                        letterSpacing: 0.3,
+                        border: "1px dashed var(--app-border)",
+                        background: "transparent",
+                        color: "var(--app-fg-2)",
+                        borderRadius: 6,
+                        cursor: "pointer",
+                      }}
+                    >
+                      + Markeer als auto-create parent
+                    </button>
+                  ))}
               </div>
               <div style={{ fontSize: 12, color: "var(--app-fg-2)" }}>
                 {labelFor(t)}

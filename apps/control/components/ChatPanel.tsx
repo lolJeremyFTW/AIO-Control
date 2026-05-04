@@ -20,6 +20,7 @@ import {
   listThreads,
   type ThreadRow,
 } from "../app/actions/chat";
+import { MarkdownText } from "./MarkdownText";
 
 type Props = {
   agents: AgentRow[];
@@ -623,11 +624,18 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
                         : "1px solid var(--app-border-2)",
                     borderRadius: 12,
                     padding: "8px 11px",
-                    whiteSpace: "pre-wrap",
+                    // assistant text already structures itself via
+                    // MarkdownText; user/error stay literal so newlines
+                    // they typed render verbatim.
+                    whiteSpace: m.role === "assistant" ? "normal" : "pre-wrap",
                     lineHeight: 1.42,
                   }}
                 >
-                  {m.text || (m.pending ? "…" : "")}
+                  {m.role === "assistant" && m.text ? (
+                    <MarkdownText text={m.text} />
+                  ) : (
+                    m.text || (m.pending ? "…" : "")
+                  )}
                 </div>
 
                 {/* Tool-call chips so the user sees what the agent is
