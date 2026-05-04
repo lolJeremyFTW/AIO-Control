@@ -4,9 +4,9 @@
 //
 // Mic button states:
 //   - idle/error: green pulse
-//   - listening: orange + real-time waveform bars driven by currentVolume
-//   - processing: blue spinner
-//   - playing: blue spinner
+//   - recording: orange + real-time waveform bars driven by volume
+//   - processing: blue spinner (sending to server)
+//   - playing: blue spinner (TTS playback)
 //
 // Agent pill: agent switcher dropdown
 
@@ -16,7 +16,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { ChevronDownIcon, ChevronRightIcon, MicIcon, SettingsIcon } from "@aio/ui/icon";
-import { useAudioCapture } from "../hooks/useAudioCapture";
+import { useRecorder } from "../hooks/useRecorder";
 
 export type TalkAgent = {
   id: string;
@@ -35,25 +35,21 @@ type Props = {
   defaultAgentId?: string;
 };
 
-// Mini waveform: 5 bars, heights driven by currentVolume
+// Waveform bars driven by volume level (0-255)
 function Waveform({ volume }: { volume: number }) {
-  // volume is 0-255, normalize to 0-1
   const level = Math.min(volume / 80, 1);
-  const bars = [0.3, 0.6, 1.0, 0.7, 0.4];
+  const heights = [30, 65, 100, 70, 40]; // base percentages
   return (
     <span className="talk-wave" aria-hidden="true">
-      {bars.map((base, i) => {
-        const height = Math.max(4, Math.round(base * level * 18));
-        return (
-          <i
-            key={i}
-            style={{
-              height,
-              animationDelay: `${i * 0.08}s`,
-            }}
-          />
-        );
-      })}
+      {heights.map((base, i) => (
+        <i
+          key={i}
+          style={{
+            height: Math.max(4, Math.round(base * level * 0.18)),
+            animationDelay: `${i * 0.08}s`,
+          }}
+        />
+      ))}
     </span>
   );
 }
@@ -64,32 +60,24 @@ export function TalkModule({ agents, workspaceSlug, defaultAgentId }: Props) {
     defaultAgentId ?? agents[0]?.id ?? "",
   );
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [uiError, setUiError] = useState<string | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
 
   const {
     state,
-    error: captureError,
-    currentVolume,
-    startCapture,
-    stopCapture,
-    cancelCapture,
-    setAudioUrl,
-    onPlaybackEnded,
-  } = useAudioCapture({
-    silenceThreshold: 10,
-    silenceDurationMs: 1500,
-    maxDurationMs: 30000,
-  });
+    isRecording,
+    error: recorderError,
+    volume,
+    start,
+    stop,
+    discard,
+    setTtsUrl,
+    onAudioEnded,
+  } = useRecorder();
 
-  const [uiError, setUiError] = useState<string | null>(null);
-  // Guard against re-entrant clicks while a start/stop is in flight
-  const clickGuardRef = useRef(false);
-
-  const isListening = state === "listening";
   const isProcessing = state === "processing";
   const isPlaying = state === "playing";
-  const isIdle = state === "idle" || state === "error";
   const isError = state === "error";
   const isBusy = isProcessing || isPlaying;
 
@@ -97,7 +85,7 @@ export function TalkModule({ agents, workspaceSlug, defaultAgentId }: Props) {
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setOpen(false);
       }
     };
@@ -117,70 +105,56 @@ export function TalkModule({ agents, workspaceSlug, defaultAgentId }: Props) {
   };
 
   const handleMicClick = useCallback(async () => {
-    if (clickGuardRef.current) {
-      console.info("[TalkModule] click blocked by guard");
-      return;
-    }
-    clickGuardRef.current = true;
-    try {
-      console.info("[TalkModule] handleMicClick, state:", state);
-      setUiError(null);
+    console.info("[TalkModule] mic click, isRecording:", isRecording, "state:", state);
+    setUiError(null);
 
-      if (isListening) {
-        console.info("[TalkModule] -> stopCapture");
-        const blob = await stopCapture();
-        console.info("[TalkModule] stopCapture returned, blob:", blob ? "yes" : "null");
-        if (!blob) return;
+    if (isRecording) {
+      // Second click: stop and send to server
+      console.info("[TalkModule] calling stop()");
+      const blob = await stop();
+      console.info("[TalkModule] stop returned, blob:", blob ? "yes" : "null");
+      if (!blob) return;
 
-        const form = new FormData();
-        form.append("audio", blob, "recording.webm");
-        form.append("agent_id", agentId);
-        form.append("workspace_slug", workspaceSlug);
+      const form = new FormData();
+      form.append("audio", blob, "recording.webm");
+      form.append("agent_id", agentId);
+      form.append("workspace_slug", workspaceSlug);
 
-        try {
-          const res = await fetch("/api/talk", { method: "POST", body: form });
-          if (!res.ok) {
-            const err = await res.json().catch(() => ({ error: "Onbekende fout" }));
-            setUiError((err as { error?: string }).error ?? "Fout bij verwerken.");
-            return;
-          }
-          const audioBlob = await res.blob();
-          const url = URL.createObjectURL(audioBlob);
-          setAudioUrl(url);
-          if (audioRef.current) {
-            audioRef.current.src = url;
-            await audioRef.current.play();
-          }
-        } catch {
-          setUiError("Kon server niet bereiken. Check je verbinding.");
+      try {
+        const res = await fetch("/api/talk", { method: "POST", body: form });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: "Onbekende fout" }));
+          setUiError((err as { error?: string }).error ?? "Fout bij verwerken.");
+          return;
         }
-      } else if (isIdle) {
-        console.info("[TalkModule] -> startCapture");
-        await startCapture();
+        const audioBlob = await res.blob();
+        const url = URL.createObjectURL(audioBlob);
+        setTtsUrl(url);
+        if (audioRef.current) {
+          audioRef.current.src = url;
+          await audioRef.current.play();
+        }
+      } catch {
+        setUiError("Kon server niet bereiken.");
       }
-    } finally {
-      clickGuardRef.current = false;
+    } else if (state === "idle" || state === "error") {
+      // First click: start recording
+      console.info("[TalkModule] calling start()");
+      await start();
     }
-  }, [state, isListening, isIdle, isBusy, stopCapture, startCapture, agentId, workspaceSlug, setAudioUrl]);
+    // isBusy clicks are ignored (button is disabled)
+  }, [isRecording, state, agentId, workspaceSlug, start, stop, setTtsUrl]);
 
-  // Reset error when state clears
+  // Clear error when user starts a new action
   useEffect(() => {
-    if (state === "listening" || state === "idle") setUiError(null);
+    if (state === "idle" || state === "recording") setUiError(null);
   }, [state]);
 
   if (!agent) {
     return (
-      <button
-        type="button"
-        onClick={goToSettings}
-        className="talk-module"
-        style={{ opacity: 0.7 }}
-        title="Geen agents — open Talk settings"
-      >
+      <button type="button" onClick={goToSettings} className="talk-module" style={{ opacity: 0.7 }}>
         <span className="talk-mic">
-          <span className="talk-mic-pulse">
-            <MicIcon size={14} />
-          </span>
+          <span className="talk-mic-pulse"><MicIcon size={14} /></span>
         </span>
         <span className="talk-agent">
           <span className="talk-agent-name">Geen agents</span>
@@ -189,28 +163,28 @@ export function TalkModule({ agents, workspaceSlug, defaultAgentId }: Props) {
     );
   }
 
-  const micTitle = isListening
+  const micClass = [
+    "talk-mic",
+    isRecording ? "is-listening" : "",
+    isBusy ? "is-busy" : "",
+    isError ? "is-error" : "",
+  ].filter(Boolean).join(" ");
+
+  const micTitle = isRecording
     ? "Stop met praten"
     : isBusy
       ? "Verwerken…"
       : isError
-        ? `Fout: ${captureError ?? uiError}`
+        ? `Fout: ${recorderError ?? uiError}`
         : `Praat met ${agent.name}`;
 
   return (
-    <div className="talk-module" ref={ref}>
-      <audio ref={audioRef} onEnded={onPlaybackEnded} style={{ display: "none" }} />
+    <div className="talk-module" ref={containerRef}>
+      <audio ref={audioRef} onEnded={onAudioEnded} style={{ display: "none" }} />
 
       <button
         type="button"
-        className={[
-          "talk-mic",
-          isListening ? "is-listening" : "",
-          isBusy ? "is-busy" : "",
-          isError ? "is-error" : "",
-        ]
-          .filter(Boolean)
-          .join(" ")}
+        className={micClass}
         onClick={handleMicClick}
         title={micTitle}
         disabled={isBusy}
@@ -219,10 +193,7 @@ export function TalkModule({ agents, workspaceSlug, defaultAgentId }: Props) {
           <MicIcon size={14} />
         </span>
 
-        {/* Waveform — real volume bars while listening */}
-        {isListening && <Waveform volume={currentVolume} />}
-
-        {/* Spinner while processing or playing */}
+        {isRecording && <Waveform volume={volume} />}
         {isBusy && (
           <span className="talk-wave talk-wave-busy" aria-hidden="true">
             <i className="talk-spinner" />
@@ -278,7 +249,7 @@ export function TalkModule({ agents, workspaceSlug, defaultAgentId }: Props) {
 
           <button type="button" className="talk-dropdown-settings" onClick={goToSettings}>
             <SettingsIcon size={14} />
-            <span>Talk settings — provider, stem, log</span>
+            <span>Talk settings</span>
             <ChevronRightIcon size={12} />
           </button>
         </div>
