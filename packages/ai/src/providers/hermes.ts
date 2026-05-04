@@ -152,6 +152,8 @@ export async function* streamHermes(
 function extractReply(stdout: string): string {
   const trimmed = stdout.trim();
   if (!trimmed) return "";
+  // JSON envelope (legacy --json path) — kept for older Hermes builds
+  // and HERMES_DEFAULT_ARGS overrides that re-enable JSON output.
   try {
     const obj = JSON.parse(trimmed) as Record<string, unknown>;
     return pickText(obj) ?? trimmed;
@@ -169,7 +171,19 @@ function extractReply(stdout: string): string {
       /* skip */
     }
   }
-  return trimmed;
+  // Hermes 0.10's `chat -Q -q` mode prefixes the reply with a
+  // "session_id: <id>" banner line. Strip leading metadata lines so
+  // the run drawer just shows the assistant text.
+  const lines = trimmed.split("\n");
+  while (
+    lines.length > 0 &&
+    /^(session_id|model|provider|cost|tokens|elapsed)\s*:/i.test(
+      lines[0] ?? "",
+    )
+  ) {
+    lines.shift();
+  }
+  return lines.join("\n").trim();
 }
 
 function pickText(obj: Record<string, unknown>): string | null {
