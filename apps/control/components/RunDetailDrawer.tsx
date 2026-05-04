@@ -37,10 +37,22 @@ type Props = {
 };
 
 export function RunDetailDrawer({ runId, onClose }: Props) {
+  // Internal "which run am I showing now" state. Starts at the prop and
+  // pivots to a new run id when the user posts a follow-up message —
+  // the new run carries the prior message_history forward, so the
+  // drawer keeps showing the full thread without juggling external state.
+  const [currentRunId, setCurrentRunId] = useState(runId);
+  // Reset to the prop's run when the parent opens a different one.
+  useEffect(() => {
+    setCurrentRunId(runId);
+  }, [runId]);
+
   const [run, setRun] = useState<RunDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [redispatching, setRedispatching] = useState(false);
+  const [followupText, setFollowupText] = useState("");
+  const [followupSending, setFollowupSending] = useState(false);
 
   // Re-fetch counter — bumped on realtime events so a still-running run
   // streams its updates into this drawer live (status: running → done,
@@ -52,7 +64,7 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
     setLoading(tick === 0);
     setError(null);
     const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-    fetch(`${base}/api/runs/${runId}`, { signal: ctl.signal })
+    fetch(`${base}/api/runs/${currentRunId}`, { signal: ctl.signal })
       .then(async (res) => {
         if (!res.ok) throw new Error(await res.text());
         return res.json() as Promise<{ run: RunDetail }>;
@@ -65,7 +77,7 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
       })
       .finally(() => setLoading(false));
     return () => ctl.abort();
-  }, [runId, tick]);
+  }, [currentRunId, tick]);
 
   // Subscribe to changes on this specific run row — fires as the
   // dispatcher promotes queued → running → done and writes message_history.
@@ -77,7 +89,7 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
       return;
     }
     const ch = supabase
-      .channel(`run-detail:${runId}`)
+      .channel(`run-detail:${currentRunId}`)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .on(
         "postgres_changes" as any,
@@ -85,7 +97,7 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
           event: "UPDATE",
           schema: "aio_control",
           table: "runs",
-          filter: `id=eq.${runId}`,
+          filter: `id=eq.${currentRunId}`,
         },
         () => setTick((t) => t + 1),
       )
@@ -93,7 +105,7 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
     return () => {
       void supabase.removeChannel(ch);
     };
-  }, [runId]);
+  }, [currentRunId]);
 
   // ESC closes the drawer.
   useEffect(() => {
@@ -113,7 +125,7 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
     setError(null);
     const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
     try {
-      const res = await fetch(`${base}/api/runs/${runId}/dispatch`, {
+      const res = await fetch(`${base}/api/runs/${currentRunId}/dispatch`, {
         method: "POST",
       });
       if (!res.ok) {
@@ -125,6 +137,37 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
       setError(err instanceof Error ? err.message : "dispatch error");
     } finally {
       setRedispatching(false);
+    }
+  };
+
+  // Post a follow-up message: server creates a new run with the prior
+  // message_history merged + the new user turn appended. We pivot the
+  // drawer to the new run id so the realtime subscription above streams
+  // the assistant response into the same view.
+  const sendFollowup = async () => {
+    const text = followupText.trim();
+    if (!text || followupSending) return;
+    setFollowupSending(true);
+    setError(null);
+    const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+    try {
+      const res = await fetch(`${base}/api/runs/${currentRunId}/followup`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ prompt: text }),
+      });
+      if (!res.ok) {
+        const errText = await res.text();
+        setError(errText || `Verzenden faalde (${res.status})`);
+        return;
+      }
+      const data = (await res.json()) as { run_id: string };
+      setFollowupText("");
+      setCurrentRunId(data.run_id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "followup error");
+    } finally {
+      setFollowupSending(false);
     }
   };
 
@@ -245,6 +288,83 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
           )}
           {run && <RunBody run={run} />}
         </div>
+
+        {/* Follow-up composer — always visible, disabled while a run is
+            mid-flight. Posting creates a new run carrying this run's
+            history forward; the drawer pivots to it so the assistant's
+            reply streams into the same view. */}
+        {run && (
+          <div
+            style={{
+              borderTop: "1px solid var(--app-border)",
+              padding: "10px 14px",
+              background: "var(--app-card)",
+              display: "flex",
+              gap: 8,
+              alignItems: "flex-end",
+            }}
+          >
+            <textarea
+              value={followupText}
+              onChange={(e) => setFollowupText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                  e.preventDefault();
+                  void sendFollowup();
+                }
+              }}
+              placeholder="Stel een vervolgvraag of geef nieuwe instructies… (Ctrl+Enter om te versturen)"
+              rows={2}
+              disabled={
+                followupSending ||
+                run.status === "queued" ||
+                run.status === "running"
+              }
+              style={{
+                flex: 1,
+                background: "var(--app-card-2)",
+                border: "1.5px solid var(--app-border)",
+                color: "var(--app-fg)",
+                padding: "8px 11px",
+                borderRadius: 9,
+                fontFamily: "var(--type)",
+                fontSize: 13,
+                resize: "vertical",
+                minHeight: 40,
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => void sendFollowup()}
+              disabled={
+                followupSending ||
+                !followupText.trim() ||
+                run.status === "queued" ||
+                run.status === "running"
+              }
+              style={{
+                padding: "9px 14px",
+                border: "1.5px solid var(--tt-green)",
+                background: "var(--tt-green)",
+                color: "#fff",
+                borderRadius: 10,
+                fontWeight: 700,
+                fontSize: 12.5,
+                cursor: followupSending ? "wait" : "pointer",
+                opacity:
+                  followupSending ||
+                  !followupText.trim() ||
+                  run.status === "queued" ||
+                  run.status === "running"
+                    ? 0.6
+                    : 1,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {followupSending ? "Bezig…" : "Verstuur"}
+            </button>
+          </div>
+        )}
 
         {run && <RunFooter run={run} />}
       </div>

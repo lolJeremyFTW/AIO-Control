@@ -50,7 +50,7 @@ export function SchedulesPanel({
   } | null>(null);
   const [cronOpen, setCronOpen] = useState(false);
   const [cronExpr, setCronExpr] = useState("0 9 * * *");
-  const [cronPrompt, setCronPrompt] = useState("");
+  const [prompt, setPrompt] = useState("");
   const [editingSchedule, setEditingSchedule] = useState<ScheduleRow | null>(
     null,
   );
@@ -84,6 +84,7 @@ export function SchedulesPanel({
         workspace_id: workspaceId,
         agent_id,
         business_id: businessId,
+        prompt: prompt.trim() || undefined,
       });
       if (!res.ok) setError(res.error);
       router.refresh();
@@ -111,7 +112,7 @@ export function SchedulesPanel({
   const createCron = () => {
     if (!agentId) return setError("Kies eerst een agent.");
     if (!cronExpr.trim()) return setError("Vul een cron-expressie in.");
-    if (!cronPrompt.trim()) return setError("Vul een prompt in.");
+    if (!prompt.trim()) return setError("Vul een prompt in.");
     setError(null);
     startTransition(async () => {
       // Pass the origin only — the action picks the right callback
@@ -124,7 +125,7 @@ export function SchedulesPanel({
         agent_id: agentId,
         business_id: businessId,
         cron_expr: cronExpr,
-        prompt: cronPrompt,
+        prompt: prompt,
         callback_origin: triggerOrigin,
       });
       if (!res.ok) {
@@ -132,7 +133,7 @@ export function SchedulesPanel({
         return;
       }
       setCronOpen(false);
-      setCronPrompt("");
+      setPrompt("");
       router.refresh();
     });
   };
@@ -252,6 +253,24 @@ export function SchedulesPanel({
           </div>
         </div>
 
+        {/* Single prompt textarea — used by Run now (optional) AND
+            cron creation (required). Webhook ignores it (the trigger
+            POST body becomes the prompt at fire time). Always visible
+            so the user doesn't have to dig into the cron form just to
+            send a one-shot test prompt. */}
+        <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginTop: 12 }}>
+          <span style={{ display: "block", marginBottom: 4 }}>
+            Prompt — wat moet de agent doen?
+          </span>
+          <textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            rows={3}
+            style={{ ...inputStyle, resize: "vertical", minHeight: 70 }}
+            placeholder="Bijv. 'Vind 10 nieuwe MKB leads in Nederland en schrijf cold-email pitches'."
+          />
+        </label>
+
         {isSubscription && (
           <p
             style={{
@@ -290,18 +309,6 @@ export function SchedulesPanel({
               </span>
               <CronBuilder value={cronExpr} onChange={setCronExpr} />
             </label>
-            <label style={{ fontSize: 12, fontWeight: 600 }}>
-              <span style={{ display: "block", marginBottom: 4 }}>
-                Prompt — wat moet de agent doen?
-              </span>
-              <textarea
-                value={cronPrompt}
-                onChange={(e) => setCronPrompt(e.target.value)}
-                rows={3}
-                style={{ ...inputStyle, resize: "vertical", minHeight: 70 }}
-                placeholder="Genereer een script voor vandaag's video over …"
-              />
-            </label>
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
               <button type="button" onClick={() => setCronOpen(false)} style={btnSecondary(pending)}>
                 Annuleer
@@ -311,9 +318,9 @@ export function SchedulesPanel({
               </button>
             </div>
             <p style={{ fontSize: 11, color: "var(--app-fg-3)", margin: 0 }}>
-              Cron schedules vereisen een geconfigureerde ANTHROPIC_API_KEY
-              op de server (Claude Routines). Zonder key faalt de aanmaak
-              direct met een duidelijke error.
+              De prompt hierboven wordt gebruikt als de cron afvuurt.
+              Voor subscription-Claude vereist Cron een geconfigureerde
+              ANTHROPIC_API_KEY (Claude Routines).
             </p>
           </div>
         )}
