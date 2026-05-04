@@ -305,6 +305,56 @@ export function TelegramPanel({
         ))}
       </div>
 
+      {topology !== "manual" &&
+        (() => {
+          const wsTargets = targets.filter(
+            (t) => t.scope === "workspace" && t.enabled,
+          );
+          const flagged = wsTargets.find(
+            (t) => t.auto_create_topics_for_businesses,
+          );
+          if (wsTargets.length === 0) {
+            return (
+              <p
+                style={{
+                  background: "rgba(245,158,11,0.10)",
+                  border: "1.5px solid rgba(245,158,11,0.4)",
+                  borderRadius: 10,
+                  padding: "10px 12px",
+                  fontSize: 12,
+                  color: "var(--amber)",
+                  margin: 0,
+                }}
+              >
+                ⚠ Topology staat aan, maar er is geen workspace-target —
+                voeg er hieronder een toe (chat_id van je Telegram-groep)
+                anders worden er geen topics aangemaakt.
+              </p>
+            );
+          }
+          if (!flagged) {
+            return (
+              <p
+                style={{
+                  background: "rgba(57,178,85,0.08)",
+                  border: "1.5px solid rgba(57,178,85,0.35)",
+                  borderRadius: 10,
+                  padding: "10px 12px",
+                  fontSize: 12,
+                  color: "var(--app-fg-2)",
+                  margin: 0,
+                }}
+              >
+                ℹ Geen target is gemarkeerd als auto-create parent — we
+                gebruiken de oudste workspace-target. Vink hieronder
+                expliciet "auto-create" aan op de juiste groep om geen
+                verrassingen te krijgen.
+              </p>
+            );
+          }
+          return null;
+        })()}
+
       <details
         style={{
           background: "var(--app-card-2)",

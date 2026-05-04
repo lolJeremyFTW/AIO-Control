@@ -10,7 +10,6 @@ export type SettingsSectionId =
   | "general"
   | "agent-defaults"
   | "weather"
-  | "ollama"
   | "api-keys"
   | "spend-limits"
   | "telegram"
@@ -82,6 +81,9 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   },
 
   // ── AI & Modellen ────────────────────────────────────────────────
+  // Note: Ollama config used to live at /settings/ollama; it's been
+  // folded into the Providers onboarding card, so the route now
+  // redirects and the sidebar entry is gone.
   {
     id: "agent-defaults",
     labelKey: "settings.section.agentDefaults",
@@ -92,12 +94,6 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     id: "providers",
     labelKey: "settings.section.providers",
     descKey: "settings.section.providers.desc",
-    group: "ai",
-  },
-  {
-    id: "ollama",
-    labelKey: "settings.section.ollama",
-    descKey: "settings.section.ollama.desc",
     group: "ai",
   },
   {

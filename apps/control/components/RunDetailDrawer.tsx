@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 
 import type { RunStep } from "../lib/runs/message-history";
 import { getSupabaseBrowserClient } from "../lib/supabase/client";
+import { MarkdownText } from "./MarkdownText";
 
 type RunDetail = {
   id: string;
@@ -308,7 +309,11 @@ function StepBubble({ step }: { step: RunStep }) {
   if (step.kind === "assistant") {
     return (
       <Bubble side="left" tone="assistant">
-        {step.text || <em style={{ color: "var(--app-fg-3)" }}>(leeg)</em>}
+        {step.text ? (
+          <MarkdownText text={step.text} />
+        ) : (
+          <em style={{ color: "var(--app-fg-3)" }}>(leeg)</em>
+        )}
       </Bubble>
     );
   }
@@ -359,7 +364,9 @@ function Bubble({
         borderTopLeftRadius: side === "left" ? 4 : 14,
         fontSize: 13,
         lineHeight: 1.5,
-        whiteSpace: "pre-wrap",
+        // user-typed prompts keep newlines; assistant text is already
+        // structured by MarkdownText so we let normal flow take over.
+        whiteSpace: isUser ? "pre-wrap" : "normal",
         wordBreak: "break-word",
       }}
     >
