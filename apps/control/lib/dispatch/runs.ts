@@ -211,6 +211,26 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
     businessId: run.business_id,
   });
 
+  // Periodic mid-run flush of message_history so the run drawer streams
+  // partial assistant text in real time via the realtime subscription
+  // (UPDATE on runs). Without this the drawer stays on "Agent is bezig…"
+  // for the full duration. Throttled to once per 1.2 s so we don't
+  // hammer Postgres on token-heavy runs.
+  let lastFlushAt = 0;
+  const FLUSH_INTERVAL_MS = 1200;
+  const flushHistory = async () => {
+    lastFlushAt = Date.now();
+    try {
+      await supabase
+        .from("runs")
+        .update({ message_history: history })
+        .eq("id", runId);
+    } catch (err) {
+      // Non-fatal; the final write at the end will catch up.
+      console.warn("mid-run history flush failed", err);
+    }
+  };
+
   try {
     for await (const event of streamChat({
       provider: agent.provider as ProviderId,
@@ -229,6 +249,9 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
       if (event.type === "token") {
         output += event.delta;
         activeAssistant.text += event.delta;
+        if (Date.now() - lastFlushAt >= FLUSH_INTERVAL_MS) {
+          void flushHistory();
+        }
       } else if (event.type === "message_start") {
         // A new assistant turn begins (provider is restarting after a
         // tool call, or it's the very first start). If the previous
@@ -252,9 +275,14 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
         };
         toolCalls.set(event.tool_call_id, step);
         history.push(step);
+        // Tool calls are visually significant — flush immediately so
+        // the user sees "agent is calling X" instead of waiting for
+        // the next token-driven flush window.
+        void flushHistory();
       } else if (event.type === "tool_call_result") {
         const step = toolCalls.get(event.tool_call_id);
         if (step) step.result = event.output;
+        void flushHistory();
       } else if (event.type === "error") {
         errorText = event.message;
         history.push({

@@ -184,6 +184,14 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
         backdropFilter: "blur(2px)",
       }}
     >
+      {/* Pulse animation for the typing-bubble dots — scoped so it
+          doesn't leak into other stylesheets. */}
+      <style>{`
+        @keyframes tt-pulse {
+          0%, 60%, 100% { opacity: 0.25; transform: translateY(0); }
+          30% { opacity: 0.95; transform: translateY(-2px); }
+        }
+      `}</style>
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
@@ -374,7 +382,9 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
 
 function RunBody({ run }: { run: RunDetail }) {
   const steps = stepsFor(run);
-  if (steps.length === 0) {
+  const isLive = run.status === "queued" || run.status === "running";
+
+  if (steps.length === 0 && !isLive) {
     return (
       <p style={{ color: "var(--app-fg-3)", fontSize: 13 }}>
         Geen inhoud opgeslagen voor deze run.
@@ -386,7 +396,59 @@ function RunBody({ run }: { run: RunDetail }) {
       {steps.map((step, i) => (
         <StepBubble key={i} step={step} />
       ))}
+      {isLive && <PendingBubble status={run.status} />}
     </>
+  );
+}
+
+function PendingBubble({ status }: { status: string }) {
+  return (
+    <div
+      style={{
+        alignSelf: "flex-start",
+        maxWidth: "86%",
+        background: "var(--app-card-2)",
+        border: "1.5px dashed var(--app-border)",
+        color: "var(--app-fg-3)",
+        padding: "10px 13px",
+        borderRadius: 14,
+        borderTopLeftRadius: 4,
+        fontSize: 13,
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+      }}
+    >
+      <span
+        aria-hidden
+        style={{
+          display: "inline-flex",
+          gap: 3,
+        }}
+      >
+        <Dot delay={0} />
+        <Dot delay={150} />
+        <Dot delay={300} />
+      </span>
+      <span style={{ fontSize: 11.5, fontStyle: "italic" }}>
+        {status === "queued" ? "In wachtrij…" : "Agent is bezig…"}
+      </span>
+    </div>
+  );
+}
+
+function Dot({ delay }: { delay: number }) {
+  return (
+    <span
+      style={{
+        width: 6,
+        height: 6,
+        borderRadius: "50%",
+        background: "var(--tt-green)",
+        opacity: 0.55,
+        animation: `tt-pulse 1.1s ${delay}ms infinite ease-in-out`,
+      }}
+    />
   );
 }
 
