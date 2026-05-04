@@ -103,7 +103,7 @@ export function EditAgentDialog({
     systemPrompt?: string | null;
     endpoint?: string | null;
     mcpServers?: string[] | null;
-    mcpPermissions?: { filesystem?: "off" | "ro" | "rw" } | null;
+    mcpPermissions?: { filesystem?: "off" | "ro" | "rw"; aio?: "off" | "ro" | "rw" } | null;
   };
 
   const [name, setName] = useState(agent.name);
@@ -125,6 +125,7 @@ export function EditAgentDialog({
     );
   const [mcpPermissions, setMcpPermissions] = useState<{
     filesystem?: "off" | "ro" | "rw";
+    aio?: "off" | "ro" | "rw";
   }>(cfg.mcpPermissions ?? {});
   const [telegramTargetId, setTelegramTargetId] = useState(
     agent.telegram_target_id ?? "",
