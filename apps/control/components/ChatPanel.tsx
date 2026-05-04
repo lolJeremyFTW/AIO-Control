@@ -219,6 +219,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
       const reader = res.body.getReader();
       // eslint-disable-next-line no-constant-condition
       while (true) {
+        let done: boolean;
         let value: Uint8Array | undefined;
         try {
           ({ done, value } = await reader.read());
