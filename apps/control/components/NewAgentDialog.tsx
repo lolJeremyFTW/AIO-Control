@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import { createAgent, type AgentInput } from "../app/actions/agents";
 import { translate, type Locale } from "../lib/i18n/dict";
 import { useLocale } from "../lib/i18n/client";
+import { McpServersField } from "./McpServersField";
 import { ProviderModelPicker } from "./ProviderModelPicker";
 import { RoutingRulesEditor } from "./RoutingRulesEditor";
 
@@ -97,10 +98,14 @@ export function NewAgentDialog({
   const [keySource, setKeySource] = useState<
     "subscription" | "api_key" | "env"
   >("env");
-  // MiniMax-only: enable Coder Plan MCP (web_search + understand_image)
-  // by setting config.mcpServers = ["minimax"]. See providers/minimax-mcp.ts
-  // for what this routes through.
-  const [minimaxMcp, setMinimaxMcp] = useState(false);
+  // MCP server allow-list (minimax / filesystem / fetch). Stored on
+  // config.mcpServers; the native MCP host in @aio/ai/mcp/host spawns
+  // the matching subprocess and exposes tools to streamMinimax.
+  const [mcpServers, setMcpServers] = useState<string[]>([]);
+  const toggleMcp = (id: string) =>
+    setMcpServers((prev) =>
+      prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id],
+    );
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -133,7 +138,9 @@ export function NewAgentDialog({
       key_source: keySource,
       nav_node_id: navNodeId || null,
       mcpServers:
-        provider === "minimax" && minimaxMcp ? ["minimax"] : undefined,
+        provider === "minimax" && mcpServers.length > 0
+          ? mcpServers
+          : undefined,
     });
     setPending(false);
     if (!res.ok) {
@@ -346,52 +353,7 @@ export function NewAgentDialog({
         </Field>
 
         {provider === "minimax" && (
-          <div
-            style={{
-              border: "1.5px solid var(--app-border-2)",
-              borderRadius: 10,
-              padding: "10px 12px",
-              marginBottom: 12,
-              background: "var(--app-card-2)",
-            }}
-          >
-            <label
-              style={{
-                display: "flex",
-                gap: 10,
-                alignItems: "flex-start",
-                cursor: "pointer",
-                fontSize: 12.5,
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={minimaxMcp}
-                onChange={(e) => setMinimaxMcp(e.target.checked)}
-                style={{ accentColor: "var(--tt-green)", marginTop: 2 }}
-              />
-              <span>
-                <span style={{ fontWeight: 700 }}>
-                  Coder-Plan tools aanzetten (web_search + understand_image)
-                </span>
-                <span
-                  style={{
-                    display: "block",
-                    fontSize: 11,
-                    color: "var(--app-fg-3)",
-                    marginTop: 3,
-                    lineHeight: 1.5,
-                  }}
-                >
-                  Routet via Claude Code als MCP-host. Vereist{" "}
-                  <code>claude</code> CLI op de server +{" "}
-                  <code>MINIMAX_API_KEY</code> env. Zet ook{" "}
-                  <code>ANTHROPIC_API_KEY</code> voor scheduled runs zodat
-                  de CLI in API-mode draait (anders subscription = ban risk).
-                </span>
-              </span>
-            </label>
-          </div>
+          <McpServersField value={mcpServers} onToggle={toggleMcp} />
         )}
 
         {navOptions.length > 0 && (

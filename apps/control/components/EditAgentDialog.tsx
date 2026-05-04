@@ -20,6 +20,7 @@ import { updateAgent } from "../app/actions/agents";
 import type { AgentRow } from "../lib/queries/agents";
 import { translate } from "../lib/i18n/dict";
 import { useLocale } from "../lib/i18n/client";
+import { McpServersField } from "./McpServersField";
 import { ProviderModelPicker } from "./ProviderModelPicker";
 import { WorkflowGraph } from "./WorkflowGraph";
 
@@ -102,13 +103,17 @@ export function EditAgentDialog({
   const [model, setModel] = useState(agent.model ?? "");
   const [systemPrompt, setSystemPrompt] = useState(cfg.systemPrompt ?? "");
   const [endpoint, setEndpoint] = useState(cfg.endpoint ?? "");
-  // MiniMax-MCP toggle. Stored as config.mcpServers = ["minimax"]; the
-  // router routes the run through Claude Code as MCP host so the agent
-  // can call MiniMax Coder Plan tools (web_search, understand_image)
-  // alongside Claude Code's built-in Read/WebFetch.
-  const [minimaxMcp, setMinimaxMcp] = useState<boolean>(
-    Array.isArray(cfg.mcpServers) && cfg.mcpServers.includes("minimax"),
+  // MCP server allow-list. Each entry maps to one server in our native
+  // host registry (packages/ai/src/mcp/host.ts). When non-empty,
+  // streamMinimax spawns those servers, exposes their tools to the
+  // model, and dispatches tool_calls back. No Claude in the loop.
+  const [mcpServers, setMcpServers] = useState<string[]>(
+    Array.isArray(cfg.mcpServers) ? cfg.mcpServers : [],
   );
+  const toggleMcp = (id: string) =>
+    setMcpServers((prev) =>
+      prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id],
+    );
   const [telegramTargetId, setTelegramTargetId] = useState(
     agent.telegram_target_id ?? "",
   );
@@ -158,11 +163,11 @@ export function EditAgentDialog({
         notify_email: notifyEmail || null,
         allowed_tools: useToolsDefault ? null : allowedTools,
         nav_node_id: navNodeId || null,
-        // MCP toggle is only meaningful for minimax right now. For
-        // other providers we send an empty array which the action
-        // strips out of config.
-        mcpServers:
-          provider === "minimax" && minimaxMcp ? ["minimax"] : [],
+        // MCP servers are only wired through the minimax provider for
+        // now (claude / openrouter come in a later phase). For other
+        // providers we send an empty array which the action strips
+        // out of config.
+        mcpServers: provider === "minimax" ? mcpServers : [],
       },
     });
     setPending(false);
@@ -307,55 +312,10 @@ export function EditAgentDialog({
         </Field>
 
         {provider === "minimax" && (
-          <div
-            style={{
-              border: "1.5px solid var(--app-border-2)",
-              borderRadius: 10,
-              padding: "10px 12px",
-              marginBottom: 12,
-              background: "var(--app-card-2)",
-            }}
-          >
-            <label
-              style={{
-                display: "flex",
-                gap: 10,
-                alignItems: "flex-start",
-                cursor: "pointer",
-                fontSize: 12.5,
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={minimaxMcp}
-                onChange={(e) => setMinimaxMcp(e.target.checked)}
-                style={{ accentColor: "var(--tt-green)", marginTop: 2 }}
-              />
-              <span>
-                <span style={{ fontWeight: 700 }}>
-                  Coder-Plan tools aanzetten (web_search + understand_image)
-                </span>
-                <span
-                  style={{
-                    display: "block",
-                    fontSize: 11,
-                    color: "var(--app-fg-3)",
-                    marginTop: 3,
-                    lineHeight: 1.5,
-                  }}
-                >
-                  Routet de run via Claude Code als MCP-host zodat de
-                  agent MiniMax's MCP-tools kan aanroepen plus Claude
-                  Code's eigen Read/WebFetch. Vereist dat <code>claude</code>{" "}
-                  CLI op de server beschikbaar is en een{" "}
-                  <code>MINIMAX_API_KEY</code> env var. Voor scheduled runs:
-                  zet <code>ANTHROPIC_API_KEY</code> in env zodat de CLI in
-                  API-mode draait — anders gebruikt 'ie de Claude
-                  subscription en kun je gebanned worden.
-                </span>
-              </span>
-            </label>
-          </div>
+          <McpServersField
+            value={mcpServers}
+            onToggle={toggleMcp}
+          />
         )}
 
         <Field label={t("agent.field.notifyEmail")}>
@@ -718,6 +678,9 @@ function ToolsPicker({
     </div>
   );
 }
+
+// McpServersField is now imported from ./McpServersField — extracted
+// so NewAgentDialog can share the same picker without duplication.
 
 function Field({
   label,
