@@ -136,6 +136,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
         } else {
           // Outside panel entirely — close the whole chat window
           setOpen(false);
+          setShowSidebar(false);
         }
       };
       document.addEventListener("mousedown", handleClickOutside);
