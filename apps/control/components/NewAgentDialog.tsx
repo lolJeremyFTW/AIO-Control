@@ -31,6 +31,11 @@ type Props = {
     model?: string | null;
     systemPrompt?: string | null;
   };
+  /** Flattened nav_nodes tree — same shape as EditAgentDialog. Lets
+   *  the user pin a fresh agent to a topic at create time so its
+   *  first runs already show up on the per-topic dashboard. Empty =
+   *  picker hidden. */
+  navOptions?: { id: string; name: string; depth: number }[];
   /** Active UI locale — translates labels via the shared dict. */
   locale?: Locale;
   onClose: () => void;
@@ -62,6 +67,7 @@ export function NewAgentDialog({
   telegramTargets = [],
   customIntegrations = [],
   defaults,
+  navOptions = [],
   locale: localeProp,
   onClose,
 }: Props) {
@@ -81,6 +87,7 @@ export function NewAgentDialog({
   const [routingRulesJson, setRoutingRulesJson] = useState("");
   const [telegramTargetId, setTelegramTargetId] = useState("");
   const [customIntegrationId, setCustomIntegrationId] = useState("");
+  const [navNodeId, setNavNodeId] = useState("");
   // Where this agent gets its Claude credentials. Subscription =
   // Claude Pro/Max/Team — runs on Claude's own infra (Routines for
   // cron, claude-cli for chat). api_key = Anthropic API key wired
@@ -119,6 +126,7 @@ export function NewAgentDialog({
       telegram_target_id: telegramTargetId || null,
       custom_integration_id: customIntegrationId || null,
       key_source: keySource,
+      nav_node_id: navNodeId || null,
     });
     setPending(false);
     if (!res.ok) {
@@ -320,6 +328,23 @@ export function NewAgentDialog({
             style={{ ...inputStyle, resize: "vertical", minHeight: 80 }}
           />
         </Field>
+
+        {navOptions.length > 0 && (
+          <Field label={t("agent.field.topic")}>
+            <select
+              value={navNodeId}
+              onChange={(e) => setNavNodeId(e.target.value)}
+              style={inputStyle}
+            >
+              <option value="">{t("agent.field.topic.business")}</option>
+              {navOptions.map((n) => (
+                <option key={n.id} value={n.id}>
+                  {"— ".repeat(n.depth) + n.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
 
         {(telegramTargets.length > 0 || customIntegrations.length > 0) && (
           <div

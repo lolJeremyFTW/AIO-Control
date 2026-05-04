@@ -221,6 +221,7 @@ export function AgentsList({
           telegramTargets={telegramTargets}
           customIntegrations={customIntegrations}
           defaults={workspaceDefaults}
+          navOptions={navOptions}
           onClose={() => setOpen(false)}
         />
       )}
