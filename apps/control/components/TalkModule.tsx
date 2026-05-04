@@ -1,16 +1,14 @@
-// Talk-to-AI header module — direct port of the Claude Design mockup
-// (talk-module.jsx in the design bundle, see chat3.md for the
-// design-intent transcript).
+// Talk-to-AI header module
 //
-// Layout:
-//   [mic | agent ▾]
+// Layout: [mic | agent ▾]
 //
-// • Mic button (left, semicircle) — click to start/stop recording.
-//   Pulses green at rest, swaps to orange + waveform while listening.
-// • Agent pill (right, semicircle) — shows the currently-selected
-//   agent. Click → dropdown with all workspace agents (status dots,
-//   one-line context, voice pill) plus a pinned "Talk settings"
-//   link at the bottom that routes to /[ws]/settings/talk.
+// Mic button states:
+//   - idle/error: green pulse
+//   - listening: orange + real-time waveform bars driven by currentVolume
+//   - processing: blue spinner
+//   - playing: blue spinner
+//
+// Agent pill: agent switcher dropdown
 
 "use client";
 
@@ -23,25 +21,42 @@ import { useAudioCapture } from "../hooks/useAudioCapture";
 export type TalkAgent = {
   id: string;
   name: string;
-  /** Business name or "Workspace" — shown as one-line context. */
   biz: string;
   letter: string;
-  /** Color preset key (matches .talk-agent-dot.<variant> CSS). */
   variant: "brand" | "rose" | "amber" | "violet" | "indigo" | "orange";
   status: "online" | "idle" | "paused";
-  /** Display label for the assigned voice (e.g. "Rachel · EN"). */
   voice: string;
-  /** Short description shown under the row name. */
   desc: string;
 };
 
 type Props = {
   agents: TalkAgent[];
-  /** Slug used to route to the talk-settings page. */
   workspaceSlug: string;
-  /** Initial agent id; falls back to the first agent. */
   defaultAgentId?: string;
 };
+
+// Mini waveform: 5 bars, heights driven by currentVolume
+function Waveform({ volume }: { volume: number }) {
+  // volume is 0-255, normalize to 0-1
+  const level = Math.min(volume / 80, 1);
+  const bars = [0.3, 0.6, 1.0, 0.7, 0.4];
+  return (
+    <span className="talk-wave" aria-hidden="true">
+      {bars.map((base, i) => {
+        const height = Math.max(4, Math.round(base * level * 18));
+        return (
+          <i
+            key={i}
+            style={{
+              height,
+              animationDelay: `${i * 0.08}s`,
+            }}
+          />
+        );
+      })}
+    </span>
+  );
+}
 
 export function TalkModule({ agents, workspaceSlug, defaultAgentId }: Props) {
   const router = useRouter();
@@ -69,14 +84,14 @@ export function TalkModule({ agents, workspaceSlug, defaultAgentId }: Props) {
 
   const [uiError, setUiError] = useState<string | null>(null);
 
-  // Determine the CSS state class from capture state
   const isListening = state === "listening";
   const isProcessing = state === "processing";
   const isPlaying = state === "playing";
   const isIdle = state === "idle" || state === "error";
   const isError = state === "error";
+  const isBusy = isProcessing || isPlaying;
 
-  // Click-outside dismiss.
+  // Click-outside dismiss
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
@@ -103,7 +118,7 @@ export function TalkModule({ agents, workspaceSlug, defaultAgentId }: Props) {
     setUiError(null);
 
     if (isListening) {
-      // Stop recording → send to server
+      // Second click: stop recording → send to server
       const blob = await stopCapture();
       if (!blob) return;
 
@@ -121,12 +136,10 @@ export function TalkModule({ agents, workspaceSlug, defaultAgentId }: Props) {
           return;
         }
 
-        // response is audio/mpeg
         const audioBlob = await res.blob();
         const url = URL.createObjectURL(audioBlob);
         setAudioUrl(url);
 
-        // Play it
         if (audioRef.current) {
           audioRef.current.src = url;
           await audioRef.current.play();
@@ -135,20 +148,17 @@ export function TalkModule({ agents, workspaceSlug, defaultAgentId }: Props) {
         setUiError("Kon server niet bereiken. Check je verbinding.");
       }
     } else if (isIdle) {
-      // Start recording
+      // First click: start recording
       await startCapture();
     }
-    // If processing or playing, ignore click
-  }, [isListening, isIdle, isProcessing, isPlaying, stopCapture, startCapture, agentId, workspaceSlug, setAudioUrl]);
+    // isBusy clicks are ignored (button is disabled)
+  }, [isListening, isIdle, isBusy, stopCapture, startCapture, agentId, workspaceSlug, setAudioUrl]);
 
-  // Reset UI error when state changes
+  // Reset error when state clears
   useEffect(() => {
-    if (state === "listening" || state === "idle") {
-      setUiError(null);
-    }
+    if (state === "listening" || state === "idle") setUiError(null);
   }, [state]);
 
-  // No agents: render a tiny disabled chip
   if (!agent) {
     return (
       <button
@@ -170,76 +180,59 @@ export function TalkModule({ agents, workspaceSlug, defaultAgentId }: Props) {
     );
   }
 
-  // Build the title for the mic button based on current state
   const micTitle = isListening
     ? "Stop met praten"
-    : isProcessing
+    : isBusy
       ? "Verwerken…"
-      : isPlaying
-        ? "Antwoord wordt afgespeeld…"
-        : isError
-          ? `Fout: ${captureError ?? uiError}`
-          : `Praat met ${agent.name}`;
+      : isError
+        ? `Fout: ${captureError ?? uiError}`
+        : `Praat met ${agent.name}`;
 
   return (
     <div className="talk-module" ref={ref}>
-      {/* Hidden audio element for TTS playback */}
-      <audio
-        ref={audioRef}
-        onEnded={onPlaybackEnded}
-        style={{ display: "none" }}
-      />
+      <audio ref={audioRef} onEnded={onPlaybackEnded} style={{ display: "none" }} />
 
-      {/* Mic — start/stop recording */}
       <button
         type="button"
         className={[
           "talk-mic",
           isListening ? "is-listening" : "",
-          isProcessing || isPlaying ? "is-busy" : "",
+          isBusy ? "is-busy" : "",
           isError ? "is-error" : "",
         ]
           .filter(Boolean)
           .join(" ")}
         onClick={handleMicClick}
         title={micTitle}
-        disabled={isProcessing || isPlaying}
+        disabled={isBusy}
       >
         <span className="talk-mic-pulse">
           <MicIcon size={14} />
         </span>
-        {isListening && (
-          <span className="talk-wave" aria-hidden="true">
-            <i />
-            <i />
-            <i />
-            <i />
-            <i />
-          </span>
-        )}
-        {(isProcessing || isPlaying) && (
+
+        {/* Waveform — real volume bars while listening */}
+        {isListening && <Waveform volume={currentVolume} />}
+
+        {/* Spinner while processing or playing */}
+        {isBusy && (
           <span className="talk-wave talk-wave-busy" aria-hidden="true">
             <i className="talk-spinner" />
           </span>
         )}
       </button>
 
-      {/* Agent — click to switch */}
       <button
         type="button"
         className={"talk-agent " + (open ? "is-open" : "")}
         onClick={() => setOpen((o) => !o)}
       >
-        <span className={"talk-agent-dot " + agent.variant}>
-          {agent.letter}
-        </span>
+        <span className={"talk-agent-dot " + agent.variant}>{agent.letter}</span>
         <span className="talk-agent-name">{agent.name}</span>
         <span className="talk-agent-caret">
           <ChevronDownIcon size={12} />
         </span>
       </button>
 
-      {/* Dropdown */}
       {open && (
         <div className="talk-dropdown" role="menu">
           <div className="talk-dropdown-head">
@@ -259,34 +252,22 @@ export function TalkModule({ agents, workspaceSlug, defaultAgentId }: Props) {
                   (a.id === agentId ? "is-active " : "") +
                   a.status
                 }
-                onClick={() => {
-                  setAgentId(a.id);
-                  setOpen(false);
-                }}
+                onClick={() => { setAgentId(a.id); setOpen(false); }}
               >
-                <span className={"talk-agent-row-dot " + a.variant}>
-                  {a.letter}
-                </span>
+                <span className={"talk-agent-row-dot " + a.variant}>{a.letter}</span>
                 <span className="talk-agent-row-body">
                   <span className="talk-agent-row-name">
                     {a.name}
                     <span className={"talk-agent-row-status " + a.status} />
                   </span>
-                  <span className="talk-agent-row-sub">
-                    {a.biz} · {a.desc}
-                  </span>
+                  <span className="talk-agent-row-sub">{a.biz} · {a.desc}</span>
                 </span>
                 <span className="talk-agent-row-voice">{a.voice}</span>
               </button>
             ))}
           </div>
 
-          {/* Settings strip — pinned bottom */}
-          <button
-            type="button"
-            className="talk-dropdown-settings"
-            onClick={goToSettings}
-          >
+          <button type="button" className="talk-dropdown-settings" onClick={goToSettings}>
             <SettingsIcon size={14} />
             <span>Talk settings — provider, stem, log</span>
             <ChevronRightIcon size={12} />
