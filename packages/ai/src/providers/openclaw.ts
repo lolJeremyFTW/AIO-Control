@@ -140,13 +140,14 @@ export async function* streamOpenclaw(
   });
 
   if (exitCode !== 0) {
+    const raw =
+      (stderr.split("\n").slice(-5).join("\n").trim() ||
+        stdout.slice(-500)) ||
+      `OpenClaw exited with ${exitCode}`;
     yield {
       type: "error",
       code: `openclaw_exit_${exitCode}`,
-      message:
-        (stderr.split("\n").slice(-5).join("\n").trim() ||
-          stdout.slice(-500)) ||
-        `OpenClaw exited with ${exitCode}`,
+      message: friendlyOpenclawError(raw, modelArg),
     };
     return;
   }
@@ -162,7 +163,7 @@ export async function* streamOpenclaw(
     yield {
       type: "error",
       code: "openclaw_completion_error",
-      message: parsed.text || "OpenClaw run completed with error",
+      message: friendlyOpenclawError(parsed.text, modelArg),
     };
     return;
   }
@@ -279,4 +280,61 @@ function pickText(obj: Record<string, unknown>): string | null {
     }
   }
   return null;
+}
+
+// Translate OpenClaw's verbose multi-line stderr / payload errors
+// into a single actionable sentence the operator can act on. We
+// match the most common failure patterns (auth profile mismatch,
+// missing AWS credentials, ChatGPT Plus rate limit) and rewrite
+// them; everything else falls through unchanged so we don't hide
+// information.
+function friendlyOpenclawError(raw: string, modelArg: string): string {
+  const text = raw ?? "";
+  // Pattern 1: user picked codex/<x> but auth profile is openai-codex.
+  // OpenClaw's own error spells out the fix; we surface it crisply.
+  if (
+    /No API key found for provider "openai"/i.test(text) &&
+    /authenticated with OpenAI Codex OAuth/i.test(text)
+  ) {
+    const suggested =
+      modelArg && modelArg.startsWith("codex/")
+        ? modelArg.replace(/^codex\//, "openai-codex/")
+        : "openai-codex/gpt-5.5";
+    return (
+      `OpenClaw vond geen API-key voor provider "openai". Je bent ingelogd ` +
+      `via ChatGPT (OAuth) — verander de **model**-field van deze agent naar ` +
+      `\`${suggested}\` (of een ander \`openai-codex/gpt-5.x\` model) en probeer opnieuw. ` +
+      `Het AIO model-veld komt 1-op-1 binnen bij OpenClaw via --model.`
+    );
+  }
+  // Pattern 2: ChatGPT Plus quota exhausted.
+  const rateMatch = text.match(/Try again in ~?(\d+) min/i);
+  if (rateMatch) {
+    return (
+      `Je ChatGPT Plus rate-limit is uitgeput. OpenClaw zegt: probeer over ` +
+      `~${rateMatch[1]} min opnieuw, of kies tijdelijk een ander model dat ` +
+      `niet via ChatGPT OAuth gaat (bv. een amazon-bedrock/anthropic.* of ` +
+      `openrouter/<x> model).`
+    );
+  }
+  // Pattern 3: bedrock without AWS credentials.
+  if (/Could not load credentials from any providers/i.test(text)) {
+    return (
+      `OpenClaw kon geen AWS-credentials laden voor amazon-bedrock. Configureer ` +
+      `AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY + AWS_REGION in OpenClaw's ` +
+      `auth-profile, of kies een ander model.`
+    );
+  }
+  // Pattern 4: Failed to extract accountId — codex/ provider with
+  // a token that can't be parsed. Same fix as pattern 1.
+  if (/Failed to extract accountId from token/i.test(text)) {
+    return (
+      `OpenClaw kon de auth-token niet parsen voor provider "codex". Je auth ` +
+      `is onder \`openai-codex\` geregistreerd — verander de model-field van ` +
+      `deze agent naar \`openai-codex/gpt-5.5\` (of een ander \`openai-codex/\`-` +
+      `model) en probeer opnieuw.`
+    );
+  }
+  // Default: cap to ~600 chars so the chat bubble stays readable.
+  return text.length > 600 ? text.slice(0, 600) + "…" : text;
 }

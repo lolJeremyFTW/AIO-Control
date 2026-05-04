@@ -94,7 +94,11 @@ export function ProviderModelPicker({
           placeholder={
             placeholder ??
             (provider === "openclaw"
-              ? "minimax/MiniMax-M2.7 of codex/gpt-5.4"
+              ? // openai-codex/gpt-5.5 is the canonical name for users
+                // authenticated via ChatGPT Plus OAuth (most common
+                // OpenClaw setup). codex/<x> is a separate provider
+                // that requires a different token format.
+                "openai-codex/gpt-5.5 of amazon-bedrock/anthropic.claude-..."
               : "302ai/qwen3-235b-a22b of …")
           }
           style={inputStyle}
