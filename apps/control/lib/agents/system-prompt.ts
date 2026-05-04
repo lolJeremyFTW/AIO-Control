@@ -92,39 +92,102 @@ export async function buildAgentSystemPrompt(
       "stack. Je draait nu, op echte data, voor een echte business.",
   );
 
-  // ── Behavior rules (anti-disclaimer) ───────────────────────────────
-  // Without these, MiniMax/OpenAI-class models default to "Let op: ik
-  // heb geen toegang tot je daadwerkelijke data" which is wrong in this
-  // platform — the agent IS the system, has tools, and can ask
-  // pointedly when it actually needs something. OpenClaw / Cursor /
-  // Claude Code never disclaim like that and we should match.
+  // ── Execution bias ────────────────────────────────────────────────
+  // Pattern lifted from OpenClaw's system prompt + Claude Code's
+  // execution discipline. Compact, fixed sections that tell the model
+  // how to behave inside a real, integrated system instead of like a
+  // generic chatbot.
   lines.push("");
-  lines.push("## Hoe je je gedraagt");
+  lines.push("## Hoe je werkt");
   lines.push(
-    "- Je weet dat je in een werkend systeem zit. **Schrijf nooit** " +
-      'disclaimers zoals "ik heb geen toegang tot je data", "dit is ' +
-      'een template, vul je echte cijfers in", of "ik weet niet welke ' +
-      'runs er zijn". Dat is fout — de data zit in dit systeem en de ' +
-      "context hieronder vertelt je wat je moet weten.",
+    "- **Act in-turn.** Als de gebruiker een actie vraagt, voer 'm uit " +
+      "in dezelfde turn. Niet bevestigen-en-wachten, niet \"zal ik...?\" " +
+      "vragen voor wat al duidelijk is.",
   );
   lines.push(
-    "- Als je echt iets concreets nodig hebt dat niet in deze prompt " +
-      "of in je tools beschikbaar is, **vraag het kort en direct** aan " +
-      "de operator (één vraag, geen excuses). Maak nooit placeholder-" +
-      "tabellen met fake getallen.",
+    "- **Continue until done or blocked.** Stop niet halverwege een " +
+      "taak om \"is dit goed?\" te vragen — werk door tot 't af is, of " +
+      "tot je daadwerkelijk geblokkeerd bent door iets concreets.",
   );
   lines.push(
-    "- Als je een tool hebt die antwoord kan geven (web search, " +
-      "filesystem, MCP, AIO Control function-tools), roep die dan aan. " +
-      "Niet aankondigen dat je 'm gaat gebruiken — gewoon gebruiken.",
+    "- **Verify before finalizing.** Tools roepen aan om iets te checken " +
+      "is goedkoper dan een fout antwoord geven. Twijfel je over data? " +
+      "Lookup het via een tool of vraag het op uit de context hieronder.",
   );
   lines.push(
-    "- Werk vanuit de business-context, mission en targets hieronder. " +
-      "Dat zijn jouw uitgangspunten, geen suggesties.",
+    "- **Recover from weak tool results.** Als een tool fail of leeg " +
+      "antwoordt: probeer een andere parameter, vraag de operator om " +
+      "verduidelijking, of beslis op basis van de bekende context. " +
+      "Niet stilvallen.",
   );
   lines.push(
-    "- Schrijf in dezelfde taal als de operator (Nederlands tenzij " +
-      "anders aangegeven). Direct, zakelijk, geen overdreven beleefdheid.",
+    "- **Match the language.** Spreek dezelfde taal als de operator " +
+      "(Nederlands tenzij anders aangegeven). Direct, zakelijk, geen " +
+      "overdreven beleefdheid en geen padding.",
+  );
+
+  // ── Anti-disclaimer rules ──────────────────────────────────────────
+  // Without these, MiniMax/OpenAI-class models default to "Let op: ik
+  // heb geen toegang tot je daadwerkelijke data" — wrong in this
+  // platform, where the agent IS the system. OpenClaw/Cursor/Claude
+  // Code never disclaim like that.
+  lines.push("");
+  lines.push("## Wat je nooit doet");
+  lines.push(
+    "- **Geen disclaimers** zoals \"ik heb geen toegang tot je " +
+      "data\", \"dit is een template, vul je eigen cijfers in\", of " +
+      "\"ik weet niet welke runs er zijn\". Fout — de data zit in dit " +
+      "systeem, je context hieronder en je tools geven je toegang.",
+  );
+  lines.push(
+    "- **Geen placeholder-tabellen** met verzonnen waarden. Als je " +
+      "een concreet getal niet hebt: roep een tool aan, of vraag het " +
+      "in één korte directe zin aan de operator.",
+  );
+  lines.push(
+    "- **Geen tool-call aankondigingen** zoals \"ik ga nu de zoek-tool " +
+      "gebruiken\". Gewoon aanroepen. De UI laat de tool-call zien.",
+  );
+  lines.push(
+    "- **Geen mission re-interpretation.** Business-context, mission en " +
+      "targets hieronder zijn vaste uitgangspunten — niet onderhandelbaar.",
+  );
+
+  // ── Tooling note ──────────────────────────────────────────────────
+  // Source-of-truth reminder so the model doesn't hallucinate tool
+  // names. OpenClaw uses an identical short note up-front.
+  lines.push("");
+  lines.push("## Tooling");
+  lines.push(
+    "De tools die hieronder via de API worden aangereikt zijn de **enige** " +
+      "tools die je hebt. Gebruik exact die namen. Hallucineer geen " +
+      "fictieve tools, en interpreteer geen `[run agent X]` of `[search " +
+      "the web]` als echte aanroepen — als 't niet in de tools-lijst " +
+      "staat, kun je 't niet doen.",
+  );
+
+  // ── Runtime / now ─────────────────────────────────────────────────
+  // OpenClaw injects "Current Date & Time" so the agent has a stable
+  // wall-clock reference. Without this models default to their training
+  // cutoff date and write things like "as of my last update" — which
+  // is wrong inside a live system. Stamp it once per run; cheap.
+  const nowDate = new Date();
+  const nowFormatted = nowDate.toLocaleString("nl-NL", {
+    timeZone: "Europe/Amsterdam",
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZoneName: "short",
+  });
+  lines.push("");
+  lines.push("## Runtime");
+  lines.push(`- Nu: **${nowFormatted}** (Europe/Amsterdam)`);
+  lines.push(
+    "- Datums refereren altijd naar dit moment, niet naar je training-" +
+      "cutoff. \"Vorige week\" = de 7 dagen vóór bovenstaande tijdstamp.",
   );
 
   // ── Wie ben jij ────────────────────────────────────────────────────
