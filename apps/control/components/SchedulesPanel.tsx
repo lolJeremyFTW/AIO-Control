@@ -28,6 +28,12 @@ type Props = {
   agents: AgentRow[];
   schedules: ScheduleRow[];
   triggerOrigin: string; // e.g. https://tromptech.life — used to render webhook URLs
+  /** When true, the panel only renders the "Bestaande schedules" list
+   *  (and edit/delete/run-now actions per card) — the inline create
+   *  form at the top is suppressed. Used by /business/[id]/schedules
+   *  where ScheduleBuilder already provides the create UI. Defaults to
+   *  false for backwards compatibility. */
+  hideCreateForm?: boolean;
 };
 
 export function SchedulesPanel({
@@ -37,6 +43,7 @@ export function SchedulesPanel({
   agents,
   schedules,
   triggerOrigin,
+  hideCreateForm = false,
 }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -77,7 +84,7 @@ export function SchedulesPanel({
     });
   };
 
-  const triggerNow = (agent_id: string) => {
+  const triggerNow = (agent_id: string, schedule_id?: string | null) => {
     startTransition(async () => {
       const res = await runAgentNow({
         workspace_slug: workspaceSlug,
@@ -85,6 +92,7 @@ export function SchedulesPanel({
         agent_id,
         business_id: businessId,
         prompt: prompt.trim() || undefined,
+        schedule_id: schedule_id ?? null,
       });
       if (!res.ok) setError(res.error);
       router.refresh();
@@ -175,6 +183,7 @@ export function SchedulesPanel({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
+      {!hideCreateForm && (
       <section
         style={{
           border: "1.5px solid var(--app-border)",
@@ -370,6 +379,7 @@ export function SchedulesPanel({
           </div>
         )}
       </section>
+      )}
 
       <section>
         <h2
@@ -539,12 +549,12 @@ export function SchedulesPanel({
                     <button
                       type="button"
                       disabled={pending || cardIsSubscription}
-                      onClick={() => triggerNow(s.agent_id)}
+                      onClick={() => triggerNow(s.agent_id, s.id)}
                       style={btnSecondary(pending || cardIsSubscription)}
                       title={
                         cardIsSubscription
                           ? "Subscription-Claude mag alleen via chat of cron-schedule (Anthropic Routines)."
-                          : undefined
+                          : "Voert deze schedule's prompt nu uit (of de Prompt-textarea bovenaan als die ingevuld is)"
                       }
                     >
                       ▶ Run now

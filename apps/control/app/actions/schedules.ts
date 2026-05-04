@@ -250,6 +250,11 @@ export async function runAgentNow(input: {
   agent_id: string;
   business_id?: string | null;
   prompt?: string;
+  /** When set, fall back to this schedule's stored instructions if
+   *  the caller didn't pass an explicit prompt. Lets the per-card
+   *  "▶ Run now" button on existing cron schedules use the schedule's
+   *  saved prompt instead of sending "(no input)". */
+  schedule_id?: string | null;
 }): Promise<ActionResult<{ run_id: string }>> {
   const supabase = await createSupabaseServerClient();
   // Phase 5: a manual run just queues a row and returns immediately. The
@@ -263,6 +268,21 @@ export async function runAgentNow(input: {
     .select("nav_node_id")
     .eq("id", input.agent_id)
     .maybeSingle();
+
+  // Resolve the prompt: explicit input wins, else the schedule's saved
+  // instructions, else null (dispatcher will surface "(no input)" so the
+  // user knows nothing was sent).
+  let prompt: string | null = input.prompt?.trim() || null;
+  if (!prompt && input.schedule_id) {
+    const { data: schedRow } = await supabase
+      .from("schedules")
+      .select("instructions")
+      .eq("id", input.schedule_id)
+      .maybeSingle();
+    const inst = (schedRow?.instructions as string | null | undefined) ?? null;
+    if (inst && inst.trim()) prompt = inst.trim();
+  }
+
   const { data, error } = await supabase
     .from("runs")
     .insert({
@@ -272,7 +292,7 @@ export async function runAgentNow(input: {
       nav_node_id: agentRow?.nav_node_id ?? null,
       triggered_by: "manual",
       status: "queued",
-      input: input.prompt ? { prompt: input.prompt } : null,
+      input: prompt ? { prompt } : null,
     })
     .select("id")
     .single();

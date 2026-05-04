@@ -101,6 +101,7 @@ export default async function BusinessSchedulesPage({ params }: Props) {
         agents={agents}
         schedules={schedules}
         triggerOrigin={triggerOrigin}
+        hideCreateForm={agents.length > 0}
       />
 
       <h2
