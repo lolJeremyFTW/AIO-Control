@@ -151,25 +151,52 @@ export async function* streamOpenclaw(
     return;
   }
 
-  const text = extractReply(stdout);
-  if (text) yield { type: "token", message_id: messageId, delta: text };
+  const parsed = extractReply(stdout);
+  // OpenClaw 2026.4+ exits 0 even when the model failed (rate limit,
+  // missing key, refused) — the failure shows up as
+  // meta.completion.stopReason==="error" and the actual error message
+  // is in payloads[0].text. Surface that as a proper error event so
+  // the run drawer paints it red instead of pretending it's the
+  // assistant's reply.
+  if (parsed.isError) {
+    yield {
+      type: "error",
+      code: "openclaw_completion_error",
+      message: parsed.text || "OpenClaw run completed with error",
+    };
+    return;
+  }
+  if (parsed.text) {
+    yield { type: "token", message_id: messageId, delta: parsed.text };
+  }
 
   yield {
     type: "message_end",
     message_id: messageId,
-    usage: { input_tokens: 0, output_tokens: 0, cost_cents: 0 },
+    usage: {
+      input_tokens: parsed.inputTokens ?? 0,
+      output_tokens: parsed.outputTokens ?? 0,
+      cost_cents: 0,
+    },
   };
 }
 
+type ExtractedReply = {
+  text: string;
+  isError: boolean;
+  inputTokens?: number;
+  outputTokens?: number;
+};
+
 // Try the most common JSON envelopes OpenClaw might emit. Falls back
 // to the raw stdout when nothing parses.
-function extractReply(stdout: string): string {
+function extractReply(stdout: string): ExtractedReply {
   const trimmed = stdout.trim();
-  if (!trimmed) return "";
+  if (!trimmed) return { text: "", isError: false };
   // Single JSON envelope (most common with --json).
   try {
     const obj = JSON.parse(trimmed) as Record<string, unknown>;
-    return pickText(obj) ?? trimmed;
+    return readEnvelope(obj, trimmed);
   } catch {
     /* try line-by-line */
   }
@@ -179,13 +206,63 @@ function extractReply(stdout: string): string {
     if (!t.startsWith("{")) continue;
     try {
       const obj = JSON.parse(t) as Record<string, unknown>;
-      const v = pickText(obj);
-      if (v) return v;
+      const v = readEnvelope(obj, "");
+      if (v.text) return v;
     } catch {
       /* skip */
     }
   }
-  return trimmed;
+  return { text: trimmed, isError: false };
+}
+
+function readEnvelope(
+  obj: Record<string, unknown>,
+  fallback: string,
+): ExtractedReply {
+  // Detect OpenClaw 2026.4+ shape: { payloads: [{text}], meta: {…} }
+  // This is the only shape that carries an explicit error signal —
+  // legacy {content,reply,…} shapes are always treated as success.
+  const payloads = obj["payloads"];
+  const meta = obj["meta"] as Record<string, unknown> | undefined;
+  const completion = meta?.["completion"] as
+    | Record<string, unknown>
+    | undefined;
+  const stopReason = (completion?.["stopReason"] as string | undefined) ?? "";
+  const finishReason =
+    (completion?.["finishReason"] as string | undefined) ?? "";
+  const isError =
+    stopReason === "error" ||
+    finishReason === "error" ||
+    meta?.["aborted"] === true;
+  let text = "";
+  if (Array.isArray(payloads)) {
+    for (const p of payloads) {
+      if (p && typeof p === "object") {
+        const t = (p as Record<string, unknown>)["text"];
+        if (typeof t === "string" && t) {
+          text += text ? "\n" + t : t;
+        }
+      }
+    }
+  }
+  if (!text) {
+    text = pickText(obj) ?? fallback;
+  }
+  // Token usage is reported under meta.agentMeta.lastCallUsage on
+  // 2026.4+. We surface input/output for the run footer so the
+  // dashboard's token-spend graph doesn't sit at zero for OpenClaw
+  // runs (cost stays 0 because we don't know provider pricing).
+  const agentMeta = meta?.["agentMeta"] as Record<string, unknown> | undefined;
+  const usage = agentMeta?.["lastCallUsage"] as
+    | Record<string, unknown>
+    | undefined;
+  const inputTokens =
+    typeof usage?.["input"] === "number" ? (usage["input"] as number) : undefined;
+  const outputTokens =
+    typeof usage?.["output"] === "number"
+      ? (usage["output"] as number)
+      : undefined;
+  return { text, isError, inputTokens, outputTokens };
 }
 
 function pickText(obj: Record<string, unknown>): string | null {
