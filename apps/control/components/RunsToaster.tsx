@@ -9,7 +9,14 @@ import { useEffect, useState } from "react";
 
 import { getSupabaseBrowserClient } from "../lib/supabase/client";
 
-type Toast = { id: number; text: string; tone: "ok" | "warn" | "bad" };
+type Toast = {
+  id: number;
+  text: string;
+  tone: "ok" | "warn" | "bad";
+  cost?: number; // cost_cents
+  inputTokens?: number;
+  outputTokens?: number;
+};
 
 type Props = { workspaceId: string };
 
@@ -48,6 +55,9 @@ export function RunsToaster({ workspaceId }: Props) {
             status?: string;
             agent_id?: string;
             triggered_by?: string;
+            cost_cents?: number;
+            input_tokens?: number;
+            output_tokens?: number;
           };
           const tone =
             newRow.status === "failed"
@@ -55,12 +65,36 @@ export function RunsToaster({ workspaceId }: Props) {
               : newRow.status === "review"
                 ? "warn"
                 : "ok";
-          const text =
-            payload.eventType === "INSERT"
-              ? `Run gestart (${newRow.triggered_by ?? "?"})`
-              : `Run ${newRow.status ?? "updated"}`;
+
+          let text: string;
+          let cost: number | undefined;
+          let inputTokens: number | undefined;
+          let outputTokens: number | undefined;
+
+          if (payload.eventType === "INSERT") {
+            text = `Run gestart (${newRow.triggered_by ?? "?"})`;
+          } else if (newRow.status === "done") {
+            cost = newRow.cost_cents;
+            inputTokens = newRow.input_tokens;
+            outputTokens = newRow.output_tokens;
+            const costStr = cost != null ? `Kosten €${(cost / 100).toFixed(4)}` : null;
+            const tokenStr =
+              inputTokens != null || outputTokens != null
+                ? `${inputTokens?.toLocaleString() ?? "?"} in / ${outputTokens?.toLocaleString() ?? "?"} out`
+                : null;
+            const parts = [costStr, tokenStr].filter(Boolean);
+            text = parts.length > 0 ? `Run klaar — ${parts.join(" | ")}` : "Run klaar";
+          } else if (newRow.status === "failed") {
+            cost = newRow.cost_cents;
+            text = cost != null && cost > 0
+              ? `Run failed — Kosten €${(cost / 100).toFixed(4)}`
+              : "Run failed";
+          } else {
+            text = `Run ${newRow.status ?? "updated"}`;
+          }
+
           const id = ++toastSeq;
-          setToasts((t) => [...t, { id, text, tone }]);
+          setToasts((t) => [...t, { id, text, tone, cost, inputTokens, outputTokens }]);
           setTimeout(() => {
             setToasts((t) => t.filter((tt) => tt.id !== id));
           }, 4500);

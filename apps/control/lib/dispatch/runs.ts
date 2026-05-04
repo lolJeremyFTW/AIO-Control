@@ -161,6 +161,8 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
 
   let output = "";
   let cost = 0;
+  let inputTokens = 0;
+  let outputTokens = 0;
   let errorText: string | null = null;
 
   // Build a structured replay of the run as it streams. The drawer
@@ -269,6 +271,8 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
         }
       } else if (event.type === "message_end") {
         cost = event.usage.cost_cents;
+        inputTokens = event.usage.input_tokens;
+        outputTokens = event.usage.output_tokens;
       } else if (event.type === "tool_call_start") {
         const step: RunStep & { kind: "tool_call" } = {
           kind: "tool_call",
@@ -344,6 +348,8 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
       ended_at: endedAt.toISOString(),
       duration_ms: durationMs,
       cost_cents: cost,
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
       output: { text: output },
       error_text: errorText,
       next_retry_at: nextRetryAt,
