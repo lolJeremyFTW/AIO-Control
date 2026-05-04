@@ -47,6 +47,10 @@ export type AgentInput = {
   /** Pin the agent to a topic (nav_node) at creation time. NULL =
    *  belongs to the business as a whole (current behaviour). */
   nav_node_id?: string | null;
+  /** Names of MCP servers this agent should host. For provider="minimax"
+   *  set to ["minimax"] to expose the Coder Plan MCP (web_search +
+   *  understand_image) — routes the run through Claude Code as MCP host. */
+  mcpServers?: string[];
 };
 
 export type ActionResult<T> =
@@ -111,6 +115,9 @@ export async function createAgent(
         endpoint: input.endpoint?.trim() || null,
         temperature: input.temperature,
         maxTokens: input.maxTokens,
+        ...(input.mcpServers && input.mcpServers.length > 0
+          ? { mcpServers: input.mcpServers }
+          : {}),
         routingRules,
       },
       telegram_target_id: input.telegram_target_id ?? null,
@@ -159,6 +166,12 @@ export async function updateAgent(input: {
      *  business as a whole). Powers the per-topic dashboards via
      *  migration 043. */
     nav_node_id?: string | null;
+    /** Names of MCP servers the agent should host (provider-specific).
+     *  For provider="minimax" the only known server is "minimax" — the
+     *  Coder Plan MCP exposing web_search + understand_image. Setting
+     *  this routes the run through Claude Code as MCP host. Empty
+     *  array / null disables MCP. */
+    mcpServers?: string[] | null;
   };
 }): Promise<ActionResult<null>> {
   const patch: Record<string, unknown> = {};
@@ -190,7 +203,8 @@ export async function updateAgent(input: {
   // clobber routing rules or temperature.
   if (
     input.patch.systemPrompt !== undefined ||
-    input.patch.endpoint !== undefined
+    input.patch.endpoint !== undefined ||
+    input.patch.mcpServers !== undefined
   ) {
     const supabase = await createSupabaseServerClient();
     const { data: cur } = await supabase
@@ -203,6 +217,13 @@ export async function updateAgent(input: {
       config.systemPrompt = input.patch.systemPrompt?.trim() || null;
     if (input.patch.endpoint !== undefined)
       config.endpoint = input.patch.endpoint?.trim() || null;
+    if (input.patch.mcpServers !== undefined) {
+      const arr = input.patch.mcpServers ?? [];
+      // Drop the field entirely when empty so the router's
+      // (config.mcpServers ?? []).length check stays clean.
+      if (arr.length === 0) delete config.mcpServers;
+      else config.mcpServers = arr;
+    }
     patch.config = config;
   }
 

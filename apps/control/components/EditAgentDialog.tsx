@@ -92,6 +92,7 @@ export function EditAgentDialog({
   const cfg = (agent.config ?? {}) as {
     systemPrompt?: string | null;
     endpoint?: string | null;
+    mcpServers?: string[] | null;
   };
 
   const [name, setName] = useState(agent.name);
@@ -100,6 +101,13 @@ export function EditAgentDialog({
   const [model, setModel] = useState(agent.model ?? "");
   const [systemPrompt, setSystemPrompt] = useState(cfg.systemPrompt ?? "");
   const [endpoint, setEndpoint] = useState(cfg.endpoint ?? "");
+  // MiniMax-MCP toggle. Stored as config.mcpServers = ["minimax"]; the
+  // router routes the run through Claude Code as MCP host so the agent
+  // can call MiniMax Coder Plan tools (web_search, understand_image)
+  // alongside Claude Code's built-in Read/WebFetch.
+  const [minimaxMcp, setMinimaxMcp] = useState<boolean>(
+    Array.isArray(cfg.mcpServers) && cfg.mcpServers.includes("minimax"),
+  );
   const [telegramTargetId, setTelegramTargetId] = useState(
     agent.telegram_target_id ?? "",
   );
@@ -149,6 +157,11 @@ export function EditAgentDialog({
         notify_email: notifyEmail || null,
         allowed_tools: useToolsDefault ? null : allowedTools,
         nav_node_id: navNodeId || null,
+        // MCP toggle is only meaningful for minimax right now. For
+        // other providers we send an empty array which the action
+        // strips out of config.
+        mcpServers:
+          provider === "minimax" && minimaxMcp ? ["minimax"] : [],
       },
     });
     setPending(false);
@@ -283,6 +296,58 @@ export function EditAgentDialog({
             style={{ ...inp, resize: "vertical", minHeight: 80 }}
           />
         </Field>
+
+        {provider === "minimax" && (
+          <div
+            style={{
+              border: "1.5px solid var(--app-border-2)",
+              borderRadius: 10,
+              padding: "10px 12px",
+              marginBottom: 12,
+              background: "var(--app-card-2)",
+            }}
+          >
+            <label
+              style={{
+                display: "flex",
+                gap: 10,
+                alignItems: "flex-start",
+                cursor: "pointer",
+                fontSize: 12.5,
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={minimaxMcp}
+                onChange={(e) => setMinimaxMcp(e.target.checked)}
+                style={{ accentColor: "var(--tt-green)", marginTop: 2 }}
+              />
+              <span>
+                <span style={{ fontWeight: 700 }}>
+                  Coder-Plan tools aanzetten (web_search + understand_image)
+                </span>
+                <span
+                  style={{
+                    display: "block",
+                    fontSize: 11,
+                    color: "var(--app-fg-3)",
+                    marginTop: 3,
+                    lineHeight: 1.5,
+                  }}
+                >
+                  Routet de run via Claude Code als MCP-host zodat de
+                  agent MiniMax's MCP-tools kan aanroepen plus Claude
+                  Code's eigen Read/WebFetch. Vereist dat <code>claude</code>{" "}
+                  CLI op de server beschikbaar is en een{" "}
+                  <code>MINIMAX_API_KEY</code> env var. Voor scheduled runs:
+                  zet <code>ANTHROPIC_API_KEY</code> in env zodat de CLI in
+                  API-mode draait — anders gebruikt 'ie de Claude
+                  subscription en kun je gebanned worden.
+                </span>
+              </span>
+            </label>
+          </div>
+        )}
 
         <Field label={t("agent.field.notifyEmail")}>
           <input

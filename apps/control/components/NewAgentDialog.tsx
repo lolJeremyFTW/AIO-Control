@@ -96,6 +96,10 @@ export function NewAgentDialog({
   const [keySource, setKeySource] = useState<
     "subscription" | "api_key" | "env"
   >("env");
+  // MiniMax-only: enable Coder Plan MCP (web_search + understand_image)
+  // by setting config.mcpServers = ["minimax"]. See providers/minimax-mcp.ts
+  // for what this routes through.
+  const [minimaxMcp, setMinimaxMcp] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -127,6 +131,8 @@ export function NewAgentDialog({
       custom_integration_id: customIntegrationId || null,
       key_source: keySource,
       nav_node_id: navNodeId || null,
+      mcpServers:
+        provider === "minimax" && minimaxMcp ? ["minimax"] : undefined,
     });
     setPending(false);
     if (!res.ok) {
@@ -328,6 +334,55 @@ export function NewAgentDialog({
             style={{ ...inputStyle, resize: "vertical", minHeight: 80 }}
           />
         </Field>
+
+        {provider === "minimax" && (
+          <div
+            style={{
+              border: "1.5px solid var(--app-border-2)",
+              borderRadius: 10,
+              padding: "10px 12px",
+              marginBottom: 12,
+              background: "var(--app-card-2)",
+            }}
+          >
+            <label
+              style={{
+                display: "flex",
+                gap: 10,
+                alignItems: "flex-start",
+                cursor: "pointer",
+                fontSize: 12.5,
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={minimaxMcp}
+                onChange={(e) => setMinimaxMcp(e.target.checked)}
+                style={{ accentColor: "var(--tt-green)", marginTop: 2 }}
+              />
+              <span>
+                <span style={{ fontWeight: 700 }}>
+                  Coder-Plan tools aanzetten (web_search + understand_image)
+                </span>
+                <span
+                  style={{
+                    display: "block",
+                    fontSize: 11,
+                    color: "var(--app-fg-3)",
+                    marginTop: 3,
+                    lineHeight: 1.5,
+                  }}
+                >
+                  Routet via Claude Code als MCP-host. Vereist{" "}
+                  <code>claude</code> CLI op de server +{" "}
+                  <code>MINIMAX_API_KEY</code> env. Zet ook{" "}
+                  <code>ANTHROPIC_API_KEY</code> voor scheduled runs zodat
+                  de CLI in API-mode draait (anders subscription = ban risk).
+                </span>
+              </span>
+            </label>
+          </div>
+        )}
 
         {navOptions.length > 0 && (
           <Field label={t("agent.field.topic")}>
