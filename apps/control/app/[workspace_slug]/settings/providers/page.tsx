@@ -12,6 +12,7 @@ import {
 } from "../../../../lib/auth/workspace";
 import { createSupabaseServerClient } from "../../../../lib/supabase/server";
 import { getDict } from "../../../../lib/i18n/server";
+import { listApiKeys } from "../../../actions/api-keys";
 import { ProvidersOnboardingPanel } from "../../../../components/ProvidersOnboardingPanel";
 import { SettingsSectionCard } from "../../../../components/SettingsSectionCard";
 
@@ -26,13 +27,30 @@ export default async function ProvidersSettingsPage({ params }: Props) {
   if (!workspace) notFound();
 
   const supabase = await createSupabaseServerClient();
-  const { data: ws } = await supabase
-    .from("workspaces")
-    .select(
-      "ollama_host, ollama_port, ollama_models_cached, ollama_last_scan_at, hermes_endpoint, hermes_last_test_at, hermes_agent_name, hermes_agent_initialized_at, openclaw_endpoint, openclaw_last_test_at, openclaw_agent_name, openclaw_agent_initialized_at",
+  const [{ data: ws }, apiKeys] = await Promise.all([
+    supabase
+      .from("workspaces")
+      .select(
+        "ollama_host, ollama_port, ollama_models_cached, ollama_last_scan_at, hermes_endpoint, hermes_last_test_at, hermes_agent_name, hermes_agent_initialized_at, openclaw_endpoint, openclaw_last_test_at, openclaw_agent_name, openclaw_agent_initialized_at",
+      )
+      .eq("id", workspace.id)
+      .maybeSingle(),
+    listApiKeys(workspace.id),
+  ]);
+
+  // Workspace-scoped provider keys → drives the green ✓ on each
+  // cloud-provider card. We only consider workspace-scope rows;
+  // per-business or per-topic overrides are managed in the api-keys
+  // panel and don't represent a "default key for this workspace".
+  const cloudKeysSet = apiKeys
+    .filter(
+      (k) =>
+        k.kind === "provider" &&
+        k.scope === "workspace" &&
+        k.scope_id === workspace.id &&
+        k.has_value,
     )
-    .eq("id", workspace.id)
-    .maybeSingle();
+    .map((k) => k.provider);
 
   const { t } = await getDict();
 
@@ -47,6 +65,7 @@ export default async function ProvidersSettingsPage({ params }: Props) {
         <ProvidersOnboardingPanel
           workspaceId={workspace.id}
           workspaceSlug={workspace.slug}
+          cloudKeysSet={cloudKeysSet}
           initial={{
             ollama_host: (ws?.ollama_host as string | null) ?? null,
             ollama_port: (ws?.ollama_port as number | null) ?? null,

@@ -25,6 +25,7 @@ import {
   testOpenClawEndpoint,
   verifyRuntimeAgent,
 } from "../app/actions/providers";
+import { saveCloudProviderKey } from "../app/actions/cloud-providers";
 import { translate, type Locale } from "../lib/i18n/dict";
 import { useLocale } from "../lib/i18n/client";
 import {
@@ -57,17 +58,36 @@ type Props = {
   workspaceId: string;
   workspaceSlug: string;
   initial: Initial;
+  /** Provider names that already have a workspace-scoped key set
+   *  (read from api_keys_metadata where scope='workspace' and
+   *  scope_id = workspace.id). Drives the green ✓ on each cloud-
+   *  provider card and toggles the inline input between "set up"
+   *  (no key) vs "rotate" (already set). */
+  cloudKeysSet?: string[];
 };
 
 export function ProvidersOnboardingPanel({
   workspaceId,
   workspaceSlug,
   initial,
+  cloudKeysSet = [],
 }: Props) {
   const locale: Locale = useLocale();
   const t: Tr = (key, vars) => translate(locale, key, vars);
   return (
     <div style={{ display: "grid", gap: 18 }}>
+      {/* ── Cloud / API providers ──────────────────────────────────
+          Workspace-level one-click setup for the popular hosted
+          providers. Saving here drops a workspace-scoped api_keys
+          row; agents using that provider start working with this
+          key immediately. For per-business / per-topic overrides,
+          link to the api-keys page (more granular UI). */}
+      <CloudProvidersGrid
+        workspaceSlug={workspaceSlug}
+        workspaceId={workspaceId}
+        cloudKeysSet={cloudKeysSet}
+      />
+
       <OllamaCard
         t={t}
         workspaceSlug={workspaceSlug}
@@ -94,6 +114,406 @@ export function ProvidersOnboardingPanel({
         agentName={initial.openclaw_agent_name}
         agentInitializedAt={initial.openclaw_agent_initialized_at}
       />
+    </div>
+  );
+}
+
+// ─── Cloud providers ─────────────────────────────────────────────
+// One card per popular hosted provider. The user pastes their key,
+// hits Save, and the workspace gets a workspace-scoped api_keys row
+// they can override per-business in the Api-Keys panel later. We do
+// NOT verify the key here — providers' verification endpoints are
+// inconsistent and "set successfully" is enough signal for v1.
+//
+// Adding a new provider: append to CLOUD_PROVIDERS below. The
+// `provider` field must match the canonical name agents use
+// (anthropic / openai / openrouter / minimax / etc.) — that's what
+// resolveApiKey looks up at runtime.
+type CloudProviderSpec = {
+  provider: string;
+  label: string;
+  tagline: string;
+  signupUrl: string;
+  /** Optional: link straight to the user's existing key page on the
+   *  provider's site so they can copy it in two clicks. */
+  keyUrl?: string;
+  /** Hint text above the input, e.g. expected key prefix. */
+  hint?: string;
+};
+
+const CLOUD_PROVIDERS: CloudProviderSpec[] = [
+  {
+    provider: "openrouter",
+    label: "OpenRouter",
+    tagline:
+      "Eén key, 200+ modellen (Claude, GPT, Llama, DeepSeek, …). " +
+      "Goedkoopste route voor experimenteren met meerdere LLMs.",
+    signupUrl: "https://openrouter.ai/",
+    keyUrl: "https://openrouter.ai/keys",
+    hint: "sk-or-v1-…",
+  },
+  {
+    provider: "anthropic",
+    label: "Anthropic (Claude API)",
+    tagline:
+      "Claude direct via Anthropic's eigen API. Beste kwaliteit voor " +
+      "Sonnet / Opus runs. Vereist een betaal-account.",
+    signupUrl: "https://console.anthropic.com/",
+    keyUrl: "https://console.anthropic.com/settings/keys",
+    hint: "sk-ant-…",
+  },
+  {
+    provider: "openai",
+    label: "OpenAI",
+    tagline: "GPT-4o, o1, gpt-5 — direct via OpenAI's API (geen ChatGPT OAuth).",
+    signupUrl: "https://platform.openai.com/",
+    keyUrl: "https://platform.openai.com/api-keys",
+    hint: "sk-…",
+  },
+  {
+    provider: "minimax",
+    label: "MiniMax (Coder Plan)",
+    tagline:
+      "MiniMax-M2.7 + MiniMax-M2.7-Highspeed. Native MCP-tools (web " +
+      "search, code) zonder dat een Claude API-key nodig is.",
+    signupUrl: "https://platform.minimax.io/",
+    keyUrl: "https://platform.minimax.io/account-management/keys",
+    hint: "sk-cp-…",
+  },
+  {
+    provider: "google_gemini",
+    label: "Google Gemini",
+    tagline:
+      "Gemini 2.5 Flash / Pro via Google AI Studio. Goedkoop voor " +
+      "high-volume routing en multimodale taken.",
+    signupUrl: "https://aistudio.google.com/",
+    keyUrl: "https://aistudio.google.com/app/apikey",
+    hint: "AIza…",
+  },
+  {
+    provider: "deepseek",
+    label: "DeepSeek",
+    tagline:
+      "DeepSeek-V3 + R1 — extreem goedkoop voor reasoning workloads. " +
+      "Werkt OpenAI-compatibel, dus ook bruikbaar via OpenRouter.",
+    signupUrl: "https://platform.deepseek.com/",
+    keyUrl: "https://platform.deepseek.com/api_keys",
+    hint: "sk-…",
+  },
+  {
+    provider: "xai",
+    label: "xAI (Grok)",
+    tagline: "Grok 4 / Grok-Code-Fast — laatste-Twitter context + lange windows.",
+    signupUrl: "https://console.x.ai/",
+    keyUrl: "https://console.x.ai/team/default/api-keys",
+    hint: "xai-…",
+  },
+  {
+    provider: "groq",
+    label: "Groq",
+    tagline:
+      "Llama / Qwen / Kimi-K2 op Groq's LPU's. Onmisbaar als je sub-" +
+      "second responses nodig hebt.",
+    signupUrl: "https://console.groq.com/",
+    keyUrl: "https://console.groq.com/keys",
+    hint: "gsk_…",
+  },
+  {
+    provider: "mistral",
+    label: "Mistral",
+    tagline: "Mistral Large / Codestral — Europese LLM, snel en goedkoop.",
+    signupUrl: "https://console.mistral.ai/",
+    keyUrl: "https://console.mistral.ai/api-keys/",
+  },
+  {
+    provider: "elevenlabs",
+    label: "ElevenLabs (TTS)",
+    tagline:
+      "Voice synthesis voor de TalkModule. Alleen nodig als je " +
+      "voice-replies wil — niet voor agent runs zelf.",
+    signupUrl: "https://elevenlabs.io/",
+    keyUrl: "https://elevenlabs.io/app/settings/api-keys",
+    hint: "sk_…",
+  },
+];
+
+function CloudProvidersGrid({
+  workspaceSlug,
+  workspaceId,
+  cloudKeysSet,
+}: {
+  workspaceSlug: string;
+  workspaceId: string;
+  cloudKeysSet: string[];
+}) {
+  return (
+    <section
+      style={{
+        border: "1.5px solid var(--app-border)",
+        borderRadius: 14,
+        padding: "16px 18px",
+        background: "var(--app-card)",
+        display: "flex",
+        flexDirection: "column",
+        gap: 14,
+      }}
+    >
+      <header
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "baseline",
+          gap: 12,
+          flexWrap: "wrap",
+        }}
+      >
+        <div>
+          <h2
+            style={{
+              fontFamily: "var(--hand)",
+              fontSize: 22,
+              fontWeight: 700,
+              margin: 0,
+            }}
+          >
+            Cloud providers
+          </h2>
+          <p
+            style={{
+              color: "var(--app-fg-3)",
+              fontSize: 12.5,
+              margin: "4px 0 0",
+              lineHeight: 1.55,
+              maxWidth: 720,
+            }}
+          >
+            Plak een API-key en de provider werkt direct voor alle
+            agents in deze workspace. Voor per-business of per-topic
+            keys (verschillende klanten, verschillende rate limits) →{" "}
+            <Link
+              href={`/${workspaceSlug}/settings/api-keys`}
+              style={{ color: "var(--tt-green)", fontWeight: 700 }}
+            >
+              uitgebreide api-keys panel →
+            </Link>
+          </p>
+        </div>
+      </header>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill, minmax(290px, 1fr))",
+          gap: 12,
+        }}
+      >
+        {CLOUD_PROVIDERS.map((spec) => (
+          <CloudKeyCard
+            key={spec.provider}
+            spec={spec}
+            workspaceSlug={workspaceSlug}
+            workspaceId={workspaceId}
+            initiallySet={cloudKeysSet.includes(spec.provider)}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function CloudKeyCard({
+  spec,
+  workspaceSlug,
+  workspaceId,
+  initiallySet,
+}: {
+  spec: CloudProviderSpec;
+  workspaceSlug: string;
+  workspaceId: string;
+  initiallySet: boolean;
+}) {
+  const [pending, startTransition] = useTransition();
+  // Local "is set" state — flips green after a successful save without
+  // a full page refresh. We DO call router.refresh() too so the
+  // workspace cookie picks up the metadata change for downstream
+  // loads, but the immediate visual feedback comes from this.
+  const [isSet, setIsSet] = useState(initiallySet);
+  const [open, setOpen] = useState(!initiallySet);
+  const [value, setValue] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [savedJustNow, setSavedJustNow] = useState(false);
+
+  const submit = () => {
+    setError(null);
+    startTransition(async () => {
+      const res = await saveCloudProviderKey({
+        workspace_slug: workspaceSlug,
+        workspace_id: workspaceId,
+        provider: spec.provider,
+        value,
+      });
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      setIsSet(true);
+      setOpen(false);
+      setValue("");
+      setSavedJustNow(true);
+      setTimeout(() => setSavedJustNow(false), 2500);
+    });
+  };
+
+  return (
+    <div
+      style={{
+        border: "1.5px solid var(--app-border)",
+        borderRadius: 12,
+        padding: "12px 14px",
+        background: "var(--app-card-2)",
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+        position: "relative",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "baseline",
+          justifyContent: "space-between",
+          gap: 8,
+        }}
+      >
+        <span style={{ fontWeight: 700, fontSize: 13.5 }}>{spec.label}</span>
+        <span
+          style={{
+            fontSize: 9.5,
+            fontWeight: 700,
+            letterSpacing: "0.18em",
+            textTransform: "uppercase",
+            color: isSet ? "var(--tt-green)" : "var(--app-fg-3)",
+            border: `1.5px solid ${isSet ? "var(--tt-green)" : "var(--app-border)"}`,
+            padding: "2px 7px",
+            borderRadius: 999,
+            whiteSpace: "nowrap",
+          }}
+        >
+          {savedJustNow ? "saved ✓" : isSet ? "ingesteld ✓" : "geen key"}
+        </span>
+      </div>
+      <p
+        style={{
+          fontSize: 11.5,
+          color: "var(--app-fg-3)",
+          margin: 0,
+          lineHeight: 1.5,
+        }}
+      >
+        {spec.tagline}
+      </p>
+      {open ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <input
+            type="password"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder={spec.hint ?? "Plak hier je API key…"}
+            disabled={pending}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") submit();
+            }}
+            style={{
+              width: "100%",
+              background: "var(--app-card)",
+              border: "1.5px solid var(--app-border)",
+              color: "var(--app-fg)",
+              padding: "8px 10px",
+              borderRadius: 8,
+              fontFamily: "var(--mono, ui-monospace, SFMono-Regular)",
+              fontSize: 12,
+            }}
+          />
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={submit}
+              disabled={pending || !value.trim()}
+              style={ctaStyle("primary")}
+            >
+              {pending ? "Opslaan…" : "Opslaan"}
+            </button>
+            {isSet && (
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  setValue("");
+                }}
+                style={ctaStyle("ghost")}
+              >
+                Annuleer
+              </button>
+            )}
+            {spec.keyUrl ? (
+              <a
+                href={spec.keyUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  ...ctaStyle("ghost"),
+                  textDecoration: "none",
+                }}
+              >
+                Key ophalen ↗
+              </a>
+            ) : (
+              <a
+                href={spec.signupUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  ...ctaStyle("ghost"),
+                  textDecoration: "none",
+                }}
+              >
+                Aanmelden ↗
+              </a>
+            )}
+          </div>
+          {error && (
+            <p
+              role="alert"
+              style={{
+                color: "var(--rose)",
+                fontSize: 11.5,
+                margin: "4px 0 0",
+              }}
+            >
+              {error}
+            </p>
+          )}
+        </div>
+      ) : (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            style={ctaStyle("primary")}
+          >
+            {isSet ? "Roteer key" : "Plak key →"}
+          </button>
+          {!isSet && (
+            <a
+              href={spec.signupUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ ...ctaStyle("ghost"), textDecoration: "none" }}
+            >
+              Aanmelden ↗
+            </a>
+          )}
+        </div>
+      )}
     </div>
   );
 }

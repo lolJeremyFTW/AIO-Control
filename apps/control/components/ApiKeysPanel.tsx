@@ -25,10 +25,20 @@ import { translate } from "../lib/i18n/dict";
 import { useLocale } from "../lib/i18n/client";
 
 const PROVIDERS = [
+  // Cloud LLM providers — same allow-list as the Cloud Providers
+  // grid in /settings/providers (CLOUD_PROVIDERS in
+  // ProvidersOnboardingPanel). Keep the two lists in sync so a key
+  // set via the easy-onboarding card shows up here for granular
+  // per-business / per-topic overrides.
   { id: "anthropic", label: "Anthropic / Claude" },
-  { id: "minimax", label: "MiniMax (Coder Plan)" },
-  { id: "openrouter", label: "OpenRouter" },
   { id: "openai", label: "OpenAI" },
+  { id: "openrouter", label: "OpenRouter" },
+  { id: "minimax", label: "MiniMax (Coder Plan)" },
+  { id: "google_gemini", label: "Google Gemini" },
+  { id: "deepseek", label: "DeepSeek" },
+  { id: "xai", label: "xAI (Grok)" },
+  { id: "groq", label: "Groq" },
+  { id: "mistral", label: "Mistral" },
   // ElevenLabs is wired into the TalkModule (TTS playback) — without
   // this entry there's no UI path to set the key, which is why the
   // Talk Settings page's "Beheer →" link landed nowhere useful.
