@@ -39,6 +39,7 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
   const [run, setRun] = useState<RunDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [redispatching, setRedispatching] = useState(false);
 
   // Re-fetch counter — bumped on realtime events so a still-running run
   // streams its updates into this drawer live (status: running → done,
@@ -102,6 +103,30 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  // Re-dispatch the run via the existing /api/runs/[id]/dispatch endpoint.
+  // The endpoint resets the row to "queued" and runs dispatchRun, so the
+  // realtime subscription above streams the new run's progress straight
+  // into this drawer — no full reopen needed.
+  const redispatch = async () => {
+    setRedispatching(true);
+    setError(null);
+    const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+    try {
+      const res = await fetch(`${base}/api/runs/${runId}/dispatch`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        setError(text || `Dispatch faalde (${res.status})`);
+      }
+      setTick((t) => t + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "dispatch error");
+    } finally {
+      setRedispatching(false);
+    }
+  };
+
   return (
     <div
       onClick={onClose}
@@ -148,6 +173,29 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
             {run?.agents?.name ?? "Run detail"}
           </span>
           {run && <StatusPill status={run.status} />}
+          {run && (run.status === "failed" || run.status === "done") && (
+            <button
+              type="button"
+              onClick={() => void redispatch()}
+              disabled={redispatching}
+              aria-label="Opnieuw uitvoeren"
+              style={{
+                padding: "6px 10px",
+                border: "1.5px solid var(--tt-green)",
+                background: redispatching
+                  ? "rgba(57,178,85,0.15)"
+                  : "rgba(57,178,85,0.08)",
+                color: "var(--tt-green)",
+                borderRadius: 8,
+                fontWeight: 700,
+                fontSize: 12,
+                cursor: redispatching ? "wait" : "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {redispatching ? "Bezig…" : "↻ Opnieuw"}
+            </button>
+          )}
           <button
             type="button"
             onClick={onClose}

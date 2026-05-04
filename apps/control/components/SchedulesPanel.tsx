@@ -41,6 +41,8 @@ export function SchedulesPanel({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [agentId, setAgentId] = useState<string>(agents[0]?.id ?? "");
+  const selectedAgent = agents.find((a) => a.id === agentId);
+  const isSubscription = selectedAgent?.key_source === "subscription";
   const [error, setError] = useState<string | null>(null);
   const [revealedSecret, setRevealedSecret] = useState<{
     scheduleId: string;
@@ -215,17 +217,27 @@ export function SchedulesPanel({
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button
               type="button"
-              disabled={pending}
+              disabled={pending || isSubscription}
               onClick={() => triggerNow(agentId)}
-              style={btnSecondary(pending)}
+              style={btnSecondary(pending || isSubscription)}
+              title={
+                isSubscription
+                  ? "Subscription-Claude mag niet via Run now — alleen via chat of cron-schedule (Anthropic Routines)."
+                  : undefined
+              }
             >
               ▶ Run now
             </button>
             <button
               type="button"
-              disabled={pending}
+              disabled={pending || isSubscription}
               onClick={createWebhook}
-              style={btnPrimary(pending)}
+              style={btnPrimary(pending || isSubscription)}
+              title={
+                isSubscription
+                  ? "Subscription-Claude mag niet via webhook — alleen via chat of cron-schedule (Anthropic Routines)."
+                  : undefined
+              }
             >
               + Webhook URL
             </button>
@@ -239,6 +251,25 @@ export function SchedulesPanel({
             </button>
           </div>
         </div>
+
+        {isSubscription && (
+          <p
+            style={{
+              marginTop: 10,
+              padding: "8px 10px",
+              background: "rgba(245,158,11,0.10)",
+              border: "1.5px solid rgba(245,158,11,0.4)",
+              borderRadius: 10,
+              fontSize: 11.5,
+              color: "var(--amber)",
+            }}
+          >
+            ⚠ Deze agent gebruikt een Claude-subscription. Alleen{" "}
+            <strong>chat</strong> en <strong>cron</strong> (loopt via
+            Anthropic Routines) zijn toegestaan — webhook en Run now zijn
+            uitgeschakeld om een ban op je Claude-account te voorkomen.
+          </p>
+        )}
 
         {cronOpen && (
           <div
@@ -492,12 +523,22 @@ export function SchedulesPanel({
                       {new Date(s.last_fired_at).toLocaleString("nl-NL")}
                     </span>
                   )}
+                  {(() => {
+                    const cardAgent = agents.find((a) => a.id === s.agent_id);
+                    const cardIsSubscription =
+                      cardAgent?.key_source === "subscription";
+                    return (
                   <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
                     <button
                       type="button"
-                      disabled={pending}
+                      disabled={pending || cardIsSubscription}
                       onClick={() => triggerNow(s.agent_id)}
-                      style={btnSecondary(pending)}
+                      style={btnSecondary(pending || cardIsSubscription)}
+                      title={
+                        cardIsSubscription
+                          ? "Subscription-Claude mag alleen via chat of cron-schedule (Anthropic Routines)."
+                          : undefined
+                      }
                     >
                       ▶ Run now
                     </button>
@@ -528,6 +569,8 @@ export function SchedulesPanel({
                       Verwijderen
                     </button>
                   </div>
+                    );
+                  })()}
                 </div>
               );
             })}
