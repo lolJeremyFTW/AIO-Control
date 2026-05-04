@@ -9,7 +9,6 @@
 
 import "server-only";
 
-import { createSupabaseServerClient } from "../supabase/server";
 import { getServiceRoleSupabase } from "../supabase/service";
 
 export type ResolveContext = {
@@ -42,34 +41,15 @@ export async function resolveApiKey(
   }
 
   try {
-    // Cron / webhook / chain dispatch contexts run without a user
-    // cookie, so a regular cookie-bound supabase client gets blocked
-    // by RLS on every read inside this function (api_keys is locked
-    // to workspace members). We need to be able to read via the
-    // service role in those contexts. The RPC itself is SECURITY
-    // DEFINER + checks workspace_id + master_key, so using admin
-    // here doesn't widen the security surface — it just lets the
-    // function work when invoked from a background dispatcher.
-    let supabase: Awaited<
-      ReturnType<typeof createSupabaseServerClient>
-    >;
-    try {
-      supabase = await createSupabaseServerClient();
-    } catch {
-      supabase = getServiceRoleSupabase() as unknown as Awaited<
-        ReturnType<typeof createSupabaseServerClient>
-      >;
-    }
-    const { data: authData } = await supabase.auth.getUser();
-    if (!authData?.user) {
-      // No user session → use the service-role client so we can read
-      // through RLS. Same intent as the catch above; this catches the
-      // case where createSupabaseServerClient succeeded but the
-      // session is empty.
-      supabase = getServiceRoleSupabase() as unknown as Awaited<
-        ReturnType<typeof createSupabaseServerClient>
-      >;
-    }
+    // Always use the service-role client. resolveApiKey is called from
+    // both cookie-bound contexts (chat / server actions) AND background
+    // dispatchers (cron / webhook / chain) where there's no user
+    // session — the latter can't go through RLS. The RPC itself is
+    // SECURITY DEFINER and gates access via the workspace_id +
+    // master_key params; the caller already holds the workspace_id
+    // by being able to address the agent. Switching to service-role
+    // unconditionally just removes the request-context dependency.
+    const supabase = getServiceRoleSupabase();
 
     // Check the business's isolated flag. Isolated businesses do
     // NOT inherit workspace defaults — only their own keys count.
