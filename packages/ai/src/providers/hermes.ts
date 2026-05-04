@@ -3,12 +3,20 @@
 // `/root/.hermes/hermes-agent/hermes` or `~/.hermes/hermes-agent/hermes`.
 // Set HERMES_BIN in env to the absolute path.
 //
-// Default invocation:
-//   hermes chat --json --message "<prompt>"
+// Default invocation (Hermes 0.10+):
+//   hermes chat -Q -q "<prompt>"
+//
+//   -Q  programmatic / quiet output (no banner, no spinner)
+//   -q  single query, non-interactive mode (returns then exits)
+//
+// Older Hermes versions used `--json --message <prompt>`. Override via
+// HERMES_DEFAULT_ARGS (space-separated) when you're stuck on the old CLI.
 //
 // Override via env:
 //   HERMES_BIN              absolute path (default "hermes")
-//   HERMES_DEFAULT_ARGS     extra args appended before --message
+//   HERMES_DEFAULT_ARGS     full arg list (REPLACES the default arg
+//                           list — when set, only these args are used,
+//                           with the prompt appended after if no -q)
 //   HERMES_TIMEOUT_MS       hard kill after this many ms (default 120_000)
 
 import { spawn } from "node:child_process";
@@ -48,21 +56,30 @@ export async function* streamHermes(
   const extra = (process.env.HERMES_DEFAULT_ARGS ?? "")
     .split(/\s+/)
     .filter(Boolean);
-  // Stable session id per chat thread so Hermes can keep context
-  // across turns. Hermes uses --session for this in newer versions;
-  // older versions ignore it. Override via HERMES_DEFAULT_ARGS.
-  const sessionId = opts.sessionId
-    ? `aio-thread-${opts.sessionId.slice(0, 12)}`
-    : `aio-run-${(opts.runId ?? "single").slice(0, 8)}`;
-  // The Hermes CLI currently exposes `chat` for one-shot prompts. If
-  // the user is on a different version they can override the args via
-  // HERMES_DEFAULT_ARGS.
-  const args =
-    extra.length > 0
-      ? extra
-      : ["chat", "--json", "--session", sessionId, "--message", prompt];
-  if (extra.length > 0 && !extra.includes("--message")) {
-    args.push("--message", prompt);
+  // Hermes 0.10's `chat` subcommand:
+  //   -Q                quiet/programmatic output
+  //   -q "<prompt>"     single query, non-interactive
+  //   --resume <id>     resume an existing session by id (we don't
+  //                     pre-create sessions, so we skip this — Hermes
+  //                     keeps SOUL.md / state.db at the profile level
+  //                     so single-shot calls still get long-term
+  //                     context across turns).
+  // Optional model passthrough — when the AIO Control model picker
+  // has a value, forward it via -m so the Hermes provider router
+  // resolves the same model the user picked. Empty value skips the
+  // flag (Hermes uses its config.yaml default).
+  const modelArg = (opts.config.model ?? "").trim();
+  const modelFlags = modelArg ? ["-m", modelArg] : [];
+  // When HERMES_DEFAULT_ARGS is set we trust the operator and use it
+  // verbatim — append the prompt with -q if they didn't include one.
+  let args: string[];
+  if (extra.length > 0) {
+    args = ["chat", ...extra];
+    if (!extra.includes("-q") && !extra.includes("--query")) {
+      args.push("-q", prompt);
+    }
+  } else {
+    args = ["chat", "-Q", ...modelFlags, "-q", prompt];
   }
 
   const child = spawn(binary, args, { stdio: ["pipe", "pipe", "pipe"] });
