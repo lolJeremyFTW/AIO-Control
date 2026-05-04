@@ -110,6 +110,7 @@ export function useAudioCapture(
   }, []);
 
   const startCapture = useCallback(async () => {
+    console.info("[useAudioCapture] startCapture called, state:", state);
     setError(null);
     setAudioUrlState(null);
     chunksRef.current = [];
@@ -119,19 +120,26 @@ export function useAudioCapture(
 
     let stream: MediaStream;
     try {
+      console.info("[useAudioCapture] requesting microphone access...");
       stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
         },
       });
+      console.info("[useAudioCapture] microphone access granted!");
     } catch (err) {
       const msg =
         err instanceof Error
           ? err.name === "NotAllowedError"
-            ? "Mikrofon toegang geweigerd. Check je browser permissies."
-            : err.message
+            ? "Mikrofon toegang geweigerd. Check je browser permissies (adresbalk 🔒 → toestemming geven)."
+            : err.name === "NotFoundError"
+              ? "Geen microfoon gevonden op dit apparaat."
+              : err.name === "NotReadableError"
+                ? "Microfoon wordt gebruikt door een ander programma."
+                : err.message
           : "Kon geen microfoon krijgen.";
+      console.error("[useAudioCapture] getUserMedia failed:", err);
       setError(msg);
       setState("error");
       return;
