@@ -5,6 +5,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { AGUIEvent } from "../ag-ui";
+import { priceTokens } from "../pricing";
 import type { StreamChatOptions } from "../router";
 
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
@@ -104,6 +105,10 @@ export async function* streamOpenRouter(
   yield {
     type: "message_end",
     message_id: messageId,
-    usage: { input_tokens: inputTokens, output_tokens: outputTokens, cost_cents: 0 },
+    usage: {
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      cost_cents: priceTokens(opts.config.model, inputTokens, outputTokens),
+    },
   };
 }

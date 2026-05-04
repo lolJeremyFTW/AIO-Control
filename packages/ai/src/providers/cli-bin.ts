@@ -30,8 +30,14 @@ export function resolveCliBin(toolName: string, envVar: string): string {
     join(home, ".npm-global", "bin", toolName),
     // PEP 668 / pipx user installs
     join(home, ".local", "bin", toolName),
-    // Cargo-installed Rust tools (Hermes is Rust)
+    // Cargo-installed Rust tools
     join(home, ".cargo", "bin", toolName),
+    // Hermes-specific install layouts. The official installer drops
+    // it under <home>/.hermes/hermes-agent/{venv/bin,bin} or as a
+    // bare script at the project root. We check both.
+    join(home, ".hermes", "hermes-agent", "venv", "bin", toolName),
+    join(home, ".hermes", "hermes-agent", "bin", toolName),
+    join(home, ".hermes", "hermes-agent", toolName),
     // Homebrew on Apple Silicon
     `/opt/homebrew/bin/${toolName}`,
     // Linux / Intel-Mac Homebrew

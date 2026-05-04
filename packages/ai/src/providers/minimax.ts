@@ -17,6 +17,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { AGUIEvent } from "../ag-ui";
+import { priceTokens } from "../pricing";
 import type { StreamChatOptions } from "../router";
 
 const DEFAULT_BASE = "https://api.minimax.io/v1";
@@ -149,6 +150,10 @@ export async function* streamMinimax(
   yield {
     type: "message_end",
     message_id: messageId,
-    usage: { input_tokens: inputTokens, output_tokens: outputTokens, cost_cents: 0 },
+    usage: {
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      cost_cents: priceTokens(model, inputTokens, outputTokens),
+    },
   };
 }

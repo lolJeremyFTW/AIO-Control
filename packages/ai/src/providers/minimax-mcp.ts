@@ -17,6 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { AGUIEvent } from "../ag-ui";
+import { priceTokens } from "../pricing";
 import type { StreamChatOptions } from "../router";
 import { resolveCliBin } from "./cli-bin";
 
@@ -165,6 +166,18 @@ export async function* streamMinimaxViaClaude(
           const u = evt.usage as { input_tokens?: number; output_tokens?: number };
           inputTokens = u.input_tokens ?? inputTokens;
           outputTokens = u.output_tokens ?? outputTokens;
+          // The result envelope also carries is_error + result text
+          // when claude bails on auth ("Not logged in · Please run
+          // /login"). Surface that as a real error instead of letting
+          // it slip through as "Claude exited with 1".
+          if (evt.is_error && typeof evt.result === "string") {
+            yield {
+              type: "error",
+              code: "claude_auth",
+              message: `Claude CLI: ${evt.result}. Zet een echte ANTHROPIC_API_KEY in /home/jeremy/aio-control/apps/control/.env.production (de huidige is leeg) of log de CLI in als jeremy met "claude login".`,
+            };
+            return;
+          }
         }
       } catch {
         if (nonJsonLines.length < 30) nonJsonLines.push(line);
@@ -194,6 +207,14 @@ export async function* streamMinimaxViaClaude(
   yield {
     type: "message_end",
     message_id: messageId,
-    usage: { input_tokens: inputTokens, output_tokens: outputTokens, cost_cents: 0 },
+    usage: {
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      // Claude as MCP host bills against the host model (claude). The
+      // tokens reported here ARE Claude tokens — price them as such.
+      // The agent's own `model` field is a MiniMax model so we can't
+      // use it; we hardcode the default Claude tier the CLI uses.
+      cost_cents: priceTokens(opts.config.model ?? "sonnet", inputTokens, outputTokens),
+    },
   };
 }
