@@ -71,6 +71,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   // Reload thread list whenever the open agent changes.
   useEffect(() => {
@@ -89,6 +90,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
 
   // Switch threads → load history.
   const switchThread = useCallback(async (threadId: string | null) => {
+    setOpen(false);
     setActiveThreadId(threadId);
     if (!threadId) {
       setMessages([]);
@@ -107,6 +109,22 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
   useEffect(() => {
     if (open) listRef.current?.scrollTo({ top: 99999 });
   }, [messages, open]);
+
+  // Close panel when clicking outside.
+  useEffect(() => {
+    if (!open) return;
+    // Delay listener attachment so the click that opened the panel doesn't immediately close it.
+    const timeoutId = setTimeout(() => {
+      const handleClickOutside = (e: MouseEvent) => {
+        if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+          setOpen(false);
+        }
+      };
+      document.addEventListener("click", handleClickOutside);
+      return () => document.removeEventListener("click", handleClickOutside);
+    }, 0);
+    return () => clearTimeout(timeoutId);
+  }, [open]);
 
   const send = useCallback(
     async (
@@ -366,6 +384,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
 
       {open && (
         <div
+          ref={panelRef}
           className="chat-panel"
           style={{
             position: "fixed",
