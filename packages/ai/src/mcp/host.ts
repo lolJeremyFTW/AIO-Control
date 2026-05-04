@@ -103,12 +103,8 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
   // Workspace is scoped by AIO_WORKSPACE_ID env var (set at the agent/
   // workspace level in aio-control).
   aio: {
-    command: "npx",
-    args: [
-      "-y",
-      "tsx",
-      "/home/jeremy/mcp-servers/aio-server.ts",
-    ],
+    command: "/home/jeremy/aio-control/packages/ai/node_modules/.bin/tsx",
+    args: ["/home/jeremy/mcp-servers/aio-server.ts"],
     env: () => ({
       SUPABASE_URL: process.env.SUPABASE_URL ?? "",
       SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
@@ -119,12 +115,8 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
   // Dangerous commands (rm -rf, shutdown, dd, etc.) are blocked
   // unless prefixed with "Approved: " (user approved via ask_followup).
   bash: {
-    command: "npx",
-    args: [
-      "-y",
-      "tsx",
-      "/home/jeremy/mcp-servers/bash-server.ts",
-    ],
+    command: "/home/jeremy/aio-control/packages/ai/node_modules/.bin/tsx",
+    args: ["/home/jeremy/mcp-servers/bash-server.ts"],
   },
 };
 
