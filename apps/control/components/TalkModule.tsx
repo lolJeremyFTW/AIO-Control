@@ -106,14 +106,13 @@ export function TalkModule({ agents, workspaceSlug, defaultAgentId }: Props) {
 
   const handleMicClick = useCallback(async () => {
     window.alert("DEBUG: click fired, state=" + state);
-    console.info("[TalkModule] mic click, isRecording:", isRecording, "state:", state);
     setUiError(null);
 
     if (isRecording) {
       // Second click: stop and send to server
-      console.info("[TalkModule] calling stop()");
+      window.alert("DEBUG: stopping...");
       const blob = await stop();
-      console.info("[TalkModule] stop returned, blob:", blob ? "yes" : "null");
+      window.alert("DEBUG: stop returned, blob=" + (blob ? "yes" : "null"));
       if (!blob) return;
 
       const form = new FormData();
@@ -140,8 +139,13 @@ export function TalkModule({ agents, workspaceSlug, defaultAgentId }: Props) {
       }
     } else if (state === "idle" || state === "error") {
       // First click: start recording
-      console.info("[TalkModule] calling start()");
-      await start();
+      window.alert("DEBUG: calling start()...");
+      try {
+        await start();
+        window.alert("DEBUG: start() completed, state now = " + state);
+      } catch (e) {
+        window.alert("DEBUG: start() threw: " + (e as Error).message);
+      }
     }
     // isBusy clicks are ignored (button is disabled)
   }, [isRecording, state, agentId, workspaceSlug, start, stop, setTtsUrl]);
