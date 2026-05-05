@@ -90,14 +90,9 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
       process.env.MCP_FS_ROOT ?? "/home/jeremy/aio-control",
     ],
   },
-  // Generic web fetcher — pulls a URL and returns the body. Equivalent
-  // to Claude Code's WebFetch but as a portable MCP server.
-  fetch: {
-    command: "npx",
-    args: ["-y", "@modelcontextprotocol/server-fetch"],
-  },
-  // AIO Control platform tools (list_businesses, read_secret, list_agents,
-  // list_runs). Spawns as a local TypeScript subprocess via tsx (npx ensures
+  // AIO Control platform tools (list_businesses, list_agents, list_runs).
+  // read_secret is gated by AIO_MCP_ALLOW_READ_SECRET in aio-server.
+  // Spawns as a local TypeScript subprocess via tsx (npx ensures
   // tsx is available without requiring a global install).
   // Credentials come via env — SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY
   // are forwarded by McpHost.connect() via envOverrides.
@@ -110,6 +105,9 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
       SUPABASE_URL: process.env.SUPABASE_URL ?? "",
       SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
       AIO_WORKSPACE_ID: process.env.AIO_WORKSPACE_ID ?? "default",
+      ...(process.env.AIO_MCP_ALLOW_READ_SECRET
+        ? { AIO_MCP_ALLOW_READ_SECRET: process.env.AIO_MCP_ALLOW_READ_SECRET }
+        : {}),
     }),
   },
   // Bash shell access — executes commands locally on the VPS.
@@ -131,9 +129,10 @@ export class McpHost {
   private connected: Connected[] = [];
 
   /** Spawn + handshake every requested server in parallel and cache
-   *  their tool lists. Throws when a known server fails to start so
-   *  the caller can surface a real error instead of silently dropping
-   *  the tools. Unknown server ids are skipped with a warning.
+   *  their tool lists. Individual server failures are non-fatal: the
+   *  failed server is skipped with a warning so the agent keeps working
+   *  with the servers that did start. Only completely unknown ids are
+   *  silently skipped.
    *
    *  `envOverrides` lets the caller force-set vars the MCP child needs
    *  even when the worker process running this code was forked with
@@ -157,8 +156,18 @@ export class McpHost {
       // — we honour the agent-level permission gate before spawning.
       if (id === "filesystem" && permissions.filesystem === "off") continue;
       if (id === "aio" && permissions.aio === "off") continue;
+      // Wrap each connectOne so a single server crash doesn't kill the
+      // whole connect() via Promise.all rejection. Failed servers log
+      // a warning and resolve to null so the others keep working.
       tasks.push(
-        this.connectOne(id, spec, envOverrides ?? {}, permissions),
+        this.connectOne(id, spec, envOverrides ?? {}, permissions).catch(
+          (err) => {
+            console.warn(
+              `[mcp] server '${id}' failed to start — skipping (${err instanceof Error ? err.message : err})`,
+            );
+            return null;
+          },
+        ),
       );
     }
     const results = await Promise.all(tasks);
