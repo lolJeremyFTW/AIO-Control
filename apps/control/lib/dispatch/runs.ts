@@ -363,6 +363,13 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
   // ended in the matching status (done/failed).
   await maybeQueueChain(supabase, agent, business, finalStatus, output, errorText);
 
+  // Team dispatch: execute any dispatch_agent tool calls the router
+  // agent emitted during this run. Tool calls in background runs don't
+  // get executed inline (no tool-result feedback loop), so we fire them
+  // here after the run completes. Each dispatch_agent call in the
+  // history becomes a new sub-run queued immediately.
+  await maybeFireDispatchAgentCalls(supabase, history, run);
+
   return {
     ok: !errorText,
     status: finalStatus,
@@ -439,6 +446,63 @@ async function maybeQueueChain(
     void dispatchRun(newRun.id as string).catch((err) =>
       console.error("chain dispatchRun failed", err),
     );
+  }
+}
+
+// Execute dispatch_agent tool calls emitted by a router agent during
+// a background run. Since background runs don't have a tool-result
+// feedback loop, these calls are gathered from the history and fired
+// asynchronously after the parent run finishes.
+async function maybeFireDispatchAgentCalls(
+  supabase: ReturnType<typeof getServiceRoleSupabase>,
+  history: RunStep[],
+  run: { workspace_id: string; business_id: string | null },
+): Promise<void> {
+  const dispatchCalls = history.filter(
+    (s): s is RunStep & { kind: "tool_call" } =>
+      s.kind === "tool_call" && s.name === "dispatch_agent",
+  );
+  if (dispatchCalls.length === 0) return;
+
+  for (const call of dispatchCalls) {
+    const args = (call.args ?? {}) as Record<string, unknown>;
+    const agentId = String(args.agent_id ?? "").trim();
+    const input = String(args.input ?? "").trim();
+    if (!agentId || !input) continue;
+
+    // Validate the target agent belongs to the same workspace.
+    const { data: targetAgent } = await supabase
+      .from("agents")
+      .select("id, workspace_id, business_id, nav_node_id, archived_at, key_source")
+      .eq("id", agentId)
+      .eq("workspace_id", run.workspace_id)
+      .is("archived_at", null)
+      .maybeSingle();
+    if (!targetAgent || targetAgent.key_source === "subscription") continue;
+
+    const { data: newRun } = await supabase
+      .from("runs")
+      .insert({
+        workspace_id: run.workspace_id,
+        agent_id: agentId,
+        business_id: targetAgent.business_id ?? run.business_id ?? null,
+        nav_node_id: (targetAgent.nav_node_id as string | null) ?? null,
+        triggered_by: "dispatch_agent",
+        status: "queued",
+        input: {
+          prompt: input,
+          source: "dispatch_agent",
+          label: typeof args.label === "string" ? args.label : undefined,
+        },
+      })
+      .select("id")
+      .single();
+
+    if (newRun) {
+      void dispatchRun(newRun.id as string).catch((err) =>
+        console.error("dispatch_agent sub-run failed", err),
+      );
+    }
   }
 }
 

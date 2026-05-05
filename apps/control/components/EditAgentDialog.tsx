@@ -53,8 +53,8 @@ type Props = {
   telegramTargets?: Target[];
   customIntegrations?: Target[];
   /** Other agents in the same workspace — used as options for the
-   *  "next agent on done / fail" chain dropdowns. */
-  siblingAgents?: { id: string; name: string }[];
+   *  "next agent on done / fail" chain dropdowns and team picker. */
+  siblingAgents?: { id: string; name: string; kind?: string }[];
   /** Flattened nav_nodes tree for this business — pin the agent to a
    *  topic so it shows on the per-topic dashboard. depth drives the
    *  indent in the dropdown. Empty/undefined = hide the picker
@@ -133,6 +133,7 @@ export function EditAgentDialog({
   const [customIntegrationId, setCustomIntegrationId] = useState(
     agent.custom_integration_id ?? "",
   );
+  const [parentAgentId, setParentAgentId] = useState(agent.parent_agent_id ?? "");
   const [nextOnDone, setNextOnDone] = useState(agent.next_agent_on_done ?? "");
   const [nextOnFail, setNextOnFail] = useState(agent.next_agent_on_fail ?? "");
   const [notifyEmail, setNotifyEmail] = useState(agent.notify_email ?? "");
@@ -180,6 +181,7 @@ export function EditAgentDialog({
         endpoint: needsEndpoint ? endpoint || null : null,
         telegram_target_id: telegramTargetId || null,
         custom_integration_id: customIntegrationId || null,
+        parent_agent_id: parentAgentId || null,
         next_agent_on_done: nextOnDone || null,
         next_agent_on_fail: nextOnFail || null,
         notify_email: notifyEmail || null,
@@ -430,6 +432,50 @@ export function EditAgentDialog({
             />
           )}
         </details>
+
+        {/* Team membership — pick a router agent to be a subagent of */}
+        {siblingAgents.filter((a) => a.id !== agent.id).length > 0 && agent.kind !== "router" && (
+          <div
+            style={{
+              border: "1.5px solid var(--app-border-2)",
+              background: "var(--app-card-2)",
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 12,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                color: "var(--app-fg-2)",
+                marginBottom: 8,
+              }}
+            >
+              Team
+            </div>
+            <Field label="Onderdeel van team">
+              <select
+                value={parentAgentId}
+                onChange={(e) => setParentAgentId(e.target.value)}
+                style={inp}
+              >
+                <option value="">— Geen team (standalone) —</option>
+                {siblingAgents
+                  .filter((a) => a.id !== agent.id && (a.kind === "router" || !a.kind))
+                  .map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
+              </select>
+            </Field>
+            <p style={{ fontSize: 11, color: "var(--app-fg-3)", margin: "4px 0 0" }}>
+              Kies een team-coordinator (router agent). De coordinator kan deze agent aanroepen via{" "}
+              <code style={{ fontFamily: "var(--mono, monospace)", fontSize: 10 }}>dispatch_agent</code>.
+            </p>
+          </div>
+        )}
 
         {siblingAgents.length > 0 && (
           <div

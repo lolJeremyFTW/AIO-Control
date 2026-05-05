@@ -202,6 +202,28 @@ export async function executeAioTool(
         return { kind: "defer", event: { type: "open_ui_at", path, label } };
       }
 
+      // ── TEAM DISPATCH ────────────────────────────────────────────
+      // dispatch_agent is a first-class write tool: in chat it asks
+      // for user confirmation before spawning the subagent run. In
+      // background runs (dispatchRun in runs.ts) it's executed directly
+      // without the confirm gate, since the scheduler already represents
+      // user intent.
+      case "dispatch_agent": {
+        const agentId = String(a.agent_id ?? "").trim();
+        const input = String(a.input ?? "").trim();
+        if (!agentId) return { kind: "error", error: "dispatch_agent: agent_id is required." };
+        if (!input) return { kind: "error", error: "dispatch_agent: input is required." };
+        return {
+          kind: "defer",
+          event: {
+            type: "confirm_required",
+            summary: `dispatch_agent → ${agentId}\n\n${input.slice(0, 200)}${input.length > 200 ? "…" : ""}`,
+            kind: "dispatch_agent",
+            pending: { name: "dispatch_agent", args: a },
+          },
+        };
+      }
+
       // ── WRITE — gated behind user confirm in the chat panel ──────
       // First-pass: defer with confirm_required. The chat-route's
       // approve_tool path re-enters via executeAioWriteTool below
@@ -336,6 +358,68 @@ export async function executeAioWriteTool(
         });
         if (!res.ok) return { kind: "error", error: res.error };
         return { kind: "ok", data: res.data };
+      }
+
+      case "dispatch_agent": {
+        const agentId = String(a.agent_id ?? "").trim();
+        const input = String(a.input ?? "").trim();
+        if (!agentId) return { kind: "error", error: "agent_id is required." };
+        if (!input) return { kind: "error", error: "input is required." };
+
+        const adminForDispatch = getServiceRoleSupabase();
+
+        // Fetch the target agent to validate it belongs to the same workspace.
+        const targetAgent = await adminForDispatch
+          .from("agents")
+          .select("id, workspace_id, business_id, nav_node_id, archived_at, key_source")
+          .eq("id", agentId)
+          .eq("workspace_id", ctx.workspaceId)
+          .is("archived_at", null)
+          .maybeSingle();
+        if (!targetAgent.data)
+          return { kind: "error", error: `Agent ${agentId} not found or archived.` };
+
+        if (targetAgent.data.key_source === "subscription") {
+          return {
+            kind: "error",
+            error: "Subscription-Claude agents kunnen niet via dispatch_agent aangeroepen worden — gebruik een API key agent.",
+          };
+        }
+
+        // Create the sub-run and dispatch it synchronously so the
+        // tool result carries the subagent's output back to the caller.
+        const { data: newRun, error: insertErr } = await adminForDispatch
+          .from("runs")
+          .insert({
+            workspace_id: ctx.workspaceId,
+            agent_id: agentId,
+            business_id: targetAgent.data.business_id ?? ctx.defaultBusinessId,
+            nav_node_id: targetAgent.data.nav_node_id ?? null,
+            triggered_by: "dispatch_agent",
+            status: "queued",
+            input: {
+              prompt: input,
+              source: "dispatch_agent",
+              label: typeof a.label === "string" ? a.label : undefined,
+            },
+          })
+          .select("id")
+          .single();
+
+        if (insertErr || !newRun)
+          return { kind: "error", error: insertErr?.message ?? "Kon sub-run niet aanmaken." };
+
+        const { dispatchRun } = await import("../dispatch/runs");
+        const result = await dispatchRun(newRun.id as string);
+        return {
+          kind: "ok",
+          data: {
+            run_id: newRun.id,
+            status: result.status,
+            output: result.output_text ?? null,
+            error: result.error ?? null,
+          },
+        };
       }
 
       case "create_schedule": {

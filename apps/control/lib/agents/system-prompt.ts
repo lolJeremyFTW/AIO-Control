@@ -63,7 +63,7 @@ export async function buildAgentSystemPrompt(
     []) as string[];
 
   // Fan out the lookups in parallel — single round-trip total.
-  const [bizRes, wsRes, integrations, siblings, spend, skillsRes] =
+  const [bizRes, wsRes, integrations, siblings, spend, skillsRes, subagentsRes] =
     await Promise.all([
       agent.business_id
         ? admin
@@ -96,6 +96,14 @@ export async function buildAgentSystemPrompt(
             .from("skills")
             .select("id, name, description, body")
             .in("id", allowedSkillIds)
+            .is("archived_at", null)
+        : Promise.resolve({ data: [] }),
+      // Team subagents — only meaningful when this agent is a coordinator.
+      agent.kind === "router"
+        ? admin
+            .from("agents")
+            .select("id, name, kind, provider, model, config")
+            .eq("parent_agent_id", agent.id)
             .is("archived_at", null)
         : Promise.resolve({ data: [] }),
     ]);
@@ -221,6 +229,41 @@ export async function buildAgentSystemPrompt(
   );
   if (!agent.business_id) {
     lines.push(`- Scope: **workspace-global** (niet aan een business gekoppeld)`);
+  }
+
+  // ── Team / subagents (router agents only) ────────────────────────
+  type SubagentRow = {
+    id: string;
+    name: string;
+    kind: string;
+    provider: string;
+    model: string | null;
+    config: Record<string, unknown> | null;
+  };
+  const subagents = (subagentsRes.data ?? []) as SubagentRow[];
+  if (subagents.length > 0) {
+    lines.push("");
+    lines.push("## Jouw team (subagents die jij kunt aanroepen)");
+    lines.push(
+      "Jij bent de team-coordinator. Gebruik `dispatch_agent` om taken " +
+        "te delegeren aan de juiste specialist hieronder. Geef een heldere " +
+        "taakomschrijving mee als `input`. De subagent voert uit en " +
+        "geeft zijn output terug als tool-result.",
+    );
+    lines.push("");
+    for (const s of subagents) {
+      const sp = (s.config?.systemPrompt as string | null | undefined) ?? "";
+      const hint = sp
+        ? `\n  Specialisatie: ${sp.slice(0, 120).replace(/\n/g, " ")}${sp.length > 120 ? "…" : ""}`
+        : "";
+      lines.push(
+        `- **${s.name}** (id: \`${s.id}\`) — ${s.provider}${s.model ? ` ${s.model}` : ""} · ${s.kind}${hint}`,
+      );
+    }
+    lines.push("");
+    lines.push(
+      "Aanroepen: `dispatch_agent(agent_id=\"<id>\", input=\"<taak>\")`.",
+    );
   }
 
   // ── Beschikbare integrations ───────────────────────────────────────

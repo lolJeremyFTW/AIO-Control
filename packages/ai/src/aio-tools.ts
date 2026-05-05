@@ -245,6 +245,33 @@ export const AIO_TOOLS: Record<string, AioToolSpec> = {
     },
   },
 
+  // ── TEAM DISPATCH ────────────────────────────────────────────────
+  dispatch_agent: {
+    name: "dispatch_agent",
+    category: "write",
+    description:
+      "Delegate a task to a specialist subagent in your team. The subagent runs asynchronously and its output is returned as the tool result. Use this when you are a team coordinator (kind='router') and need a specific specialist to handle part of the work. Ideal for: routing web-fetch tasks to a MiniMax agent, routing pitch-writing to a Claude agent, etc.",
+    parameters: {
+      type: "object",
+      properties: {
+        agent_id: {
+          type: "string",
+          description: "ID of the subagent to dispatch. Use list_agents to discover available subagents.",
+        },
+        input: {
+          type: "string",
+          description: "The task or prompt to pass to the subagent as its user message.",
+        },
+        label: {
+          type: "string",
+          description: "Optional short label for this dispatch (e.g. 'web fetch', 'pitch writing'). Shown in the run history.",
+        },
+      },
+      required: ["agent_id", "input"],
+      additionalProperties: false,
+    },
+  },
+
   // ── META (UI side-effects, emitted as AG-UI events) ──────────────
   ask_followup: {
     name: "ask_followup",
@@ -343,8 +370,8 @@ export function defaultToolsForKind(kind: string): string[] {
         ...AIO_META_TOOLS.map((t) => t.name),
       ];
     case "router":
-      // Router agents need to introspect siblings.
-      return ["list_agents", "list_businesses", "ask_followup"];
+      // Router agents can introspect siblings and dispatch to subagents.
+      return ["list_agents", "list_businesses", "dispatch_agent", "ask_followup"];
     default:
       // Worker/reviewer/generator: minimal — only ask_followup for
       // edge-case clarifications.

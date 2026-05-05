@@ -47,6 +47,9 @@ export type AgentInput = {
   /** Pin the agent to a topic (nav_node) at creation time. NULL =
    *  belongs to the business as a whole (current behaviour). */
   nav_node_id?: string | null;
+  /** Assign this agent to a team. The parent must be a router agent in
+   *  the same workspace. NULL = standalone (no team). */
+  parent_agent_id?: string | null;
   /** Names of MCP servers this agent should host. For provider="minimax"
    *  pick from "minimax", "filesystem", "fetch". streamMinimax spawns
    *  each native via @aio/ai/mcp/host. */
@@ -134,6 +137,7 @@ export async function createAgent(
       next_agent_on_fail: input.next_agent_on_fail ?? null,
       key_source: keySource,
       nav_node_id: input.nav_node_id ?? null,
+      parent_agent_id: input.parent_agent_id ?? null,
     })
     .select("id")
     .single();
@@ -178,6 +182,8 @@ export async function updateAgent(input: {
      *  business as a whole). Powers the per-topic dashboards via
      *  migration 043. */
     nav_node_id?: string | null;
+    /** Assign to a team coordinator. null = remove from team (standalone). */
+    parent_agent_id?: string | null;
     /** Names of MCP servers the agent should host (provider-specific).
      *  For provider="minimax" the known servers are "minimax",
      *  "filesystem", "fetch". streamMinimax spawns each via
@@ -220,6 +226,8 @@ export async function updateAgent(input: {
   }
   if (input.patch.nav_node_id !== undefined)
     patch.nav_node_id = input.patch.nav_node_id ?? null;
+  if (input.patch.parent_agent_id !== undefined)
+    patch.parent_agent_id = input.patch.parent_agent_id ?? null;
 
   // Config fields are merged into the existing jsonb so we don't
   // clobber routing rules or temperature.

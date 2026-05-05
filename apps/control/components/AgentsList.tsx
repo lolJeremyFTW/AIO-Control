@@ -197,26 +197,13 @@ export function AgentsList({
           </button>
         </div>
       ) : (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-            gap: 12,
-          }}
-        >
-          {agents.map((a) => (
-            <AgentCard
-              key={a.id}
-              agent={a}
-              workspaceSlug={workspaceSlug}
-              keyOk={providerKeyStatus[a.provider] ?? false}
-              onContextMenu={(e) =>
-                setMenu({ x: e.clientX, y: e.clientY, agent: a })
-              }
-              onClick={() => setEditing(a)}
-            />
-          ))}
-        </div>
+        <AgentsHierarchy
+          agents={agents}
+          workspaceSlug={workspaceSlug}
+          providerKeyStatus={providerKeyStatus}
+          onContextMenu={(e, agent) => setMenu({ x: e.clientX, y: e.clientY, agent })}
+          onEdit={setEditing}
+        />
       )}
 
       {open && (
@@ -239,7 +226,7 @@ export function AgentsList({
           agent={editing}
           telegramTargets={telegramTargets}
           customIntegrations={customIntegrations}
-          siblingAgents={agents.map((a) => ({ id: a.id, name: a.name }))}
+          siblingAgents={agents.map((a) => ({ id: a.id, name: a.name, kind: a.kind }))}
           navOptions={navOptions}
           availableSkills={availableSkills}
           onClose={() => setEditing(null)}
@@ -255,18 +242,174 @@ export function AgentsList({
   );
 }
 
+// ── Hierarchy renderer ────────────────────────────────────────────────
+
+function AgentsHierarchy({
+  agents,
+  workspaceSlug,
+  providerKeyStatus,
+  onContextMenu,
+  onEdit,
+}: {
+  agents: AgentRow[];
+  workspaceSlug: string;
+  providerKeyStatus: Record<string, boolean>;
+  onContextMenu: (e: React.MouseEvent, agent: AgentRow) => void;
+  onEdit: (agent: AgentRow) => void;
+}) {
+  // Split into teams (agents with subagents) and standalone agents.
+  const teamLeaders = agents.filter(
+    (a) => a.kind === "router" && agents.some((b) => b.parent_agent_id === a.id),
+  );
+  const subagentIds = new Set(agents.filter((a) => a.parent_agent_id).map((a) => a.id));
+  const standaloneAgents = agents.filter(
+    (a) => !subagentIds.has(a.id) && !teamLeaders.some((t) => t.id === a.id),
+  );
+
+  // Orphan subagents whose parent_agent_id doesn't match a known leader
+  // are treated as standalone. This can happen if the parent was archived.
+  const orphans = agents.filter(
+    (a) => a.parent_agent_id && !agents.some((p) => p.id === a.parent_agent_id),
+  );
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      {/* Teams */}
+      {teamLeaders.map((leader) => {
+        const members = agents.filter((a) => a.parent_agent_id === leader.id);
+        return (
+          <div key={leader.id}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                marginBottom: 8,
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  letterSpacing: "0.14em",
+                  textTransform: "uppercase",
+                  color: "var(--app-fg-3)",
+                }}
+              >
+                Team
+              </span>
+              <span
+                style={{
+                  height: 1,
+                  flex: 1,
+                  background: "var(--app-border)",
+                }}
+              />
+            </div>
+            {/* Team leader card */}
+            <AgentCard
+              agent={leader}
+              workspaceSlug={workspaceSlug}
+              keyOk={providerKeyStatus[leader.provider] ?? false}
+              onContextMenu={(e) => onContextMenu(e, leader)}
+              onClick={() => onEdit(leader)}
+              isTeamLeader
+            />
+            {/* Subagents indented */}
+            <div
+              style={{
+                marginLeft: 20,
+                marginTop: 8,
+                borderLeft: "2px solid var(--app-border)",
+                paddingLeft: 12,
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
+                gap: 8,
+              }}
+            >
+              {members.map((sub) => (
+                <AgentCard
+                  key={sub.id}
+                  agent={sub}
+                  workspaceSlug={workspaceSlug}
+                  keyOk={providerKeyStatus[sub.provider] ?? false}
+                  onContextMenu={(e) => onContextMenu(e, sub)}
+                  onClick={() => onEdit(sub)}
+                  isSubagent
+                />
+              ))}
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Standalone agents */}
+      {(standaloneAgents.length > 0 || orphans.length > 0) && (
+        <>
+          {teamLeaders.length > 0 && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  letterSpacing: "0.14em",
+                  textTransform: "uppercase",
+                  color: "var(--app-fg-3)",
+                }}
+              >
+                Standalone
+              </span>
+              <span style={{ height: 1, flex: 1, background: "var(--app-border)" }} />
+            </div>
+          )}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+              gap: 12,
+            }}
+          >
+            {[...standaloneAgents, ...orphans].map((a) => (
+              <AgentCard
+                key={a.id}
+                agent={a}
+                workspaceSlug={workspaceSlug}
+                keyOk={providerKeyStatus[a.provider] ?? false}
+                onContextMenu={(e) => onContextMenu(e, a)}
+                onClick={() => onEdit(a)}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Agent card ────────────────────────────────────────────────────────────
+
 function AgentCard({
   agent,
   workspaceSlug,
   keyOk,
   onContextMenu,
   onClick,
+  isTeamLeader = false,
+  isSubagent = false,
 }: {
   agent: AgentRow;
   workspaceSlug: string;
   keyOk: boolean;
   onContextMenu: (e: React.MouseEvent) => void;
   onClick: () => void;
+  isTeamLeader?: boolean;
+  isSubagent?: boolean;
 }) {
   // Pick the platform-correct hint glyph. SSR can't see navigator, so
   // we render the neutral form first and swap on mount via a state set
@@ -297,10 +440,10 @@ function AgentCard({
         onContextMenu(e);
       }}
       style={{
-        border: "1.5px solid var(--app-border)",
+        border: `1.5px solid ${isTeamLeader ? "var(--tt-green)" : "var(--app-border)"}`,
         borderRadius: 14,
         padding: 14,
-        background: "var(--app-card)",
+        background: isTeamLeader ? "rgba(57,178,85,0.05)" : "var(--app-card)",
         display: "flex",
         flexDirection: "column",
         gap: 6,
@@ -308,16 +451,62 @@ function AgentCard({
         transition: "background 0.12s, border-color 0.12s",
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.background = "var(--app-card-2)";
-        e.currentTarget.style.borderColor = "var(--app-border-2)";
+        e.currentTarget.style.background = isTeamLeader
+          ? "rgba(57,178,85,0.10)"
+          : "var(--app-card-2)";
+        e.currentTarget.style.borderColor = isTeamLeader
+          ? "var(--tt-green)"
+          : "var(--app-border-2)";
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.background = "var(--app-card)";
-        e.currentTarget.style.borderColor = "var(--app-border)";
+        e.currentTarget.style.background = isTeamLeader
+          ? "rgba(57,178,85,0.05)"
+          : "var(--app-card)";
+        e.currentTarget.style.borderColor = isTeamLeader
+          ? "var(--tt-green)"
+          : "var(--app-border)";
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ fontWeight: 700, fontSize: 14 }}>{agent.name}</div>
+        <div style={{ fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", gap: 6 }}>
+          {isTeamLeader && (
+            <span
+              title="Team coordinator — dispatcht taken naar subagents"
+              style={{
+                fontSize: 9,
+                fontWeight: 700,
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+                color: "var(--tt-green)",
+                background: "rgba(57,178,85,0.12)",
+                border: "1px solid rgba(57,178,85,0.3)",
+                borderRadius: 5,
+                padding: "2px 5px",
+              }}
+            >
+              Team
+            </span>
+          )}
+          {isSubagent && (
+            <span
+              title="Subagent — onderdeel van een team"
+              style={{
+                fontSize: 9,
+                fontWeight: 700,
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+                color: "var(--app-fg-3)",
+                background: "var(--app-card-2)",
+                border: "1px solid var(--app-border)",
+                borderRadius: 5,
+                padding: "2px 5px",
+              }}
+            >
+              Sub
+            </span>
+          )}
+          {agent.name}
+        </div>
         <span
           style={{
             fontSize: 10,
