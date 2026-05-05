@@ -151,10 +151,6 @@ function isCommandDangerous(cmd: string): { dangerous: boolean; pattern?: string
     }
   }
 
-  if (hasShellControl(trimmed)) {
-    return { dangerous: true, pattern: "shell-control-operator" };
-  }
-
   return { dangerous: false };
 }
 
