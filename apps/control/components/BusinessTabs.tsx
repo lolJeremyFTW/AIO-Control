@@ -39,6 +39,9 @@ type Tab = {
   badge?: number;
   /** Match function for "is this tab active?". */
   match: (p: string) => boolean;
+  /** Force a full page load instead of client-side navigation.
+   *  Used for custom iframe tabs whose RSC route needs a fresh request. */
+  hardNav?: boolean;
 };
 
 export type BusinessTabsTopicEntry = {
@@ -219,6 +222,7 @@ export function BusinessTabs({
       return {
         href,
         label: t.label,
+        hardNav: !!t.id,
         match: (p) => p === href || p.startsWith(`${href}/`),
       } satisfies Tab;
     }),
@@ -255,6 +259,23 @@ export function BusinessTabs({
                   : "2px solid transparent",
               }}
             >
+              {t.hardNav ? (
+                <a
+                  href={t.href}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "8px 10px 8px 14px",
+                    fontSize: 12.5,
+                    fontWeight: 700,
+                    color: active ? "var(--app-fg)" : "var(--app-fg-3)",
+                    textDecoration: "none",
+                  }}
+                >
+                  {t.label}
+                </a>
+              ) : (
               <Link
                 href={t.href}
                 style={{
@@ -291,6 +312,7 @@ export function BusinessTabs({
                   </span>
                 )}
               </Link>
+              )}
               {topicEntry?.id && (
                 <button
                   type="button"
