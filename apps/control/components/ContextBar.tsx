@@ -1,8 +1,8 @@
 // Sticky header Row 2 — dynamic context bar.
 //
-// Renders KPI pills + status + actions based on the current nav level:
+// Renders KPI columns + status + actions based on the current nav level:
 //   • Business level (no navNodeId): MARGE / REVENUE / KOSTEN / RUNS 24H /
-//     queue badges + PauseToggle + primary CTA.
+//     queue badges + PauseToggle + primary split CTA.
 //   • Topic/module level (with navNodeId): breadcrumb + KOSTEN / RUNS 24H /
 //     queue badge + CTA.
 //
@@ -50,8 +50,7 @@ export type Props = {
   biz: BizMeta;
   /** ID of the deepest nav_node in the current path (undefined = business root). */
   navNodeId?: string;
-  /** Display names for each step in the nav path, from shallowest to deepest.
-   *  Used for the compact breadcrumb shown in topic/module mode. */
+  /** Display names for each step in the nav path, from shallowest to deepest. */
   navBreadcrumb?: string[];
 };
 
@@ -66,8 +65,6 @@ export function ContextBar({
   const [data, setData] = useState<ContextData>(null);
   const [loading, setLoading] = useState(true);
 
-  // Track the fetch key so stale responses from a previous navigation don't
-  // overwrite data from the current one.
   const fetchKey = `${biz.id}::${navNodeId ?? ""}`;
   const keyRef = useRef(fetchKey);
   keyRef.current = fetchKey;
@@ -101,10 +98,10 @@ export function ContextBar({
   if (loading && !data) {
     return (
       <div className="ctx-bar">
-        <span className="ctx-skeleton" style={{ width: 80 }} />
-        <span className="ctx-skeleton" style={{ width: 80 }} />
-        <span className="ctx-skeleton" style={{ width: 80 }} />
-        <span className="ctx-skeleton" style={{ width: 80 }} />
+        <span className="ctx-skeleton" style={{ width: 60 }} />
+        <span className="ctx-skeleton" style={{ width: 60 }} />
+        <span className="ctx-skeleton" style={{ width: 60 }} />
+        <span className="ctx-skeleton" style={{ width: 60 }} />
       </div>
     );
   }
@@ -146,8 +143,12 @@ function BusinessBar({
   workspaceSlug: string;
 }) {
   const margin = data.revenue_30d_eur - data.usage_30d_eur;
-  const marginTone =
-    margin > 0 ? "ok" : margin < 0 ? "bad" : ("neutral" as const);
+  const marginColor =
+    margin > 0
+      ? "var(--tt-green)"
+      : margin < 0
+        ? "var(--rose)"
+        : undefined;
 
   const spendLimit =
     biz.daily_spend_limit_cents != null
@@ -160,65 +161,70 @@ function BusinessBar({
 
   return (
     <div className="ctx-bar">
-      {/* KPI pills — all link to the overview tab */}
-      <Link href={base} className="ctx-pill ctx-pill-link">
-        <span className="ctx-pill-label">MARGE</span>
-        <span className={`ctx-pill-value ctx-tone-${marginTone}`}>
-          {fmtEur(margin)}
-        </span>
-      </Link>
+      {/* KPI vertical stacks */}
+      <div className="kpis">
+        <Link href={base} className="kpi" style={{ textDecoration: "none" }}>
+          <span className="lbl">Marge</span>
+          <span className="val" style={{ color: marginColor }}>
+            {fmtEur(margin)}
+          </span>
+        </Link>
 
-      <span className="ctx-divider" />
+        <Link href={base} className="kpi" style={{ textDecoration: "none" }}>
+          <span className="lbl">Revenue</span>
+          <span className="val">{fmtEur(data.revenue_30d_eur)}</span>
+        </Link>
 
-      <Link href={base} className="ctx-pill ctx-pill-link">
-        <span className="ctx-pill-label">REVENUE</span>
-        <span className="ctx-pill-value">{fmtEur(data.revenue_30d_eur)}</span>
-      </Link>
-
-      <Link href={base} className="ctx-pill ctx-pill-link">
-        <span className="ctx-pill-label">KOSTEN</span>
-        <span className="ctx-pill-value">
-          {fmtEur(data.usage_30d_eur)}
-          {spendLimit != null && (
-            <span className="ctx-spend-limit">
-              /{fmtEur(spendLimit)}{" "}
-              <span
-                className={
-                  spendPct != null && spendPct > 80
-                    ? "ctx-tone-bad"
-                    : "ctx-tone-neutral"
-                }
-              >
+        <Link href={base} className="kpi" style={{ textDecoration: "none" }}>
+          <span className="lbl">Kosten</span>
+          <span className="val">
+            {fmtEur(data.usage_30d_eur)}
+            {spendLimit != null && (
+              <span className="unit">/{fmtEur(spendLimit)}</span>
+            )}
+            {spendPct != null && (
+              <span className={spendPct > 80 ? "delta down" : "unit"}>
                 {spendPct}%
               </span>
-            </span>
-          )}
-        </span>
-      </Link>
+            )}
+          </span>
+        </Link>
 
-      <span className="ctx-divider" />
+        <span className="vrule" />
 
-      {/* RUNS 24H → schedules tab */}
-      <Link href={`${base}/schedules`} className="ctx-pill ctx-pill-link">
-        <span className="ctx-pill-label">RUNS 24H</span>
-        <span className="ctx-pill-value">{data.runs_24h}</span>
-      </Link>
+        <Link
+          href={`${base}/schedules`}
+          className="kpi"
+          style={{ textDecoration: "none" }}
+        >
+          <span className="lbl">Runs 24h</span>
+          <span className="val">{data.runs_24h}</span>
+        </Link>
+      </div>
 
       {/* Queue badges */}
       {data.queue_auto > 0 && (
-        <Link href={base} className="ctx-queue-badge ctx-queue-auto">
-          <span className="ctx-queue-dot" />
-          auto-publish {data.queue_auto}
+        <Link
+          href={base}
+          className="auto-status"
+          style={{ textDecoration: "none" }}
+        >
+          <span className="d" />
+          auto {data.queue_auto}
         </Link>
       )}
       {data.queue_review > 0 && (
-        <Link href={base} className="ctx-queue-badge ctx-queue-review">
-          <span className="ctx-queue-dot" />
-          review {data.queue_review}
+        <Link
+          href={base}
+          className="hitl"
+          style={{ textDecoration: "none" }}
+        >
+          <span className="num">{data.queue_review}</span>
+          review
         </Link>
       )}
 
-      <div className="ctx-grow" />
+      <div className="grow" />
 
       {/* Status + pause */}
       <PauseToggle
@@ -227,13 +233,27 @@ function BusinessBar({
         status={biz.status}
       />
 
-      {/* Primary CTA */}
-      <Link
-        href={`${base}/agents`}
-        className="ctx-cta"
-      >
-        + {biz.primary_action ?? "Nieuwe automatie"}
-      </Link>
+      {/* Primary CTA — split button */}
+      <div className="pbtn-split">
+        <Link
+          href={`${base}/agents`}
+          className="main"
+          style={{ textDecoration: "none", color: "inherit" }}
+        >
+          + {biz.primary_action ?? "Nieuwe automatie"}
+        </Link>
+        <span className="caret">
+          <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+            <path
+              d="M3 4.5L6 7.5L9 4.5"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </span>
+      </div>
     </div>
   );
 }
@@ -250,7 +270,6 @@ function TopicBar({
   navBreadcrumb?: string[];
   workspaceSlug: string;
 }) {
-  // Show last 2 levels of the breadcrumb as "Parent › Current"
   const crumb =
     navBreadcrumb && navBreadcrumb.length > 0
       ? navBreadcrumb.slice(-2).join(" › ")
@@ -261,38 +280,79 @@ function TopicBar({
       {crumb && (
         <>
           <span className="ctx-breadcrumb-mini">{crumb}</span>
-          <span className="ctx-divider" />
+          <span className="vrule" />
         </>
       )}
 
-      <Link href={base} className="ctx-pill ctx-pill-link">
-        <span className="ctx-pill-label">KOSTEN 30D</span>
-        <span className="ctx-pill-value">{fmtEur(data.cost_30d_eur)}</span>
-      </Link>
+      <div className="kpis">
+        <Link href={base} className="kpi" style={{ textDecoration: "none" }}>
+          <span className="lbl">Kosten 30d</span>
+          <span className="val">{fmtEur(data.cost_30d_eur)}</span>
+        </Link>
 
-      <Link href={`${base}/schedules`} className="ctx-pill ctx-pill-link">
-        <span className="ctx-pill-label">RUNS 24H</span>
-        <span className="ctx-pill-value">{data.runs_24h}</span>
-      </Link>
+        <Link
+          href={`${base}/schedules`}
+          className="kpi"
+          style={{ textDecoration: "none" }}
+        >
+          <span className="lbl">Runs 24h</span>
+          <span className="val">{data.runs_24h}</span>
+        </Link>
+      </div>
 
       {data.queue_auto > 0 && (
-        <Link href={base} className="ctx-queue-badge ctx-queue-auto">
-          <span className="ctx-queue-dot" />
+        <Link
+          href={base}
+          className="auto-status"
+          style={{ textDecoration: "none" }}
+        >
+          <span className="d" />
           auto {data.queue_auto}
         </Link>
       )}
       {data.queue_review > 0 && (
-        <Link href={base} className="ctx-queue-badge ctx-queue-review">
-          <span className="ctx-queue-dot" />
-          review {data.queue_review}
+        <Link
+          href={base}
+          className="hitl"
+          style={{ textDecoration: "none" }}
+        >
+          <span className="num">{data.queue_review}</span>
+          review
         </Link>
       )}
 
-      <div className="ctx-grow" />
+      <div className="grow" />
 
-      <Link href={`${base}/agents`} className="ctx-cta ctx-cta-secondary">
-        + Nieuw agent
-      </Link>
+      <div
+        className="pbtn-split"
+        style={{
+          borderColor: "var(--app-border)",
+          background: "var(--app-card-2)",
+          color: "var(--app-fg)",
+        }}
+      >
+        <Link
+          href={`${base}/agents`}
+          className="main"
+          style={{ textDecoration: "none", color: "inherit" }}
+        >
+          + Nieuw agent
+        </Link>
+        <span
+          className="caret"
+          style={{ borderColor: "rgba(255,255,255,0.12)" }}
+        >
+          <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+            <path
+              d="M3 4.5L6 7.5L9 4.5"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </span>
+      </div>
     </div>
   );
 }
