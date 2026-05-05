@@ -46,7 +46,7 @@ export function RunsToaster({ workspaceId }: Props) {
         "postgres_changes" as any,
         {
           event: "*",
-          schema: "public",
+          schema: "aio_control",
           table: "runs",
           filter: `workspace_id=eq.${workspaceId}`,
         },
