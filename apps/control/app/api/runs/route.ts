@@ -35,7 +35,7 @@ export async function GET(req: Request) {
   let q = supabase
     .from("runs")
     .select(
-      "id, agent_id, business_id, status, triggered_by, duration_ms, cost_cents, output, error_text, created_at",
+      "id, agent_id, business_id, status, triggered_by, duration_ms, cost_cents, output, error_text, created_at, schedule_id, schedules:schedule_id(title)",
     )
     .order("created_at", { ascending: false })
     .range(offset, offset + limit);
