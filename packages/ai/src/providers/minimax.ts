@@ -137,7 +137,7 @@ async function* streamMinimaxWithToolsAnthropic(
   // MiniMax's Anthropic-compatible endpoint sits at <base>/anthropic.
   // The Anthropic SDK appends /messages automatically, so the final
   // request lands at e.g. https://api.minimax.io/v1/anthropic/messages.
-  const anthropicBase = `${base}/anthropic`;
+  const anthropicBase = base.replace(/\/v1\/?$/, "") + "/anthropic";
 
   // MiniMax accepts the key via Authorization: Bearer (same as the
   // OpenAI path) rather than x-api-key. We override both so the SDK's
