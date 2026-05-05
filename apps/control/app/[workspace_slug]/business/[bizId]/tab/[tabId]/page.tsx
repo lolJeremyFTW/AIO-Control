@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getServiceRoleSupabase } from "../../../../../../lib/supabase/service";
+import { createSupabaseServerClient } from "../../../../../../lib/supabase/server";
 
 type Props = {
   params: Promise<{ workspace_slug: string; bizId: string; tabId: string }>;
@@ -8,7 +8,7 @@ type Props = {
 export default async function CustomTabPage({ params }: Props) {
   const { bizId, tabId } = await params;
 
-  const supabase = getServiceRoleSupabase();
+  const supabase = await createSupabaseServerClient();
   const { data } = await supabase
     .from("custom_tabs")
     .select("label, url")
