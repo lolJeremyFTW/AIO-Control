@@ -54,6 +54,7 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
   const [stopping, setStopping] = useState(false);
   const [followupText, setFollowupText] = useState("");
   const [followupSending, setFollowupSending] = useState(false);
+  const [showTools, setShowTools] = useState(true);
 
   // Re-fetch counter — bumped on realtime events so a still-running run
   // streams its updates into this drawer live (status: running → done,
@@ -322,6 +323,24 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
           )}
           <button
             type="button"
+            onClick={() => setShowTools((v) => !v)}
+            title={showTools ? "Verberg tool calls" : "Toon tool calls"}
+            style={{
+              padding: "6px 10px",
+              border: `1.5px solid ${showTools ? "var(--app-border)" : "var(--tt-green)"}`,
+              background: showTools ? "transparent" : "rgba(57,178,85,0.10)",
+              color: showTools ? "var(--app-fg-3)" : "var(--tt-green)",
+              borderRadius: 8,
+              fontWeight: 700,
+              fontSize: 12,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {showTools ? "⚙ Tools" : "⚙ Tools ✓"}
+          </button>
+          <button
+            type="button"
             onClick={onClose}
             aria-label="Sluiten"
             style={{
@@ -373,7 +392,7 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
               {error}
             </p>
           )}
-          {run && <RunBody run={run} />}
+          {run && <RunBody run={run} showTools={showTools} />}
           <div ref={bottomRef} />
         </div>
 
@@ -460,8 +479,9 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
   );
 }
 
-function RunBody({ run }: { run: RunDetail }) {
-  const steps = stepsFor(run);
+function RunBody({ run, showTools }: { run: RunDetail; showTools: boolean }) {
+  const allSteps = stepsFor(run);
+  const steps = showTools ? allSteps : allSteps.filter((s) => s.kind !== "tool_call");
   const isLive = run.status === "queued" || run.status === "running";
 
   if (steps.length === 0 && !isLive) {
@@ -475,7 +495,7 @@ function RunBody({ run }: { run: RunDetail }) {
   // based on the most recent history step. Tool calls win because
   // they're the most informative ("calling minimax__web_search…");
   // otherwise we report partial assistant text length.
-  const last = steps[steps.length - 1];
+  const last = allSteps[allSteps.length - 1];
   let thinking: string | null = null;
   if (isLive) {
     if (last?.kind === "tool_call") {

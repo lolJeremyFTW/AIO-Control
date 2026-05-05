@@ -357,7 +357,7 @@ function formatRunMessage(
   }
   if (event === "done") {
     const out = extractText(run.output);
-    if (out) lines.push(`\n${stripMarkdown(truncate(out, 800))}`);
+    if (out) lines.push(`\n${stripMarkdown(truncate(out, 3500))}`);
   }
   return lines.join("\n");
 }

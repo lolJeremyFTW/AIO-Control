@@ -266,17 +266,20 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
           void flushHistory();
         }
       } else if (event.type === "message_start") {
-        // A new assistant turn begins (provider is restarting after a
-        // tool call, or it's the very first start). If the previous
-        // assistant slot has content, leave it and open a fresh one.
-        if (activeAssistant.text.length > 0) {
-          activeAssistant = {
-            kind: "assistant",
-            text: "",
-            at: new Date().toISOString(),
-          };
-          history.push(activeAssistant);
+        // New assistant turn begins (provider restarts after tool calls).
+        // If the current bubble has no text yet (model went straight to
+        // tools), remove it from history so it doesn't float above the
+        // tool call cards. Then always push a fresh bubble at the end.
+        if (activeAssistant.text.length === 0) {
+          const prevIdx = history.lastIndexOf(activeAssistant as RunStep);
+          if (prevIdx !== -1) history.splice(prevIdx, 1);
         }
+        activeAssistant = {
+          kind: "assistant",
+          text: "",
+          at: new Date().toISOString(),
+        };
+        history.push(activeAssistant);
       } else if (event.type === "message_end") {
         cost = event.usage.cost_cents;
         inputTokens = event.usage.input_tokens;

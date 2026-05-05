@@ -309,6 +309,10 @@ async function* streamMinimaxWithToolsAnthropic(
 
       // Feed tool results back as a user turn so MiniMax continues.
       messages.push({ role: "user", content: toolResults });
+
+      // Signal a new assistant turn to the dispatcher so it creates a
+      // fresh bubble positioned AFTER the tool call cards, not before.
+      yield { type: "message_start", message_id: randomUUID(), role: "assistant" };
     }
 
     // Hop limit reached — emit what we have as the final response.
