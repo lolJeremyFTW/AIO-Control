@@ -66,22 +66,15 @@ export async function POST(req: Request) {
     );
   }
 
-  // ── 3. Load agent + workspace ────────────────────────────────────────────
+  // ── 3. Load agent ────────────────────────────────────────────────────────
   const agent = await getAgentById(agentId);
   if (!agent) {
     return NextResponse.json({ error: "Agent niet gevonden." }, { status: 404 });
   }
 
-  const { data: workspace, error: wsError } = await getServiceRoleSupabase()
-    .from("workspaces")
-    .select("id, slug, ollama_endpoint")
-    .eq("id", agent.workspace_id)
-    .maybeSingle();
-
-  if (!workspace) {
-    console.error("[talk] workspace not found — agent.workspace_id:", agent.workspace_id, "wsError:", wsError);
-    return NextResponse.json({ error: "Workspace niet gevonden." }, { status: 404 });
-  }
+  // Use agent.workspace_id directly — no workspace DB lookup needed since
+  // getAgentById already verified the agent belongs to an accessible workspace.
+  const workspace_id = agent.workspace_id;
 
   // ── 4. Load talk_settings ─────────────────────────────────────────────────
   const { data: talkSettings } = await getServiceRoleSupabase()
@@ -89,7 +82,7 @@ export async function POST(req: Request) {
     .select(
       "provider, model, llm, stt, voice, stability, similarity",
     )
-    .eq("workspace_id", workspace.id)
+    .eq("workspace_id", workspace_id)
     .maybeSingle();
 
   ttsProvider = talkSettings?.provider ?? "elevenlabs";
@@ -110,8 +103,8 @@ export async function POST(req: Request) {
   // Falls back to ElevenLabs when Whisper is selected but no OpenAI key.
 
   const [openAiKey, elevenlabsKeyForStt] = await Promise.all([
-    resolveApiKey("openai", { workspaceId: workspace.id, businessId: agent.business_id }),
-    resolveApiKey("elevenlabs", { workspaceId: workspace.id, businessId: agent.business_id }),
+    resolveApiKey("openai", { workspaceId: workspace_id, businessId: agent.business_id }),
+    resolveApiKey("elevenlabs", { workspaceId: workspace_id, businessId: agent.business_id }),
   ]);
 
   // Decide effective STT provider based on available keys.
@@ -221,11 +214,11 @@ export async function POST(req: Request) {
           ? "minimax"
           : "openrouter";
   const apiKey = await resolveApiKey(llmKeyName, {
-    workspaceId: workspace.id,
+    workspaceId: workspace_id,
     businessId: agent.business_id,
   });
 
-  const ollamaEndpoint = await resolveOllamaEndpoint(workspace.id);
+  const ollamaEndpoint = await resolveOllamaEndpoint(workspace_id);
 
   console.info(`[talk] LLM start — provider=${resolvedProvider} model=${resolvedModel}`);
   const llmStart = Date.now();
@@ -234,7 +227,7 @@ export async function POST(req: Request) {
   // agent knows about its business, integrations, sibling agents, etc.
   const preamble = await buildAgentSystemPrompt({
     id: agent.id,
-    workspace_id: workspace.id,
+    workspace_id: workspace_id,
     business_id: agent.business_id,
     name: agent.name,
     kind: agent.kind,
@@ -261,7 +254,7 @@ export async function POST(req: Request) {
       messages,
       apiKey,
       tenant: {
-        workspaceId: workspace.id,
+        workspaceId: workspace_id,
         businessId: agent.business_id,
         ollamaEndpoint: ollamaEndpoint ?? undefined,
       },
@@ -294,7 +287,7 @@ export async function POST(req: Request) {
   const ttsStart = Date.now();
 
   const elevenlabsKey = elevenlabsKeyForStt ?? await resolveApiKey("elevenlabs", {
-    workspaceId: workspace.id,
+    workspaceId: workspace_id,
     businessId: agent.business_id,
   });
 
@@ -356,7 +349,7 @@ export async function POST(req: Request) {
     getServiceRoleSupabase()
       .from("talk_session_logs")
       .insert({
-        workspace_id: workspace.id,
+        workspace_id: workspace_id,
         agent_id: agent.id,
         transcription: transcription.slice(0, 4000),
         llm_prompt: transcription.slice(0, 2000),
@@ -385,7 +378,7 @@ export async function POST(req: Request) {
     void getServiceRoleSupabase()
       .from("talk_session_logs")
       .insert({
-        workspace_id: workspace.id,
+        workspace_id: workspace_id,
         agent_id: agent.id,
         transcription: transcription.slice(0, 4000) || null,
         llm_prompt: null,
