@@ -72,7 +72,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Agent niet gevonden." }, { status: 404 });
   }
 
-  const { data: workspace } = await supabase
+  const { data: workspace } = await getServiceRoleSupabase()
     .from("workspaces")
     .select("id, slug, ollama_endpoint")
     .eq("id", agent.workspace_id)
@@ -83,7 +83,7 @@ export async function POST(req: Request) {
   }
 
   // ── 4. Load talk_settings ─────────────────────────────────────────────────
-  const { data: talkSettings } = await supabase
+  const { data: talkSettings } = await getServiceRoleSupabase()
     .from("talk_settings")
     .select(
       "provider, model, llm, stt, voice, stability, similarity",
