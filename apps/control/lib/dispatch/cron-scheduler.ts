@@ -34,6 +34,13 @@ export function startCronScheduler(): void {
   if (started) return;
   started = true;
 
+  // On boot: mark any run that was left in "running" state by a previous
+  // crash as failed. Runs older than 30 min are definitely orphaned —
+  // normal agent runs complete in seconds to a few minutes.
+  void cleanupZombieRuns().catch((err) =>
+    console.error("[cron-scheduler] zombie cleanup failed", err),
+  );
+
   // node-cron expression "* * * * *" = every minute on the wall clock.
   task = cron.schedule(
     "* * * * *",
@@ -52,6 +59,27 @@ export function startCronScheduler(): void {
   });
 
   console.log("[cron-scheduler] started — scanning every minute");
+}
+
+/** Mark runs stuck in "running" for > 30 min as failed.
+ *  Called once at startup to recover from crashes/restarts. */
+async function cleanupZombieRuns(): Promise<void> {
+  const admin = getServiceRoleSupabase();
+  const cutoff = new Date(Date.now() - 30 * 60_000).toISOString();
+  const { error, count } = await admin
+    .from("runs")
+    .update({
+      status: "failed",
+      error_text: "Run abandoned — process restarted mid-flight",
+      ended_at: new Date().toISOString(),
+    })
+    .eq("status", "running")
+    .lt("created_at", cutoff);
+  if (error) {
+    console.error("[cron-scheduler] zombie cleanup error", error);
+  } else {
+    console.log("[cron-scheduler] zombie run cleanup done");
+  }
 }
 
 export function stopCronScheduler(): void {
@@ -111,6 +139,21 @@ async function tick(): Promise<void> {
 
   for (const sched of due) {
     try {
+      // Concurrency guard: skip if a run for this schedule is still
+      // "running". A hung previous run should not spawn a second one —
+      // the zombie cleanup handles the eventual recovery.
+      const { count: activeCount } = await admin
+        .from("runs")
+        .select("id", { count: "exact", head: true })
+        .eq("schedule_id", sched.id)
+        .eq("status", "running");
+      if (activeCount && activeCount > 0) {
+        console.log(
+          `[cron-scheduler] schedule ${sched.id} already has a running run — skipping`,
+        );
+        continue;
+      }
+
       // Atomic claim: only the tick that wins this UPDATE proceeds. We
       // guard on `last_fired_at` being either null or older than 60s
       // (matches the JS-side shouldFire window). Postgres serializes
