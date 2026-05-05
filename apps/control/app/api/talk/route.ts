@@ -351,22 +351,22 @@ export async function POST(req: Request) {
     }
 
     // ── 9. Log the session (fire-and-forget, non-blocking) ─────────────────
-    const logRow = {
-      workspace_id: workspace.id,
-      agent_id: agent.id,
-      transcription: transcription.slice(0, 4000),
-      llm_prompt: transcription.slice(0, 2000),
-      llm_response: llmResponseText.slice(0, 4000),
-      tts_voice_id: voiceId,
-      duration_ms: durationMs,
-      error_text: null,
-      stt_provider: sttProvider,
-      llm_model: llmConfig,
-      tts_provider: ttsProvider,
-    };
+    const durationMs = Date.now() - startedAt;
     getServiceRoleSupabase()
       .from("talk_session_logs")
-      .insert(logRow)
+      .insert({
+        workspace_id: workspace.id,
+        agent_id: agent.id,
+        transcription: transcription.slice(0, 4000),
+        llm_prompt: transcription.slice(0, 2000),
+        llm_response: llmResponseText.slice(0, 4000),
+        tts_voice_id: voiceId,
+        duration_ms: durationMs,
+        error_text: null,
+        stt_provider: sttProvider,
+        llm_model: llmConfig,
+        tts_provider: ttsProvider,
+      })
       .then(({ error: logErr }) => {
         if (logErr) console.error("[talk] log insert failed:", logErr);
       });
@@ -375,8 +375,6 @@ export async function POST(req: Request) {
       headers: {
         "Content-Type": "audio/mpeg",
         "Cache-Control": "no-cache",
-        "X-Transcript": encoder.encode(transcription).toString(),
-        "X-Response-Text": encoder.encode(llmResponseText.slice(0, 200)).toString(),
         "X-Duration-Ms": String(durationMs),
       },
     });
