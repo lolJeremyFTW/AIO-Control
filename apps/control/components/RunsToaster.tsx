@@ -71,6 +71,9 @@ export function RunsToaster({ workspaceId }: Props) {
           let inputTokens: number | undefined;
           let outputTokens: number | undefined;
 
+          // Skip transient internal states — no toast needed.
+          if (newRow.status === "running" || newRow.status === "queued") return;
+
           if (payload.eventType === "INSERT") {
             text = `Run gestart (${newRow.triggered_by ?? "?"})`;
           } else if (newRow.status === "done") {
