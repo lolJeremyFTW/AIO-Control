@@ -125,8 +125,8 @@ export function BusinessTabs({
     e.preventDefault();
     if (!addLabel.trim() || !addUrl.trim()) return;
     setAdding(true);
-    const base64 = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-    await fetch(`${base64}/api/custom-tabs`, {
+    const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+    await fetch(`${basePath}/api/custom-tabs`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",
@@ -146,13 +146,18 @@ export function BusinessTabs({
 
   async function handleDeleteTab(id: string) {
     setDeleting(id);
-    const base64 = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-    await fetch(`${base64}/api/custom-tabs/${id}`, {
+    const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+    await fetch(`${basePath}/api/custom-tabs/${id}`, {
       method: "DELETE",
       credentials: "same-origin",
     });
     setDeleting(null);
-    router.refresh();
+    // If we're currently on this tab's page, navigate back to business root.
+    if (path.includes(`/tab/${id}`)) {
+      window.location.href = base;
+    } else {
+      router.refresh();
+    }
   }
 
   const L = {
