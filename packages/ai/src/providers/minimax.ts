@@ -164,6 +164,10 @@ async function* streamMinimaxWithToolsAnthropic(
       if (opts.tenant?.workspaceId) {
         envOverrides.AIO_WORKSPACE_ID = opts.tenant.workspaceId;
       }
+      // MCP tool API keys resolved by the caller and forwarded here.
+      if (opts.tenant?.mcpToolKeys) {
+        Object.assign(envOverrides, opts.tenant.mcpToolKeys);
+      }
       await host.connect(serverIds, envOverrides, permissions);
     } catch (err) {
       yield {
@@ -385,6 +389,9 @@ async function* streamMinimaxWithTools(
       const envOverrides: Record<string, string> = { MINIMAX_API_KEY: apiKey };
       if (opts.tenant?.workspaceId) {
         envOverrides.AIO_WORKSPACE_ID = opts.tenant.workspaceId;
+      }
+      if (opts.tenant?.mcpToolKeys) {
+        Object.assign(envOverrides, opts.tenant.mcpToolKeys);
       }
       await host.connect(serverIds, envOverrides, permissions);
     } catch (err) {

@@ -219,6 +219,24 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
     businessId: run.business_id,
   });
 
+  // Resolve MCP tool keys (brave, firecrawl) so agents can use these
+  // servers in cron/webhook runs without them being in process.env.
+  const mcpServers: string[] = (config as { mcpServers?: string[] }).mcpServers ?? [];
+  const mcpToolKeyMap: Record<string, string> = {
+    brave: "BRAVE_API_KEY",
+    firecrawl: "FIRECRAWL_API_KEY",
+  };
+  const mcpToolKeys: Record<string, string> = {};
+  for (const [server, envVar] of Object.entries(mcpToolKeyMap)) {
+    if (mcpServers.includes(server)) {
+      const k = await resolveApiKey(server, {
+        workspaceId: run.workspace_id,
+        businessId: run.business_id,
+      });
+      if (k) mcpToolKeys[envVar] = k;
+    }
+  }
+
   // Periodic mid-run flush of message_history so the run drawer streams
   // partial assistant text in real time via the realtime subscription
   // (UPDATE on runs). Without this the drawer stays on "Agent is bezig…"
@@ -257,6 +275,7 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
         ollamaEndpoint,
         hermesAgentName,
         openclawAgentName,
+        mcpToolKeys: Object.keys(mcpToolKeys).length > 0 ? mcpToolKeys : undefined,
       },
     })) {
       if (event.type === "token") {

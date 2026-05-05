@@ -156,6 +156,18 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
       MEMORY_FILE_PATH: process.env.MEMORY_FILE_PATH ?? "/home/jeremy/.aio-memory.json",
     }),
   },
+  // Firecrawl MCP — crawl websites and extract structured data.
+  // Supports single-page scrape, full-site crawl, and deep research
+  // modes. Needs FIRECRAWL_API_KEY set in workspace secrets.
+  firecrawl: {
+    command: "npx",
+    args: ["-y", "firecrawl-mcp"],
+    env: () => ({
+      ...(process.env.FIRECRAWL_API_KEY
+        ? { FIRECRAWL_API_KEY: process.env.FIRECRAWL_API_KEY }
+        : {}),
+    }),
+  },
 };
 
 type Connected = {

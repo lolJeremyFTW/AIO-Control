@@ -131,6 +131,10 @@ export interface StreamChatOptions {
      *  provider invokes `openclaw agent <name> …` instead of
      *  `openclaw agent --local …`. */
     openclawAgentName?: string | null;
+    /** Resolved API keys for MCP tool servers that need them
+     *  (e.g. brave → BRAVE_API_KEY, firecrawl → FIRECRAWL_API_KEY).
+     *  Injected into envOverrides when McpHost.connect() is called. */
+    mcpToolKeys?: Record<string, string>;
   };
   /** Stable session id used by subprocess providers (openclaw, hermes)
    *  to keep conversational context across turns within the same chat

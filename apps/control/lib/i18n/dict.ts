@@ -524,6 +524,9 @@ const nl: Dict = {
   "settings.section.apiKeys": "API Keys",
   "settings.section.apiKeys.desc":
     "Workspace-defaults of overrides per business of topic. Encryptie via pgcrypto.",
+  "settings.section.mcpTools": "MCP Tools",
+  "settings.section.mcpTools.desc":
+    "API keys voor externe MCP tool-servers (Brave Search, Firecrawl). Sla op en test met één klik.",
   "settings.section.spendLimits": "Spend limits",
   "settings.section.spendLimits.desc":
     "Daag/maand caps per workspace; auto-pause als gewenst.",
@@ -1124,6 +1127,9 @@ const en: Partial<Dict> = {
   "settings.section.apiKeys": "API Keys",
   "settings.section.apiKeys.desc":
     "Workspace defaults or overrides per business or topic. Encrypted via pgcrypto.",
+  "settings.section.mcpTools": "MCP Tools",
+  "settings.section.mcpTools.desc":
+    "API keys for external MCP tool servers (Brave Search, Firecrawl). Save and test with one click.",
   "settings.section.spendLimits": "Spend limits",
   "settings.section.spendLimits.desc":
     "Daily/monthly caps per workspace; auto-pause if you want.",
@@ -1552,6 +1558,9 @@ const de: Partial<Dict> = {
   "settings.section.apiKeys": "API-Keys",
   "settings.section.apiKeys.desc":
     "Workspace-Defaults oder Overrides pro Business oder Topic. Verschlüsselung via pgcrypto.",
+  "settings.section.mcpTools": "MCP Tools",
+  "settings.section.mcpTools.desc":
+    "API-Keys für externe MCP-Tool-Server (Brave Search, Firecrawl). Mit einem Klick speichern und testen.",
   "settings.section.spendLimits": "Spend-Limits",
   "settings.section.spendLimits.desc":
     "Tages-/Monats-Caps pro Workspace; auto-pause optional.",

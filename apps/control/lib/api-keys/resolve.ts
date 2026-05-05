@@ -29,6 +29,8 @@ const ENV_FALLBACK: Record<string, string | undefined> = {
   ollama: "OLLAMA_API_KEY",
   elevenlabs: "ELEVENLABS_API_KEY",
   azure_speech: "AZURE_SPEECH_API_KEY",
+  brave: "BRAVE_API_KEY",
+  firecrawl: "FIRECRAWL_API_KEY",
 };
 
 export async function resolveApiKey(

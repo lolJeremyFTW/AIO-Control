@@ -164,6 +164,25 @@ export async function POST(
     businessId: agent.business_id,
   });
 
+  // Resolve MCP tool keys so interactive chat sessions can use brave/
+  // firecrawl without them being in process.env.
+  const chatMcpServers: string[] =
+    ((agent as { config?: { mcpServers?: string[] } }).config?.mcpServers) ?? [];
+  const MCP_TOOL_KEY_MAP: Record<string, string> = {
+    brave: "BRAVE_API_KEY",
+    firecrawl: "FIRECRAWL_API_KEY",
+  };
+  const mcpToolKeys: Record<string, string> = {};
+  for (const [server, envVar] of Object.entries(MCP_TOOL_KEY_MAP)) {
+    if (chatMcpServers.includes(server)) {
+      const k = await resolveApiKey(server, {
+        workspaceId: agent.workspace_id,
+        businessId: agent.business_id,
+      });
+      if (k) mcpToolKeys[envVar] = k;
+    }
+  }
+
   // Resolve the workspace's local Ollama endpoint once so any Ollama-
   // backed turn (the agent's base provider OR a routing rule promoting
   // to Ollama mid-stream) hits the same box. Empty/null = providers
@@ -329,6 +348,7 @@ export async function POST(
               ollamaEndpoint,
               hermesAgentName,
               openclawAgentName,
+              mcpToolKeys: Object.keys(mcpToolKeys).length > 0 ? mcpToolKeys : undefined,
             },
             sessionId: threadId ?? undefined,
             tools,

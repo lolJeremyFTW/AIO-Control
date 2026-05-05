@@ -58,6 +58,11 @@ const BUILTIN_SERVERS: Array<{ id: string; label: string; desc: string; badge?: 
     desc: "Persistent geheugen tussen runs: entities, relaties, observaties. Agents kunnen feiten opslaan en ophalen.",
     badge: "official",
   },
+  {
+    id: "firecrawl",
+    label: "Firecrawl",
+    desc: "Scrape & crawl websites naar clean markdown. Ondersteunt JS-rendering, volledige site-crawl en deep research. Vereist FIRECRAWL_API_KEY in MCP Tools instellingen.",
+  },
 ];
 
 export function McpServersField({

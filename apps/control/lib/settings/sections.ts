@@ -11,6 +11,7 @@ export type SettingsSectionId =
   | "agent-defaults"
   | "weather"
   | "api-keys"
+  | "mcp-tools"
   | "spend-limits"
   | "telegram"
   | "email"
@@ -100,6 +101,12 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     id: "api-keys",
     labelKey: "settings.section.apiKeys",
     descKey: "settings.section.apiKeys.desc",
+    group: "ai",
+  },
+  {
+    id: "mcp-tools",
+    labelKey: "settings.section.mcpTools",
+    descKey: "settings.section.mcpTools.desc",
     group: "ai",
   },
 
