@@ -155,8 +155,9 @@ export function TalkModule({ agents, workspaceSlug, defaultAgentId }: Props) {
   const isProcessing = state === "processing";
   const isRequesting = state === "requesting";
   const isError = state === "error";
-  // Only block clicks during audio playback — processing is cancellable.
-  const isBusy = playing;
+  // Block clicks during processing AND playback so accidental clicks
+  // don't silently abort in-flight server requests.
+  const isBusy = isProcessing || playing;
 
   // Click-outside dismiss for the dropdown.
   useEffect(() => {
@@ -197,22 +198,14 @@ export function TalkModule({ agents, workspaceSlug, defaultAgentId }: Props) {
   };
 
   const handleMicClick = useCallback(async () => {
-    if (isBusy) return; // only blocks during playback
-
-    if (isProcessing) {
-      // Cancel the in-flight server request — hook auto-resets to idle.
-      abortRef.current?.abort();
-      return;
-    }
-
+    if (isBusy) return;
     if (isRecording) {
       stop();
       return;
     }
-
     if (isError) reset();
     await start();
-  }, [isBusy, isProcessing, isRecording, isError, start, stop, reset]);
+  }, [isBusy, isRecording, isError, start, stop, reset]);
 
   if (!agent) {
     return (
@@ -276,13 +269,15 @@ export function TalkModule({ agents, workspaceSlug, defaultAgentId }: Props) {
         title={micTitle}
         disabled={isBusy} // only true during playback
       >
-        <span className="talk-mic-pulse">
-          {displayError ? (
-            <span style={{ fontSize: 10 }}>✕</span>
-          ) : (
-            <MicIcon size={14} />
-          )}
-        </span>
+        {!isRecording && (
+          <span className="talk-mic-pulse">
+            {displayError ? (
+              <span style={{ fontSize: 10 }}>✕</span>
+            ) : (
+              <MicIcon size={14} />
+            )}
+          </span>
+        )}
         {isRecording && <Waveform volume={volume} />}
         {isBusy && (
           <span className="talk-wave talk-wave-busy" aria-hidden="true">
