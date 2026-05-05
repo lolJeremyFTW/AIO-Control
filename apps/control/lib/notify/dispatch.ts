@@ -15,7 +15,7 @@ import "server-only";
 import { sendCustom } from "./custom-integration";
 import { isEmailConfigured, parseRecipients, sendEmail } from "./email";
 import { sendTelegram } from "./telegram";
-import { createSupabaseServerClient } from "../supabase/server";
+import { getServiceRoleSupabase } from "../supabase/service";
 
 type RunRow = {
   id: string;
@@ -53,7 +53,7 @@ export async function dispatchRunEvent(
   run: RunRow,
   event: "done" | "failed",
 ): Promise<{ telegram: boolean; custom: boolean; email: boolean }> {
-  const supabase = await createSupabaseServerClient();
+  const supabase = getServiceRoleSupabase();
 
   // 1. Look up the agent + schedule (if any) so we know which target
   //    each one prefers. Schedule wins over agent.
@@ -125,7 +125,7 @@ export async function dispatchRunEvent(
 }
 
 async function fireTelegram(
-  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  supabase: ReturnType<typeof getServiceRoleSupabase>,
   run: RunRow,
   agent: AgentLite | null,
   event: "done" | "failed",
@@ -206,7 +206,7 @@ async function fireTelegram(
 }
 
 async function fireCustom(
-  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  supabase: ReturnType<typeof getServiceRoleSupabase>,
   run: RunRow,
   agent: AgentLite | null,
   event: "done" | "failed",
@@ -263,7 +263,7 @@ async function fireCustom(
 }
 
 async function fireEmail(
-  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  supabase: ReturnType<typeof getServiceRoleSupabase>,
   run: RunRow,
   agent: AgentLite | null,
   event: "done" | "failed",
@@ -380,7 +380,7 @@ function truncate(s: string, max: number) {
 // runs in quick succession; this trims the per-run cost.
 const slugCache = new Map<string, { slug: string; expires: number }>();
 async function workspaceSlug(
-  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  supabase: ReturnType<typeof getServiceRoleSupabase>,
   workspaceId: string,
 ): Promise<string> {
   const cached = slugCache.get(workspaceId);
