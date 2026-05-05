@@ -40,6 +40,11 @@ const DEFER_REASONS = {
   agent_archived: "Agent is archived",
 } as const;
 
+// Hard cap on how long a single run may take. Protects against agents
+// that hang forever waiting on a network call or infinite tool loop.
+// Override via AGENT_RUN_TIMEOUT_MS env var (milliseconds).
+const MAX_RUN_MS = Number(process.env.AGENT_RUN_TIMEOUT_MS ?? String(30 * 60_000));
+
 export async function dispatchRun(runId: string): Promise<DispatchResult> {
   const supabase = getServiceRoleSupabase();
 
@@ -237,7 +242,9 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
     }
   };
 
-  try {
+  // Consume the stream with a hard timeout so a hung MCP call or
+  // network stall can't hold the run in "running" forever.
+  const runLoop = (async () => {
     for await (const event of streamChat({
       provider: agent.provider as ProviderId,
       config,
@@ -305,6 +312,22 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
         });
       }
     }
+  })();
+
+  const timeoutRace = new Promise<never>((_, reject) =>
+    setTimeout(
+      () =>
+        reject(
+          new Error(
+            `Run exceeded timeout of ${Math.round(MAX_RUN_MS / 60_000)} minutes`,
+          ),
+        ),
+      MAX_RUN_MS,
+    ),
+  );
+
+  try {
+    await Promise.race([runLoop, timeoutRace]);
   } catch (err) {
     errorText = err instanceof Error ? err.message : "dispatch error";
     history.push({
