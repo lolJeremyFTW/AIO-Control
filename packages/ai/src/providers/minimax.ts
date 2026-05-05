@@ -22,7 +22,10 @@ import type { StreamChatOptions } from "../router";
 
 const DEFAULT_BASE = "https://api.minimax.io/v1";
 const DEFAULT_MODEL = "MiniMax-M2.7-Highspeed";
-const HOPS_MAX = Number(process.env.AGENT_MAX_HOPS ?? "150");
+const ENV_HOPS_MAX = Number(process.env.AGENT_MAX_HOPS ?? "150");
+function getHopsMax(config: { maxHops?: number }): number {
+  return config.maxHops && config.maxHops > 0 ? config.maxHops : ENV_HOPS_MAX;
+}
 
 export async function* streamMinimax(
   opts: StreamChatOptions,
@@ -199,7 +202,7 @@ async function* streamMinimaxWithTools(
     let totalOutputTokens = 0;
     let assistantTextSoFar = "";
 
-    for (let hop = 0; hop < HOPS_MAX; hop++) {
+    for (let hop = 0; hop < getHopsMax(opts.config); hop++) {
       // Live-stream tokens as they come in. We buffer the per-turn
       // text alongside so we can feed the assistant turn back into
       // `messages` once the turn closes.

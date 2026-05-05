@@ -39,6 +39,10 @@ export interface AgentConfig {
   };
   endpoint?: string; // for openclaw / hermes / custom HTTP
   headers?: Record<string, string>;
+  /** Maximum number of tool-call hops before the loop stops. Only
+   *  honoured by the MiniMax provider. Falls back to the
+   *  AGENT_MAX_HOPS env var (default 150) when absent. */
+  maxHops?: number;
   /**
    * Per-agent smart routing. The first matching rule wins; if no rule
    * matches, the agent's base provider+model are used. Cheap-first ordering
