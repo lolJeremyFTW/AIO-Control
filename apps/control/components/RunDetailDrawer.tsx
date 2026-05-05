@@ -5,7 +5,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { RunStep } from "../lib/runs/message-history";
 import { getSupabaseBrowserClient } from "../lib/supabase/client";
@@ -59,6 +59,13 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
   // streams its updates into this drawer live (status: running → done,
   // message_history grows with each tool call).
   const [tick, setTick] = useState(0);
+
+  // Auto-scroll: ref to the scrollable container and a bottom sentinel.
+  // userScrolledRef tracks whether the user scrolled up manually so we
+  // don't yank them back down while they're reading old messages.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const userScrolledRef = useRef(false);
 
   useEffect(() => {
     const ctl = new AbortController();
@@ -116,6 +123,22 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  // When the run changes (followup → new run) always reset to bottom.
+  useEffect(() => {
+    userScrolledRef.current = false;
+    bottomRef.current?.scrollIntoView({ behavior: "instant" });
+  }, [currentRunId]);
+
+  // Scroll to bottom whenever new steps arrive, but only when the user
+  // hasn't manually scrolled up (don't yank reading position).
+  const histLen = run?.message_history?.length ?? 0;
+  const runStatus = run?.status;
+  useEffect(() => {
+    if (!userScrolledRef.current) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [histLen, runStatus]);
 
   // Re-dispatch the run via the existing /api/runs/[id]/dispatch endpoint.
   // The endpoint resets the row to "queued" and runs dispatchRun, so the
@@ -317,6 +340,13 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
         </header>
 
         <div
+          ref={scrollRef}
+          onScroll={() => {
+            const el = scrollRef.current;
+            if (!el) return;
+            userScrolledRef.current =
+              el.scrollHeight - el.scrollTop - el.clientHeight > 120;
+          }}
           style={{
             flex: 1,
             overflow: "auto",
@@ -344,6 +374,7 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
             </p>
           )}
           {run && <RunBody run={run} />}
+          <div ref={bottomRef} />
         </div>
 
         {/* Follow-up composer — always visible, disabled while a run is

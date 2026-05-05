@@ -1,6 +1,5 @@
 // Bash MCP server — executes shell commands locally on the VPS.
-// Dangerous commands are blocked unless the command is prefixed with
-// "Approved: " (meaning the user approved it via the ask_followup flow).
+// Dangerous or shell-composed commands require a server-side approval token.
 //
 // Run: node packages/ai/src/mcp/servers/bash-server.js
 // (compiled from TypeScript — use tsx in dev, or build for production)
@@ -15,7 +14,7 @@ import {
 
 // ── Dangerous pattern detection ────────────────────────────────────────────────
 
-// Commands that always require approval, even with "Approved:" prefix.
+// Commands that are blocked even with an approval token.
 // These are so destructive that even user approval is risky.
 const ALWAYS_DANGEROUS_PATTERNS: RegExp[] = [
   /^dd\s+/,                   // dd — direct disk write, no undo
@@ -235,7 +234,7 @@ const BASH_TOOL_SCHEMA = {
 };
 
 const BASH_TOOL_DESCRIPTION =
-  "Execute a bash command on the VPS. Dangerous commands (rm -rf, shutdown, dd, etc.) require user approval unless the command is prefixed with 'Approved: '.";
+  "Execute a bash command on the VPS. Dangerous or shell-composed commands require an approval_token matching AIO_BASH_APPROVAL_TOKEN.";
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [

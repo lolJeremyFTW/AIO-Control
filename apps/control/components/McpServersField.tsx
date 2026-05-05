@@ -22,7 +22,7 @@ const BUILTIN_SERVERS: Array<{ id: string; label: string; desc: string }> = [
   {
     id: "aio",
     label: "AIO Control",
-    desc: "list_businesses, list_agents, read_secret, list_runs — read-only AIO platform tools.",
+    desc: "list_businesses, list_agents, list_runs. Secret reads require explicit server opt-in.",
   },
   {
     id: "bash",
@@ -145,10 +145,10 @@ export function McpServersField({
                 }}
               >
                 {opt.id === "aio" ? (
-                  [
+                  ([
                     { id: "ro", label: "Read-only", color: "var(--amber)" },
                     { id: "rw", label: "Read + Write", color: "var(--tt-green)" },
-                  ].map((mode) => {
+                  ] as const).map((mode) => {
                     const active = scope === mode.id;
                     return (
                       <button
@@ -172,10 +172,10 @@ export function McpServersField({
                     );
                   })
                 ) : (
-                  [
+                  ([
                     { id: "ro", label: "Read-only", color: "var(--amber)" },
                     { id: "rw", label: "Read + Write", color: "var(--tt-green)" },
-                  ].map((mode) => {
+                  ] as const).map((mode) => {
                     const active = scope === mode.id;
                     return (
                       <button

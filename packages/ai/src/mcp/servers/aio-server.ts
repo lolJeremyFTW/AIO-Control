@@ -1,7 +1,8 @@
 // AIO Control MCP server — exposes core read tools as MCP tools.
 // Runs as a standalone stdio subprocess spawned by McpHost.
 //
-// Tools: list_businesses, list_agents, read_secret, list_runs
+// Tools: list_businesses, list_agents, list_runs. read_secret is opt-in via
+// AIO_MCP_ALLOW_READ_SECRET=true because it returns plaintext.
 // Security: SUPABASE_SERVICE_ROLE_KEY comes via env, never CLI args or stdout.
 //
 // Run: node packages/ai/src/mcp/servers/aio-server.js
@@ -20,6 +21,7 @@ import { createClient } from "@supabase/supabase-js";
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const WORKSPACE_ID = process.env.AIO_WORKSPACE_ID ?? "default";
+const ALLOW_READ_SECRET = process.env.AIO_MCP_ALLOW_READ_SECRET === "true";
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   // Write to stderr so it doesn't corrupt the JSON-RPC stream
@@ -197,10 +199,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         additionalProperties: false,
       },
     },
-    {
+    ...(ALLOW_READ_SECRET
+      ? [{
       name: "read_secret",
       description:
-        "Read a workspace secret by its uppercase name (e.g. AIRTABLE_API_KEY). Returns { value: string|null }.",
+        "Read a workspace secret by its uppercase name. Returns plaintext and should only be enabled for trusted agents.",
       inputSchema: {
         type: "object",
         properties: {
@@ -213,7 +216,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ["name"],
         additionalProperties: false,
       },
-    },
+    }]
+      : []),
     {
       name: "list_runs",
       description:
@@ -265,6 +269,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       result = await listAgents(args);
       break;
     case "read_secret":
+      if (!ALLOW_READ_SECRET) {
+        result = JSON.stringify({ error: "read_secret_disabled" });
+        break;
+      }
       result = await readSecret(args);
       break;
     case "list_runs":

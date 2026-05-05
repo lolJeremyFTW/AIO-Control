@@ -6,7 +6,14 @@
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
       "outputs": [".next/**", "!.next/cache/**"],
-      "env": ["BASE_PATH", "GIT_COMMIT_SHA", "BUILD_TIME"]
+      "env": [
+        "BASE_PATH",
+        "GIT_COMMIT_SHA",
+        "BUILD_TIME",
+        "AIO_ALLOW_PRIVATE_INTEGRATION_URLS",
+        "AIO_BASH_APPROVAL_TOKEN",
+        "AIO_MCP_ALLOW_READ_SECRET"
+      ]
     },
     "lint": {
       "dependsOn": ["^lint"]

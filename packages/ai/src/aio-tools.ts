@@ -336,10 +336,10 @@ export const AIO_META_TOOLS = Object.values(AIO_TOOLS).filter(
 export function defaultToolsForKind(kind: string): string[] {
   switch (kind) {
     case "chat":
-      // Chat agents get all read + meta tools by default. Write tools
-      // require an explicit opt-in per agent.
+      // Chat agents get normal read + meta tools by default. Plaintext
+      // secret access is explicit opt-in per agent.
       return [
-        ...AIO_READ_TOOLS.map((t) => t.name),
+        ...AIO_READ_TOOLS.map((t) => t.name).filter((n) => n !== "read_secret"),
         ...AIO_META_TOOLS.map((t) => t.name),
       ];
     case "router":

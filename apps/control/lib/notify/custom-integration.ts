@@ -4,6 +4,8 @@
 
 import "server-only";
 
+import { isIP } from "node:net";
+
 import { resolveApiKey } from "../api-keys/resolve";
 
 export type CustomIntegration = {
@@ -65,6 +67,9 @@ export async function sendCustom(opts: {
   const vars: TemplateVars = { ...opts.vars, secret: secretMap };
 
   const url = template(opts.integration.url, vars);
+  const urlCheck = validateOutboundUrl(url);
+  if (!urlCheck.ok) return { ok: false, error: urlCheck.error };
+
   const headers = Object.fromEntries(
     Object.entries(opts.integration.headers ?? {}).map(([k, v]) => [
       k,
@@ -109,6 +114,68 @@ export async function sendCustom(opts: {
       error: err instanceof Error ? err.message : "network error",
     };
   }
+}
+
+function validateOutboundUrl(
+  raw: string,
+): { ok: true } | { ok: false; error: string } {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return { ok: false, error: "invalid_url" };
+  }
+
+  if (url.protocol !== "https:") {
+    return { ok: false, error: "only_https_urls_allowed" };
+  }
+
+  const allowPrivate = process.env.AIO_ALLOW_PRIVATE_INTEGRATION_URLS === "true";
+  if (allowPrivate) return { ok: true };
+
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (
+    host === "localhost" ||
+    host === "0.0.0.0" ||
+    host.endsWith(".localhost") ||
+    host.endsWith(".local")
+  ) {
+    return { ok: false, error: "private_urls_not_allowed" };
+  }
+
+  const ipVersion = isIP(host);
+  if (ipVersion === 4 && isPrivateIPv4(host)) {
+    return { ok: false, error: "private_urls_not_allowed" };
+  }
+  if (ipVersion === 6 && isPrivateIPv6(host)) {
+    return { ok: false, error: "private_urls_not_allowed" };
+  }
+
+  return { ok: true };
+}
+
+function isPrivateIPv4(host: string): boolean {
+  const parts = host.split(".").map((p) => Number(p));
+  if (parts.length !== 4 || parts.some((p) => !Number.isInteger(p))) return true;
+  const [a, b] = parts as [number, number, number, number];
+  return (
+    a === 10 ||
+    a === 127 ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 169 && b === 254) ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    a === 0
+  );
+}
+
+function isPrivateIPv6(host: string): boolean {
+  return (
+    host === "::1" ||
+    host.startsWith("fc") ||
+    host.startsWith("fd") ||
+    host.startsWith("fe80:")
+  );
 }
 
 /** Mustache-style {{key}} substitution. Missing keys render as "".

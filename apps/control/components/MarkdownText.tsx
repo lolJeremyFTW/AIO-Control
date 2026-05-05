@@ -255,10 +255,12 @@ function Inline({ text }: { text: string }): ReactNode {
         if (part.startsWith("[")) {
           const m = /^\[([^\]]+)\]\(([^)\s]+)\)$/.exec(part);
           if (m) {
+            const href = safeHref(m[2]!);
+            if (!href) return <Fragment key={idx}>{m[1]}</Fragment>;
             return (
               <a
                 key={idx}
-                href={m[2]}
+                href={href}
                 target="_blank"
                 rel="noopener noreferrer nofollow"
                 style={{ color: "var(--tt-green)", textDecoration: "underline" }}
@@ -275,4 +277,16 @@ function Inline({ text }: { text: string }): ReactNode {
       })}
     </>
   );
+}
+
+function safeHref(raw: string): string | null {
+  try {
+    const url = new URL(raw, "https://aio.local");
+    if (url.protocol === "http:" || url.protocol === "https:" || url.protocol === "mailto:") {
+      return raw;
+    }
+  } catch {
+    return null;
+  }
+  return null;
 }
