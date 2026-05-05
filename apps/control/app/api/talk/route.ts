@@ -8,10 +8,12 @@
 import { NextResponse } from "next/server";
 
 import { streamChat } from "@aio/ai/router";
+import type { AgentConfig } from "@aio/ai/router";
 import type { ChatMessage } from "@aio/ai/ag-ui";
 import { resolveApiKey } from "../../../lib/api-keys/resolve";
 import { resolveOllamaEndpoint } from "../../../lib/ollama/endpoint";
 import { getAgentById } from "../../../lib/queries/agents";
+import { buildAgentSystemPrompt, prependPreamble } from "../../../lib/agents/business-context";
 import { createSupabaseServerClient } from "../../../lib/supabase/server";
 import { getServiceRoleSupabase } from "../../../lib/supabase/service";
 
@@ -146,27 +148,46 @@ export async function POST(req: Request) {
     );
   }
 
-  // ── 6. LLM — streamChat (no tools, single turn) ─────────────────────────
-  const llmProvider = talkSettings?.llm?.startsWith("ollama:")
-    ? "ollama"
-    : "openrouter"; // fallback to openrouter which supports gpt-4o/claude via reverse proxy
-
-  // Resolve the actual provider and model
-  const llmConfig = talkSettings?.llm ?? "claude-sonnet-4-5";
-  const [resolvedProvider, resolvedModel] = resolveLlmProviderModel(llmConfig, llmProvider);
+  // ── 6. LLM — use agent's own provider/model/system-prompt ───────────────
+  // talk_settings.llm is an optional override; when absent we use the
+  // agent's own provider + model so the voice conversation feels like
+  // talking directly to that agent.
+  const agentConfig = (agent.config ?? {}) as AgentConfig;
+  const llmConfig = talkSettings?.llm ?? null;
+  const [resolvedProvider, resolvedModel] = llmConfig
+    ? resolveLlmProviderModel(llmConfig, agent.provider)
+    : [agent.provider, agent.model ?? ""];
 
   const llmKeyName =
     resolvedProvider === "ollama"
       ? "ollama"
       : resolvedProvider === "claude" || resolvedProvider === "claude_cli"
         ? "anthropic"
-        : "openrouter";
+        : resolvedProvider === "minimax"
+          ? "minimax"
+          : "openrouter";
   const apiKey = await resolveApiKey(llmKeyName, {
     workspaceId: workspace.id,
     businessId: agent.business_id,
   });
 
   const ollamaEndpoint = await resolveOllamaEndpoint(workspace.id);
+
+  // Build the same context-rich system prompt as chat/dispatch so the
+  // agent knows about its business, integrations, sibling agents, etc.
+  const preamble = await buildAgentSystemPrompt({
+    id: agent.id,
+    workspace_id: workspace.id,
+    business_id: agent.business_id,
+    name: agent.name,
+    kind: agent.kind,
+    provider: agent.provider,
+    model: agent.model,
+  });
+  // Append a talk-specific note so the agent keeps answers short.
+  const talkNote = "Je wordt aangesproken via spraakinvoer. Geef korte, gesproken antwoorden — maximaal 2-3 zinnen.";
+  const systemPrompt = prependPreamble(preamble, agentConfig.systemPrompt)
+    + `\n\n---\n\n${talkNote}`;
 
   const messages: ChatMessage[] = [
     { role: "user", content: transcription },
@@ -175,11 +196,10 @@ export async function POST(req: Request) {
   try {
     const fullText: string[] = [];
     for await (const event of streamChat({
-      provider: resolvedProvider as "openrouter" | "ollama" | "claude" | "claude_cli",
+      provider: resolvedProvider as "openrouter" | "ollama" | "claude" | "claude_cli" | "minimax",
       config: {
         model: resolvedModel,
-        systemPrompt:
-          "Je bent een behulpzame AI assistent. Geef korte, vriendelijke antwoorden.",
+        systemPrompt,
       },
       messages,
       apiKey,
