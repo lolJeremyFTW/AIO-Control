@@ -131,9 +131,9 @@ export async function POST(req: Request) {
 
   try {
     if (effectiveStt === "elevenlabs") {
-      // ElevenLabs Scribe v1 — launched 2025, no OpenAI key needed.
+      // ElevenLabs Scribe v1 — field name is "file" per their REST API spec.
       const sttForm = new FormData();
-      sttForm.append("audio", audioBlob, "recording.webm");
+      sttForm.append("file", audioBlob, "recording.webm");
       sttForm.append("model_id", "scribe_v1");
 
       const sttRes = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
