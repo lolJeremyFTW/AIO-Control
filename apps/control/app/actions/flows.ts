@@ -9,7 +9,7 @@ import { headers } from "next/headers";
 import { createAgent } from "./agents";
 import { createSkill, setAgentSkills } from "./skills";
 import { createCronSchedule, createWebhookSchedule, createManualSchedule } from "./schedules";
-import type { FlowPlan } from "../api/flows/generate/route";
+import type { FlowPlan } from "@aio/ai/flow-planner";
 
 export type CreateFlowInput = {
   workspace_slug: string;
