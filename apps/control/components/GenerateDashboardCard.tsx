@@ -4,18 +4,16 @@
 // submit triggers runAgentNow with the prompt; the run drawer takes
 // over for streaming progress + result.
 //
-// v1 is intentionally minimal: a single agent run that returns
-// markdown. The agent's output goes into runs.message_history and is
-// rendered by the RunDetailDrawer's MarkdownText. Phase 2 will:
-//  - persist a structured "dashboard config" row keyed by nav_node_id
-//  - render that as a widget grid instead of plain markdown
-//  - support follow-up refinements
+// After the run completes the user can persist the output as the
+// module's saved dashboard via the "Sla op als dashboard" button
+// (calls saveModuleDashboard server action → module_dashboards table).
 
 "use client";
 
 import { useState } from "react";
 
 import { runAgentNow } from "../app/actions/schedules";
+import { saveModuleDashboard } from "../app/actions/dashboards";
 import type { AgentRow } from "../lib/queries/agents";
 import { RunDetailDrawer } from "./RunDetailDrawer";
 
@@ -23,12 +21,8 @@ type Props = {
   workspaceSlug: string;
   workspaceId: string;
   businessId: string;
-  /** The topic this dashboard is for. Goes into the prompt + the run
-   *  is pinned to it via runAgentNow → input.nav_node_id. */
   navNodeId: string;
   navNodeName: string;
-  /** Agents the user can choose from. Empty list disables the
-   *  composer with a hint. */
   agents: AgentRow[];
 };
 
@@ -42,6 +36,29 @@ export function GenerateDashboardCard({
 }: Props) {
   const [open, setOpen] = useState(false);
   const [openRunId, setOpenRunId] = useState<string | null>(null);
+  const [lastRunId, setLastRunId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  const handleSave = async () => {
+    if (!lastRunId) return;
+    setSaving(true);
+    setSaveError(null);
+    const res = await saveModuleDashboard({
+      workspace_slug: workspaceSlug,
+      workspace_id: workspaceId,
+      business_id: businessId,
+      nav_node_id: navNodeId,
+      run_id: lastRunId,
+    });
+    setSaving(false);
+    if (!res.ok) {
+      setSaveError(res.error);
+    } else {
+      setSaved(true);
+    }
+  };
 
   return (
     <>
@@ -85,29 +102,65 @@ export function GenerateDashboardCard({
             verder kan finetunen.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          disabled={agents.length === 0}
-          style={{
-            padding: "9px 16px",
-            border: "1.5px solid var(--tt-green)",
-            background: "var(--tt-green)",
-            color: "#fff",
-            borderRadius: 10,
-            fontWeight: 700,
-            fontSize: 13,
-            cursor: agents.length === 0 ? "not-allowed" : "pointer",
-            opacity: agents.length === 0 ? 0.55 : 1,
-          }}
-          title={
-            agents.length === 0
-              ? "Eerst een agent in deze business aanmaken"
-              : undefined
-          }
-        >
-          ✨ Genereer dashboard
-        </button>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            disabled={agents.length === 0}
+            style={{
+              padding: "9px 16px",
+              border: "1.5px solid var(--tt-green)",
+              background: "var(--tt-green)",
+              color: "#fff",
+              borderRadius: 10,
+              fontWeight: 700,
+              fontSize: 13,
+              cursor: agents.length === 0 ? "not-allowed" : "pointer",
+              opacity: agents.length === 0 ? 0.55 : 1,
+            }}
+            title={
+              agents.length === 0
+                ? "Eerst een agent in deze business aanmaken"
+                : undefined
+            }
+          >
+            ✨ Genereer dashboard
+          </button>
+
+          {lastRunId && !saved && (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+              <button
+                type="button"
+                onClick={() => void handleSave()}
+                disabled={saving}
+                style={{
+                  padding: "7px 14px",
+                  border: "1.5px solid var(--app-border)",
+                  background: "var(--app-card)",
+                  color: "var(--app-fg)",
+                  borderRadius: 10,
+                  fontWeight: 600,
+                  fontSize: 12,
+                  cursor: saving ? "wait" : "pointer",
+                  opacity: saving ? 0.6 : 1,
+                }}
+              >
+                {saving ? "Opslaan…" : "Sla op als dashboard"}
+              </button>
+              {saveError && (
+                <span style={{ fontSize: 11, color: "var(--rose)" }}>
+                  {saveError}
+                </span>
+              )}
+            </div>
+          )}
+
+          {saved && (
+            <span style={{ fontSize: 11, color: "var(--tt-green)", fontWeight: 600 }}>
+              ✓ Dashboard opgeslagen
+            </span>
+          )}
+        </div>
       </div>
 
       {open && (
@@ -116,12 +169,14 @@ export function GenerateDashboardCard({
           workspaceId={workspaceId}
           businessId={businessId}
           navNodeName={navNodeName}
-          navNodeId={navNodeId}
           agents={agents}
           onClose={() => setOpen(false)}
           onLaunched={(runId) => {
             setOpen(false);
             setOpenRunId(runId);
+            setLastRunId(runId);
+            setSaved(false);
+            setSaveError(null);
           }}
         />
       )}
@@ -141,7 +196,6 @@ function ComposerModal({
   workspaceId,
   businessId,
   navNodeName,
-  navNodeId,
   agents,
   onClose,
   onLaunched,
@@ -150,7 +204,6 @@ function ComposerModal({
   workspaceId: string;
   businessId: string;
   navNodeName: string;
-  navNodeId: string;
   agents: AgentRow[];
   onClose: () => void;
   onLaunched: (runId: string) => void;
@@ -172,10 +225,6 @@ Gebruik markdown headings, bullets en eventueel tabellen. Wees beknopt en zakeli
   const submit = async () => {
     setError(null);
     setPending(true);
-    // Image upload is not wired through to the run input yet — for now
-    // we let the user paste a description of what they want, which gets
-    // appended to the prompt. Full image support arrives once we have
-    // a uploaded-asset table the dispatcher can attach to the messages.
     const fullPrompt = imageNote.trim()
       ? `${prompt}\n\n## Visuele referentie (door de gebruiker beschreven)\n${imageNote.trim()}`
       : prompt;
@@ -192,7 +241,6 @@ Gebruik markdown headings, bullets en eventueel tabellen. Wees beknopt en zakeli
       return;
     }
     onLaunched(res.data.run_id);
-    void navNodeId; // reserved for v2 when we persist per-topic dashboards
   };
 
   return (

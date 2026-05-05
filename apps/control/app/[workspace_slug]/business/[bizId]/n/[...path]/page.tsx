@@ -21,8 +21,10 @@ import {
 } from "../../../../../../lib/queries/nav-nodes";
 import { GenerateDashboardCard } from "../../../../../../components/GenerateDashboardCard";
 import { NewNavNodeButton } from "../../../../../../components/NewNavNodeButton";
+import { SavedModuleDashboard } from "../../../../../../components/SavedModuleDashboard";
 import { TopicDashboard } from "../../../../../../components/TopicDashboard";
 import { TopicRoutinesList } from "../../../../../../components/TopicRoutinesList";
+import { getModuleDashboard } from "../../../../../../lib/queries/dashboards";
 
 type Props = {
   params: Promise<{
@@ -49,9 +51,10 @@ export default async function NavNodePage({ params }: Props) {
   if (!biz) notFound();
   if (chain.length !== path.length) notFound();
   const current = chain[chain.length - 1];
-  const children = current
-    ? await listNavNodes(bizId, current.id)
-    : [];
+  const [children, savedDashboard] = await Promise.all([
+    current ? listNavNodes(bizId, current.id) : Promise.resolve([]),
+    current ? getModuleDashboard(current.id) : Promise.resolve(null),
+  ]);
 
   const baseHref = `/${workspace.slug}/business/${biz.id}`;
   const breadcrumb = [
@@ -142,6 +145,14 @@ export default async function NavNodePage({ params }: Props) {
             navNodeId={current.id}
             includeDescendants
           />
+          {savedDashboard && (
+            <SavedModuleDashboard
+              workspaceSlug={workspace.slug}
+              workspaceId={workspace.id}
+              businessId={biz.id}
+              dashboard={savedDashboard}
+            />
+          )}
           <GenerateDashboardCard
             workspaceSlug={workspace.slug}
             workspaceId={workspace.id}
