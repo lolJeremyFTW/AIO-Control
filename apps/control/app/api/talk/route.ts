@@ -532,19 +532,20 @@ export async function POST(req: Request) {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function resolveVoiceId(label: string): string {
-  // Map the voice labels from TalkSettings VOICES array to ElevenLabs voice IDs.
-  // These are the built-in ElevenLabs voice IDs for the Rachel/Adam/Bella/etc. voices.
+  // Map TalkSettings voice labels → ElevenLabs voice IDs (verified May 2026).
   const VOICE_MAP: Record<string, string> = {
-    rachel: "EXAVITQm4R8VDqDW9Pei",
-    adam: "pFZP5JQG7iQjIQuC4Bku",
-    bella: "xrHel9SFnCep49fNMvW0",
-    daniel: "iC98bXHCLPXjlN4hNVNx",
-    sarah: "EXwk3nR0cGBLbfpEzxe6",
-    antoni: "nPMa2Z5C8Z7xhJFPvFxz",
+    rachel: "EXAVITQu4vr4xnSDxMaL", // Sarah (ElevenLabs renamed Rachel → Sarah)
+    sarah: "EXAVITQu4vr4xnSDxMaL",  // Sarah
+    adam: "pNInz6obpgDQGcFmaJgB",   // Adam
+    bella: "hpp4J3VqNfWAUOO0d1Us",  // Bella
+    daniel: "onwK4e9ZLuTAKqWW03F9", // Daniel
+    antoni: "cjVigY5qzO86Huf0OWal", // Eric (smooth, closest to Antoni)
   };
-  const voice = VOICE_MAP[label.toLowerCase()];
-  if (voice) return voice;
-  return "EXAVITQm4R8VDqDW9Pei"; // rachel fallback
+  const mapped = VOICE_MAP[label.toLowerCase()];
+  if (mapped) return mapped;
+  // If not a known label, treat it as a raw ElevenLabs voice ID.
+  if (label.length > 10) return label;
+  return "EXAVITQu4vr4xnSDxMaL"; // sarah fallback
 }
 
 function resolveLlmProviderModel(
