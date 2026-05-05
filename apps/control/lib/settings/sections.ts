@@ -15,6 +15,7 @@ export type SettingsSectionId =
   | "telegram"
   | "email"
   | "custom-integrations"
+  | "integrations"
   | "notifications"
   | "team"
   | "talk"
@@ -121,6 +122,12 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     labelKey: "settings.section.notifications",
     descKey: "settings.section.notifs.desc",
     group: "notif",
+  },
+  {
+    id: "integrations",
+    labelKey: "settings.section.integrations",
+    descKey: "settings.section.integrations.desc",
+    group: "workspace",
   },
   {
     id: "custom-integrations",

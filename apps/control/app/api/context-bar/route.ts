@@ -22,24 +22,43 @@ export async function GET(request: Request) {
 
   if (!nodeId) {
     // ── Business-level ───────────────────────────────────────────
-    const [kpisRes, autoRes, reviewRes] = await Promise.all([
-      supabase
-        .from("business_kpis_view")
-        .select("period, usage_eur, revenue_eur, runs_count")
-        .eq("business_id", bizId),
-      supabase
-        .from("queue_items")
-        .select("id", { count: "exact", head: true })
-        .eq("business_id", bizId)
-        .is("resolved_at", null)
-        .eq("state", "auto"),
-      supabase
-        .from("queue_items")
-        .select("id", { count: "exact", head: true })
-        .eq("business_id", bizId)
-        .is("resolved_at", null)
-        .eq("state", "review"),
-    ]);
+    const since24h = new Date(Date.now() - 24 * 3600_000).toISOString();
+    const [kpisRes, autoRes, reviewRes, runsOkRes, runsFailRes, agentsRes] =
+      await Promise.all([
+        supabase
+          .from("business_kpis_view")
+          .select("period, usage_eur, revenue_eur, runs_count")
+          .eq("business_id", bizId),
+        supabase
+          .from("queue_items")
+          .select("id", { count: "exact", head: true })
+          .eq("business_id", bizId)
+          .is("resolved_at", null)
+          .eq("state", "auto"),
+        supabase
+          .from("queue_items")
+          .select("id", { count: "exact", head: true })
+          .eq("business_id", bizId)
+          .is("resolved_at", null)
+          .eq("state", "review"),
+        supabase
+          .from("runs")
+          .select("id", { count: "exact", head: true })
+          .eq("business_id", bizId)
+          .eq("status", "done")
+          .gte("created_at", since24h),
+        supabase
+          .from("runs")
+          .select("id", { count: "exact", head: true })
+          .eq("business_id", bizId)
+          .eq("status", "failed")
+          .gte("created_at", since24h),
+        supabase
+          .from("agents")
+          .select("id", { count: "exact", head: true })
+          .eq("business_id", bizId)
+          .is("archived_at", null),
+      ]);
 
     type KpiRow = {
       period: string;
@@ -56,6 +75,9 @@ export async function GET(request: Request) {
       revenue_30d_eur: k30?.revenue_eur ?? 0,
       usage_30d_eur: k30?.usage_eur ?? 0,
       runs_24h: k24?.runs_count ?? 0,
+      runs_ok_24h: runsOkRes.count ?? 0,
+      runs_fail_24h: runsFailRes.count ?? 0,
+      agents_count: agentsRes.count ?? 0,
       queue_auto: autoRes.count ?? 0,
       queue_review: reviewRes.count ?? 0,
     });

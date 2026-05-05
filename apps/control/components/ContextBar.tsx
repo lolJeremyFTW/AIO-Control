@@ -31,6 +31,9 @@ type BusinessData = {
   revenue_30d_eur: number;
   usage_30d_eur: number;
   runs_24h: number;
+  runs_ok_24h: number;
+  runs_fail_24h: number;
+  agents_count: number;
   queue_auto: number;
   queue_review: number;
 };
@@ -198,7 +201,24 @@ function BusinessBar({
           style={{ textDecoration: "none" }}
         >
           <span className="lbl">Runs 24h</span>
-          <span className="val">{data.runs_24h}</span>
+          <span className="val">
+            {data.runs_24h}
+            {data.runs_ok_24h > 0 && (
+              <span className="delta">✓{data.runs_ok_24h}</span>
+            )}
+            {data.runs_fail_24h > 0 && (
+              <span className="delta down">✗{data.runs_fail_24h}</span>
+            )}
+          </span>
+        </Link>
+
+        <Link
+          href={`${base}/agents`}
+          className="kpi"
+          style={{ textDecoration: "none" }}
+        >
+          <span className="lbl">Agents</span>
+          <span className="val">{data.agents_count}</span>
         </Link>
       </div>
 

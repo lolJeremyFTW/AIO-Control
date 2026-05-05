@@ -17,7 +17,6 @@ import {
 import { listRecentRunsForBusiness } from "../../../../lib/queries/schedules";
 import { getDict } from "../../../../lib/i18n/server";
 import { BusinessDashboard } from "../../../../components/BusinessDashboard";
-import { PauseToggle } from "../../../../components/PauseToggle";
 
 type Props = {
   params: Promise<{ workspace_slug: string; bizId: string }>;
@@ -55,14 +54,6 @@ export default async function BusinessPage({ params }: Props) {
         <span className="sub">
           {biz.sub ?? t("page.business.overview.sub")}
         </span>
-      </div>
-
-      <div style={{ marginBottom: 18 }}>
-        <PauseToggle
-          workspaceSlug={workspace_slug}
-          businessId={biz.id}
-          status={biz.status as "running" | "paused"}
-        />
       </div>
 
       <BusinessDashboard
