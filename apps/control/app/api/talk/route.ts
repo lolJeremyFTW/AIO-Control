@@ -8,8 +8,10 @@
 import { NextResponse } from "next/server";
 
 import { streamChat } from "@aio/ai/router";
-import type { AgentConfig } from "@aio/ai/router";
+import type { AgentConfig, ProviderId } from "@aio/ai/router";
 import type { ChatMessage } from "@aio/ai/ag-ui";
+import { AIO_TOOLS, defaultToolsForKind } from "@aio/ai/aio-tools";
+import { executeAioTool } from "../../../lib/agents/tool-execution";
 import { resolveApiKey } from "../../../lib/api-keys/resolve";
 import { resolveOllamaEndpoint } from "../../../lib/ollama/endpoint";
 import { getAgentById } from "../../../lib/queries/agents";
@@ -195,10 +197,7 @@ export async function POST(req: Request) {
     );
   }
 
-  // ── 6. LLM — use agent's own provider/model/system-prompt ───────────────
-  // talk_settings.llm is an optional override; when absent we use the
-  // agent's own provider + model so the voice conversation feels like
-  // talking directly to that agent.
+  // ── 6. LLM — full dispatch pipeline with tools (same as chat route) ────
   const agentConfig = (agent.config ?? {}) as AgentConfig;
   // "__header_agent__" is a sentinel meaning "use the selected agent's own model".
   const llmConfig = (talkSettings?.llm && talkSettings.llm !== "__header_agent__")
@@ -223,58 +222,188 @@ export async function POST(req: Request) {
 
   const ollamaEndpoint = await resolveOllamaEndpoint(workspace_id);
 
-  console.info(`[talk] LLM start — provider=${resolvedProvider} model=${resolvedModel}`);
-  const llmStart = Date.now();
+  // Workspace runtime agent names for Hermes / OpenClaw providers.
+  const { data: runtimeRow } = await getServiceRoleSupabase()
+    .from("workspaces")
+    .select("hermes_agent_name, openclaw_agent_name")
+    .eq("id", workspace_id)
+    .maybeSingle();
+  const hermesAgentName = (runtimeRow?.hermes_agent_name as string | null) ?? null;
+  const openclawAgentName = (runtimeRow?.openclaw_agent_name as string | null) ?? null;
 
-  // Build the same context-rich system prompt as chat/dispatch so the
-  // agent knows about its business, integrations, sibling agents, etc.
+  // Resolve allowed tools for this agent (same logic as chat route).
+  const allowedToolNames =
+    (agent as { allowed_tools?: string[] | null }).allowed_tools ??
+    defaultToolsForKind(agent.kind);
+  const tools = allowedToolNames
+    .map((n) => AIO_TOOLS[n])
+    .filter((t): t is NonNullable<typeof t> => !!t)
+    .map((t) => ({ name: t.name, description: t.description, parameters: t.parameters }));
+
+  // Build system prompt — same preamble as chat for full business context.
   const preamble = await buildAgentSystemPrompt({
     id: agent.id,
-    workspace_id: workspace_id,
+    workspace_id,
     business_id: agent.business_id,
     name: agent.name,
     kind: agent.kind,
     provider: agent.provider,
     model: agent.model,
   });
-  // Append a talk-specific note so the agent keeps answers short.
-  const talkNote = "Je wordt aangesproken via spraakinvoer. Geef korte, gesproken antwoorden — maximaal 2-3 zinnen.";
-  const systemPrompt = prependPreamble(preamble, agentConfig.systemPrompt)
-    + `\n\n---\n\n${talkNote}`;
+  const talkNote =
+    "Je wordt aangesproken via spraakinvoer. Geef korte, gesproken antwoorden — maximaal 2-3 zinnen. Geen markdown formatting.";
+  const systemPrompt =
+    prependPreamble(preamble, agentConfig.systemPrompt) +
+    `\n\n---\n\n${talkNote}`;
 
-  const messages: ChatMessage[] = [
-    { role: "user", content: transcription },
-  ];
+  const config: AgentConfig = { ...agentConfig, model: resolvedModel, systemPrompt };
+
+  // Create a run row so voice interactions appear in the activity log.
+  const { data: run } = await supabase
+    .from("runs")
+    .insert({
+      workspace_id,
+      agent_id: agent.id,
+      business_id: agent.business_id,
+      nav_node_id: (agent as { nav_node_id?: string | null }).nav_node_id ?? null,
+      triggered_by: "talk",
+      status: "running",
+      started_at: new Date(startedAt).toISOString(),
+      input: { transcription },
+    })
+    .select("id")
+    .single();
+
+  console.info(`[talk] LLM start — provider=${resolvedProvider} model=${resolvedModel}`);
+  const llmStart = Date.now();
+
+  const messages: ChatMessage[] = [{ role: "user", content: transcription }];
+  const HOPS_MAX = 5;
+  let deferred = false;
+  let deferSpeakText: string | null = null;
 
   try {
-    const fullText: string[] = [];
-    for await (const event of streamChat({
-      provider: resolvedProvider as "openrouter" | "ollama" | "claude" | "claude_cli" | "minimax",
-      config: {
-        model: resolvedModel,
-        systemPrompt,
-      },
-      messages,
-      apiKey,
-      tenant: {
-        workspaceId: workspace_id,
-        businessId: agent.business_id,
-        ollamaEndpoint: ollamaEndpoint ?? undefined,
-      },
-    })) {
-      if (event.type === "token") {
-        fullText.push(event.delta);
+    for (let hop = 0; hop < HOPS_MAX && !deferred; hop++) {
+      const toolUses: Array<{ id: string; name: string; args: unknown }> = [];
+
+      for await (const event of streamChat({
+        provider: resolvedProvider as ProviderId,
+        config,
+        messages,
+        runId: run?.id,
+        apiKey,
+        tenant: {
+          workspaceId: workspace_id,
+          businessId: agent.business_id,
+          ollamaEndpoint: ollamaEndpoint ?? undefined,
+          hermesAgentName,
+          openclawAgentName,
+        },
+        tools,
+      })) {
+        if (event.type === "token") llmResponseText += event.delta;
+        if (event.type === "tool_call_start") {
+          toolUses.push({ id: event.tool_call_id, name: event.name, args: event.args });
+        }
+        if (event.type === "message_end") break;
       }
-      if (event.type === "message_end") break;
+
+      if (toolUses.length === 0) break;
+
+      const toolResults: Array<{ id: string; content: string }> = [];
+      for (const tu of toolUses) {
+        const res = await executeAioTool(tu.name, tu.args, {
+          workspaceId: workspace_id,
+          defaultBusinessId: agent.business_id,
+        });
+
+        if (res.kind === "defer") {
+          const ev = res.event;
+          if (ev.type === "ask_followup") {
+            deferSpeakText = ev.question;
+          } else if (ev.type === "confirm_required") {
+            deferSpeakText = `${ev.summary} Ga naar de app om te bevestigen.`;
+          } else if (ev.type === "open_ui_at") {
+            toolResults.push({ id: tu.id, content: JSON.stringify({ navigated: true }) });
+            continue;
+          } else if (ev.type === "todo_set") {
+            toolResults.push({ id: tu.id, content: JSON.stringify({ ok: true }) });
+            continue;
+          }
+          deferred = true;
+          break;
+        }
+
+        toolResults.push({
+          id: tu.id,
+          content:
+            res.kind === "ok"
+              ? JSON.stringify(res.data)
+              : JSON.stringify({ error: res.error }),
+        });
+      }
+
+      if (deferred) break;
+      if (toolResults.length === 0) break;
+
+      messages.push({
+        role: "assistant",
+        content: JSON.stringify(
+          toolUses.map((t) => ({
+            type: "tool_use",
+            id: t.id,
+            name: t.name,
+            input: t.args,
+          })),
+        ),
+      });
+      messages.push({
+        role: "user",
+        content: JSON.stringify(
+          toolResults.map((r) => ({
+            type: "tool_result",
+            tool_use_id: r.id,
+            content: r.content,
+          })),
+        ),
+      });
     }
-    llmResponseText = fullText.join("");
-    console.info(`[talk] LLM done — ms=${Date.now() - llmStart} chars=${llmResponseText.length}`);
   } catch (err) {
     console.error("[talk] LLM error:", err);
+    if (run) {
+      void supabase
+        .from("runs")
+        .update({
+          status: "failed",
+          ended_at: new Date().toISOString(),
+          error_text: err instanceof Error ? err.message : "LLM error",
+        })
+        .eq("id", run.id);
+    }
     return NextResponse.json(
       { error: `LLM fout (${resolvedProvider}/${resolvedModel}): kon antwoord niet genereren.` },
       { status: 502 },
     );
+  }
+
+  // If deferred (ask_followup / confirm_required), speak the question via TTS.
+  if (deferred && deferSpeakText) {
+    llmResponseText = deferSpeakText;
+  }
+
+  console.info(`[talk] LLM done — ms=${Date.now() - llmStart} chars=${llmResponseText.length}`);
+
+  // Update run row (best-effort, non-blocking).
+  if (run) {
+    void supabase
+      .from("runs")
+      .update({
+        status: deferred ? "waiting" : "done",
+        ended_at: new Date().toISOString(),
+        duration_ms: Date.now() - startedAt,
+        output: { text: llmResponseText },
+      })
+      .eq("id", run.id);
   }
 
   if (!llmResponseText.trim()) {
