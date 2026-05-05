@@ -22,7 +22,7 @@ import type { StreamChatOptions } from "../router";
 
 const DEFAULT_BASE = "https://api.minimax.io/v1";
 const DEFAULT_MODEL = "MiniMax-M2.7-Highspeed";
-const HOPS_MAX = 6;
+const HOPS_MAX = 25;
 
 export async function* streamMinimax(
   opts: StreamChatOptions,

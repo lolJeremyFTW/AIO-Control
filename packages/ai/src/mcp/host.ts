@@ -80,14 +80,14 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
   },
   // Filesystem read/write/list — same toolset Claude Code's Read/Write
   // tools provide, but as a standalone MCP server. Sandboxed to
-  // MCP_FS_ROOT (default /home/jeremy/aio-control so the agent can
-  // read project files but not random /etc paths).
+  // MCP_FS_ROOT (default /home/jeremy so agents can reach all project
+  // dirs under the user home without re-configuring the env var).
   filesystem: {
     command: "npx",
     args: [
       "-y",
       "@modelcontextprotocol/server-filesystem",
-      process.env.MCP_FS_ROOT ?? "/home/jeremy/aio-control",
+      process.env.MCP_FS_ROOT ?? "/home/jeremy",
     ],
   },
   // AIO Control platform tools (list_businesses, list_agents, list_runs).
