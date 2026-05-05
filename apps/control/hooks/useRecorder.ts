@@ -7,29 +7,42 @@ export type RecorderState =
   | "requesting"
   | "recording"
   | "processing"
-  | "playing"
   | "error";
 
-export interface UseRecorderReturn {
-  /** "recording" when actively capturing audio. */
-  isRecording: boolean;
-  state: RecorderState;
-  error: string | null;
-  /** 0–255 volume level from AnalyserNode. */
-  volume: number;
-  /** Start recording. No-ops if already recording. */
-  start: () => Promise<void>;
-  /** Stop recording. Resolves with the audio Blob. */
-  stop: () => Promise<Blob | null>;
-  /** Discard the current recording. */
-  discard: () => void;
-  /** Set the URL of a TTS response to play. */
-  setTtsUrl: (url: string | null) => void;
-  /** Call from the <audio onEnded> handler. */
-  onAudioEnded: () => void;
-}
+export type UseRecorderOptions = {
+  /**
+   * Called whenever recording ends and audio data is available.
+   * State is already "processing" when this fires. The hook
+   * automatically returns to "idle" once the returned Promise resolves
+   * or rejects — so the caller does not need to call reset().
+   */
+  onComplete: (blob: Blob) => void | Promise<void>;
+  /** ms of continuous silence before auto-stop. Default 2000. Set 0 to disable. */
+  silenceMs?: number;
+  /** Hard cap on recording duration in ms. Default 30000. */
+  maxDurationMs?: number;
+};
 
-export function useRecorder(): UseRecorderReturn {
+export type UseRecorderReturn = {
+  state: RecorderState;
+  isRecording: boolean;
+  error: string | null;
+  /** 0–255 instantaneous volume from AnalyserNode. */
+  volume: number;
+  start: () => Promise<void>;
+  /** Trigger stop + onComplete (same as silence auto-stop). */
+  stop: () => void;
+  /** Abort recording; onComplete is NOT called. */
+  discard: () => void;
+  /** Reset from error back to idle. */
+  reset: () => void;
+};
+
+export function useRecorder({
+  onComplete,
+  silenceMs = 2000,
+  maxDurationMs = 30000,
+}: UseRecorderOptions): UseRecorderReturn {
   const [state, setState] = useState<RecorderState>("idle");
   const [error, setError] = useState<string | null>(null);
   const [volume, setVolume] = useState(0);
@@ -39,289 +52,206 @@ export function useRecorder(): UseRecorderReturn {
   const chunksRef = useRef<Blob[]>([]);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
-  const stopResolveRef = useRef<((blob: Blob | null) => void) | null>(null);
-  const volumeRafRef = useRef<number | null>(null);
-  const silenceCountRef = useRef(0);
+  const rafRef = useRef<number | null>(null);
   const silenceIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const maxDurationRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const guardRef = useRef(false);
+  const maxTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const discardRef = useRef(false);
 
-  const setStateSync = (s: RecorderState) => setState(s);
+  // Always keep the latest onComplete so the onstop closure never goes stale.
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
 
-  const cleanupIntervals = useCallback(() => {
-    if (volumeRafRef.current !== null) {
-      cancelAnimationFrame(volumeRafRef.current);
-      volumeRafRef.current = null;
+  const stopTimers = useCallback(() => {
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
     }
     if (silenceIntervalRef.current !== null) {
       clearInterval(silenceIntervalRef.current);
       silenceIntervalRef.current = null;
     }
-    if (maxDurationRef.current !== null) {
-      clearTimeout(maxDurationRef.current);
-      maxDurationRef.current = null;
+    if (maxTimerRef.current !== null) {
+      clearTimeout(maxTimerRef.current);
+      maxTimerRef.current = null;
     }
-    silenceCountRef.current = 0;
   }, []);
 
-  const stopMediaTracks = useCallback(() => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-    }
-    if (audioCtxRef.current) {
-      audioCtxRef.current.close();
-      audioCtxRef.current = null;
-    }
+  const stopStream = useCallback(() => {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    audioCtxRef.current?.close().catch(() => {});
+    audioCtxRef.current = null;
     analyserRef.current = null;
   }, []);
 
-  const startVolumeLoop = useCallback(() => {
-    const analyser = analyserRef.current;
-    if (!analyser) return;
-    const tick = () => {
-      const data = new Uint8Array(analyser.frequencyBinCount);
-      analyser.getByteFrequencyData(data);
-      const avg = data.reduce((a, b) => a + b, 0) / data.length;
-      setVolume(Math.round(avg));
-      volumeRafRef.current = requestAnimationFrame(tick);
-    };
-    volumeRafRef.current = requestAnimationFrame(tick);
-  }, []);
-
   const start = useCallback(async () => {
-    if (guardRef.current) return;
-    guardRef.current = true;
+    if (state !== "idle" && state !== "error") return;
 
+    setState("requesting");
+    setError(null);
+    discardRef.current = false;
+
+    let stream: MediaStream;
     try {
-      setError(null);
-      setStateSync("requesting");
-    } catch {
-      guardRef.current = false;
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err) {
+      const e = err as DOMException;
+      console.error("[useRecorder] getUserMedia failed:", e.name, e.message);
+      const msg =
+        e.name === "NotAllowedError" || e.name === "PermissionDeniedError"
+          ? "Microfoon toegang geweigerd."
+          : e.name === "NotFoundError"
+            ? "Geen microfoon gevonden."
+            : `Microfoon fout: ${e.message}`;
+      setError(msg);
+      setState("error");
       return;
     }
 
+    streamRef.current = stream;
+    console.info(
+      "[useRecorder] stream OK:",
+      stream.getAudioTracks().map((t) => t.label),
+    );
+
+    // Volume analysis (non-fatal)
     try {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => t.stop());
-        streamRef.current = null;
-      }
+      const audioCtx = new AudioContext();
+      audioCtxRef.current = audioCtx;
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.4;
+      source.connect(analyser);
+      analyserRef.current = analyser;
+      const buf = new Uint8Array(analyser.frequencyBinCount);
+      const tick = () => {
+        analyser.getByteFrequencyData(buf);
+        setVolume(Math.round(buf.reduce((a, b) => a + b, 0) / buf.length));
+        rafRef.current = requestAnimationFrame(tick);
+      };
+      rafRef.current = requestAnimationFrame(tick);
+    } catch {
+      /* non-fatal */
+    }
 
-      let stream: MediaStream;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      } catch (err) {
-        const e = err as Error;
-        console.error("[useRecorder] getUserMedia failed:", e.name, e.message);
-        setError(e.name === "NotFoundError"
-          ? "Geen microfoon gevonden. Check of andere apps de microfoon niet blokkeren."
-          : `${e.name}: ${e.message}`);
-        setStateSync("idle");
-        guardRef.current = false;
+    const mimeType =
+      ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus"].find(
+        (t) => MediaRecorder.isTypeSupported(t),
+      ) ?? "";
+
+    const rec = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+    recorderRef.current = rec;
+    chunksRef.current = [];
+
+    rec.ondataavailable = (e) => {
+      if (e.data?.size > 0) chunksRef.current.push(e.data);
+    };
+
+    rec.onstop = () => {
+      stopTimers();
+      stopStream();
+      setVolume(0);
+      recorderRef.current = null;
+
+      const chunks = [...chunksRef.current];
+      chunksRef.current = [];
+
+      if (discardRef.current || chunks.length === 0) {
+        setState("idle");
         return;
       }
 
-      streamRef.current = stream;
+      const blob = new Blob(chunks, { type: rec.mimeType || "audio/webm" });
+      console.info("[useRecorder] complete — size:", blob.size, "type:", blob.type);
+      setState("processing");
 
-      if (stream.getAudioTracks().length === 0) {
-        setError("Geen audio tracks in stream.");
-        setStateSync("idle");
-        guardRef.current = false;
-        return;
-      }
+      // Auto-return to idle once onComplete resolves/rejects.
+      Promise.resolve(onCompleteRef.current(blob))
+        .catch(() => {})
+        .finally(() => setState("idle"));
+    };
 
-      console.info("[useRecorder] getUserMedia OK, tracks:", stream.getAudioTracks().map(t => t.label));
+    rec.onerror = (e) => {
+      stopTimers();
+      stopStream();
+      recorderRef.current = null;
+      const msg = (e as ErrorEvent).message ?? "onbekend";
+      console.error("[useRecorder] MediaRecorder error:", msg);
+      setError(`Opname fout: ${msg}`);
+      setState("error");
+    };
 
-      // Volume analysis
-      try {
-        const audioCtx = new AudioContext();
-        audioCtxRef.current = audioCtx;
-        const source = audioCtx.createMediaStreamSource(stream);
-        const analyser = new AnalyserNode(audioCtx);
-        analyser.fftSize = 512;
-        analyser.smoothingTimeConstant = 0.3;
-        source.connect(analyser);
-        analyserRef.current = analyser;
-        startVolumeLoop();
-      } catch { /* non-fatal */ }
+    rec.start(250);
+    setState("recording");
 
-      // Silence detection
+    // Silence detection: accumulate silence, stop after silenceMs.
+    if (silenceMs > 0) {
+      let silenceAccum = 0;
       silenceIntervalRef.current = setInterval(() => {
         const analyser = analyserRef.current;
         if (!analyser) return;
-        const data = new Uint8Array(analyser.frequencyBinCount);
-        analyser.getByteFrequencyData(data);
-        const avg = data.reduce((a, b) => a + b, 0) / data.length;
-        setVolume(Math.round(avg));
-        if (avg < 10) {
-          silenceCountRef.current += 100;
-          if (silenceCountRef.current >= 1500) {
-            silenceCountRef.current = 0;
+        const buf = new Uint8Array(analyser.frequencyBinCount);
+        analyser.getByteFrequencyData(buf);
+        const avg = buf.reduce((a, b) => a + b, 0) / buf.length;
+        if (avg < 6) {
+          silenceAccum += 200;
+          if (silenceAccum >= silenceMs) {
+            console.info("[useRecorder] silence auto-stop");
             recorderRef.current?.stop();
           }
         } else {
-          silenceCountRef.current = 0;
+          silenceAccum = 0;
         }
-      }, 100);
-
-      // Max duration
-      maxDurationRef.current = setTimeout(() => {
-        recorderRef.current?.stop();
-      }, 30000);
-
-      const rec = new MediaRecorder(stream, {
-        mimeType: MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-          ? "audio/webm;codecs=opus"
-          : "audio/webm",
-      });
-      recorderRef.current = rec;
-      chunksRef.current = [];
-
-      rec.ondataavailable = (e) => {
-        if (e.data?.size > 0) chunksRef.current.push(e.data);
-      };
-
-      rec.onstop = () => {
-        cleanupIntervals();
-        stopMediaTracks();
-        const chunks = [...chunksRef.current];
-        chunksRef.current = [];
-        const resolve = stopResolveRef.current;
-        stopResolveRef.current = null;
-        setStateSync(chunks.length === 0 ? "idle" : "processing");
-        resolve?.(chunks.length > 0 ? new Blob(chunks, { type: rec.mimeType }) : null);
-      };
-
-      rec.onerror = (e) => {
-        cleanupIntervals();
-        stopMediaTracks();
-        const resolve = stopResolveRef.current;
-        stopResolveRef.current = null;
-        setError(`Opname fout: ${(e as ErrorEvent).message ?? "onbekend"}`);
-        setStateSync("error");
-        resolve?.(null);
-      };
-
-      rec.start(250);
-      setStateSync("recording");
-    } catch (err) {
-      const e = err as Error;
-      console.error("[useRecorder] start unexpected error:", e.message);
-      setError(e.message);
-      setStateSync("error");
-    } finally {
-      guardRef.current = false;
+      }, 200);
     }
-  }, [cleanupIntervals, stopMediaTracks, startVolumeLoop]);
 
-  const stop = useCallback(async (): Promise<Blob | null> => {
-    return new Promise((resolve) => {
-      stopResolveRef.current = resolve;
-      const rec = recorderRef.current;
-      console.info("[useRecorder] stop called, recorder:", rec?.state ?? "null");
-      if (!rec) {
-        stopResolveRef.current = null;
-        setStateSync("idle");
-        resolve(null);
-        return;
-      }
-      if (rec.state === "inactive") {
-        stopResolveRef.current = null;
-        setStateSync("idle");
-        resolve(null);
-        return;
-      }
-      const timeout = setTimeout(() => {
-        if (stopResolveRef.current === resolve) {
-          console.warn("[useRecorder] stop timeout — forcing resolve");
-          stopResolveRef.current = null;
-          cleanupIntervals();
-          stopMediaTracks();
-          setStateSync("idle");
-          resolve(null);
-        }
-      }, 5000);
-      stopResolveRef.current = (blob: Blob | null) => {
-        clearTimeout(timeout);
-        resolve(blob);
-      };
-      rec.stop();
-    });
-  }, [cleanupIntervals, stopMediaTracks]);
+    // Hard max-duration cap.
+    maxTimerRef.current = setTimeout(() => {
+      console.info("[useRecorder] max-duration auto-stop");
+      recorderRef.current?.stop();
+    }, maxDurationMs);
+  }, [state, silenceMs, maxDurationMs, stopTimers, stopStream]);
 
-  const discard = useCallback(() => {
-    cleanupIntervals();
-    stopMediaTracks();
-    stopResolveRef.current = null;
-    if (recorderRef.current?.state === "recording") {
-      recorderRef.current.stop();
+  const stop = useCallback(() => {
+    const rec = recorderRef.current;
+    console.info("[useRecorder] manual stop, rec.state:", rec?.state ?? "null");
+    if (!rec || rec.state === "inactive") {
+      setState("idle");
+      return;
     }
-    chunksRef.current = [];
-    setVolume(0);
-    setStateSync("idle");
-    setError(null);
-  }, [cleanupIntervals, stopMediaTracks]);
-
-  const ttsUrlRef = useRef<string | null>(null);
-  const setTtsUrl = useCallback((url: string | null) => {
-    ttsUrlRef.current = url;
-    setStateSync(url ? "playing" : "idle");
+    rec.stop();
   }, []);
 
-  const onAudioEnded = useCallback(() => {
-    ttsUrlRef.current = null;
-    setStateSync("idle");
-    setVolume(0);
+  const discard = useCallback(() => {
+    discardRef.current = true;
+    stopTimers();
+    const rec = recorderRef.current;
+    if (rec && rec.state !== "inactive") {
+      rec.stop(); // onstop will see discardRef=true → idle
+    } else {
+      stopStream();
+      setVolume(0);
+      setState("idle");
+      setError(null);
+    }
+  }, [stopTimers, stopStream]);
+
+  const reset = useCallback(() => {
+    setState("idle");
+    setError(null);
   }, []);
 
   return {
-    get isRecording() { return state === "recording"; },
     state,
+    get isRecording() {
+      return state === "recording";
+    },
     error,
     volume,
     start,
     stop,
     discard,
-    setTtsUrl,
-    onAudioEnded,
+    reset,
   };
-}
-
-// Debug helpers
-if (typeof window !== "undefined") {
-  (window as unknown as Record<string, unknown>).debugRecorder = {
-    async status() {
-      const md = navigator.mediaDevices;
-      return {
-        mediaDevices: !!md,
-        getUserMedia: !!md?.getUserMedia,
-        enumerateDevices: !!md?.enumerateDevices,
-        constraints: md?.getSupportedConstraints?.() ?? null,
-      };
-    },
-    async listDevices() {
-      try {
-        const devs = await navigator.mediaDevices.enumerateDevices();
-        const audio = devs.filter(d => d.kind === "audioinput");
-        console.info("[debug] audio devices:", audio.map(d => ({ label: d.label, id: d.deviceId })));
-        return audio;
-      } catch (e) {
-        console.error("[debug] enumerateDevices failed:", e);
-        return [];
-      }
-    },
-    async testMic() {
-      try {
-        const s = await navigator.mediaDevices.getUserMedia({ audio: true });
-        console.info("[debug] testMic OK, tracks:", s.getAudioTracks().length);
-        s.getTracks().forEach(t => t.stop());
-        return "OK";
-      } catch (e) {
-        const err = e as Error;
-        console.error("[debug] testMic FAILED:", err.name, err.message);
-        return `${err.name}: ${err.message}`;
-      }
-    },
-  };
-  console.info("[useRecorder] debugRecorder ready — call window.debugRecorder.testMic() in console");
 }
