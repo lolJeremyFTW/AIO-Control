@@ -8,6 +8,7 @@ import type { AgentRow } from "../lib/queries/agents";
 import type { BusinessRow, KpiRow, QueueRow } from "../lib/queries/businesses";
 import type { RunRow } from "../lib/queries/schedules";
 import { getDict } from "../lib/i18n/server";
+import { BusinessIntentPanel } from "./BusinessIntentPanel";
 import { QueueGrid } from "./QueueGrid";
 
 type Props = {
@@ -80,6 +81,9 @@ export async function BusinessDashboard({
           tone={failedRuns > 0 ? "warn" : "neutral"}
         />
       </section>
+
+      {/* Business intent — description, mission, targets — injected into every agent system prompt */}
+      <BusinessIntentPanel business={business} workspaceSlug={workspaceSlug} />
 
       {/* Two-column layout: queue snapshot left, agents + runs right */}
       <div
