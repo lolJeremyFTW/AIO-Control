@@ -66,6 +66,8 @@ export async function updateSession(request: NextRequest) {
     path.startsWith("/share/") ||
     // Telegram webhook authenticates via the secret in the URL.
     path.startsWith("/api/integrations/telegram/webhook") ||
+    // Internal automation APIs authenticate via AGENT_SECRET_KEY Bearer token.
+    path.startsWith("/api/internal/") ||
     // Webhooks and DB-trigger callbacks authenticate via a header secret
     // they prove they're authorized — we don't need a Supabase session.
     path === "/api/integrations/stripe" ||
