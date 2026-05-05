@@ -94,6 +94,11 @@ export function stopCronScheduler(): void {
 async function tick(): Promise<void> {
   const admin = getServiceRoleSupabase();
 
+  // Periodically clean up zombie runs (>30 min in "running" state).
+  // Running on every tick is cheap — the UPDATE only touches rows that
+  // match, so it's a no-op most of the time.
+  void cleanupZombieRuns().catch(() => {});
+
   // Query enabled cron schedules joined with their agents so we can
   // skip subscription-Claude (those run on Claude's own cron via
   // Routines, not here). RLS is bypassed by service-role.
