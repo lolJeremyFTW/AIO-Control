@@ -16,7 +16,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useState } from "react";
 
 import {
   ChartIcon,
@@ -45,6 +46,8 @@ export type BusinessTabsTopicEntry = {
   href: string;
   /** Already-translated label. */
   label: string;
+  /** Custom tab ID — present for user-added iframe tabs, absent for built-in topic entries. */
+  id?: string;
   /** Optional icon name from the AppIcon registry. */
   icon?:
     | "video"
@@ -59,6 +62,7 @@ export type BusinessTabsTopicEntry = {
 type Props = {
   workspaceSlug: string;
   businessId: string;
+  workspaceId: string;
   /** Number of enabled cron + webhook routines for the business —
    *  rendered as a badge on the "Routines" tab. */
   routinesCount?: number;
@@ -98,13 +102,55 @@ type Props = {
 export function BusinessTabs({
   workspaceSlug,
   businessId,
+  workspaceId,
   routinesCount,
   lastRun,
   topicTabs,
   labels,
 }: Props) {
   const path = usePathname() ?? "";
+  const router = useRouter();
   const base = `/${workspaceSlug}/business/${businessId}`;
+
+  const [showAdd, setShowAdd] = useState(false);
+  const [addLabel, setAddLabel] = useState("");
+  const [addUrl, setAddUrl] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
+
+  async function handleAddTab(e: React.FormEvent) {
+    e.preventDefault();
+    if (!addLabel.trim() || !addUrl.trim()) return;
+    setAdding(true);
+    const base64 = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+    await fetch(`${base64}/api/custom-tabs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({
+        business_id: businessId,
+        workspace_id: workspaceId,
+        label: addLabel.trim(),
+        url: addUrl.trim(),
+      }),
+    });
+    setAdding(false);
+    setShowAdd(false);
+    setAddLabel("");
+    setAddUrl("");
+    router.refresh();
+  }
+
+  async function handleDeleteTab(id: string) {
+    setDeleting(id);
+    const base64 = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+    await fetch(`${base64}/api/custom-tabs/${id}`, {
+      method: "DELETE",
+      credentials: "same-origin",
+    });
+    setDeleting(null);
+    router.refresh();
+  }
 
   const L = {
     relNow: labels?.relNow ?? "net",
@@ -178,82 +224,235 @@ export function BusinessTabs({
     }),
   ];
 
+
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 4,
-        marginBottom: 16,
-        borderBottom: "1px solid var(--app-border-2)",
-        flexWrap: "wrap",
-      }}
-    >
-      {tabs.map((t) => {
-        const active = t.match(path);
-        return (
-          <Link
-            key={t.label + t.href}
-            href={t.href}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              padding: "8px 14px",
-              fontSize: 12.5,
-              fontWeight: 700,
-              borderBottom: active
-                ? "2px solid var(--tt-green)"
-                : "2px solid transparent",
-              color: active ? "var(--app-fg)" : "var(--app-fg-3)",
-              transform: "translateY(1px)",
-              textDecoration: "none",
-            }}
-          >
-            {t.label}
-            {typeof t.badge === "number" && t.badge > 0 && (
-              <span
+    <>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 4,
+          marginBottom: 16,
+          borderBottom: "1px solid var(--app-border-2)",
+          flexWrap: "wrap",
+        }}
+      >
+        {tabs.map((t) => {
+          const active = t.match(path);
+          // Find matching topicTab entry to get its id for delete button.
+          const topicEntry = (topicTabs ?? []).find(
+            (tt) => `${base}${tt.href}` === t.href && tt.id,
+          );
+          return (
+            <span
+              key={t.label + t.href}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                transform: "translateY(1px)",
+                borderBottom: active
+                  ? "2px solid var(--tt-green)"
+                  : "2px solid transparent",
+              }}
+            >
+              <Link
+                href={t.href}
                 style={{
-                  fontSize: 10,
-                  fontWeight: 800,
-                  letterSpacing: 0.4,
-                  padding: "1px 6px",
-                  borderRadius: 999,
-                  background: active
-                    ? "var(--tt-green)"
-                    : "var(--app-card-2)",
-                  color: active ? "#fff" : "var(--app-fg-2)",
-                  border: active
-                    ? "1px solid var(--tt-green)"
-                    : "1px solid var(--app-border)",
-                  fontVariantNumeric: "tabular-nums",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "8px 10px 8px 14px",
+                  fontSize: 12.5,
+                  fontWeight: 700,
+                  color: active ? "var(--app-fg)" : "var(--app-fg-3)",
+                  textDecoration: "none",
                 }}
               >
-                {t.badge}
-              </span>
-            )}
-          </Link>
-        );
-      })}
+                {t.label}
+                {typeof t.badge === "number" && t.badge > 0 && (
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 800,
+                      letterSpacing: 0.4,
+                      padding: "1px 6px",
+                      borderRadius: 999,
+                      background: active
+                        ? "var(--tt-green)"
+                        : "var(--app-card-2)",
+                      color: active ? "#fff" : "var(--app-fg-2)",
+                      border: active
+                        ? "1px solid var(--tt-green)"
+                        : "1px solid var(--app-border)",
+                      fontVariantNumeric: "tabular-nums",
+                    }}
+                  >
+                    {t.badge}
+                  </span>
+                )}
+              </Link>
+              {topicEntry?.id && (
+                <button
+                  type="button"
+                  onClick={() => handleDeleteTab(topicEntry.id!)}
+                  disabled={deleting === topicEntry.id}
+                  title="Verwijder tab"
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: "0 6px 0 0",
+                    color: "var(--app-fg-3)",
+                    fontSize: 11,
+                    lineHeight: 1,
+                    opacity: deleting === topicEntry.id ? 0.4 : 0.6,
+                  }}
+                >
+                  ×
+                </button>
+              )}
+            </span>
+          );
+        })}
 
-      {/* Right-aligned status pill — renders only when we know
-          the last-run state. */}
-      {lastRun && (
-        <span style={{ marginLeft: "auto" }}>
-          <LastRunPill
-            prefix={L.lastRun}
-            at={lastRun.at}
-            status={lastRun.status}
-            relTemplates={{
-              now: L.relNow,
-              min: L.relMin,
-              hr: L.relHr,
-              day: L.relDay,
+        {/* "+" button to add a custom iframe tab */}
+        <button
+          type="button"
+          onClick={() => setShowAdd(true)}
+          title="Tab toevoegen"
+          style={{
+            background: "transparent",
+            border: "1px dashed var(--app-border)",
+            color: "var(--app-fg-3)",
+            borderRadius: 6,
+            padding: "3px 8px",
+            fontSize: 14,
+            fontWeight: 700,
+            cursor: "pointer",
+            marginBottom: 2,
+            transform: "translateY(-1px)",
+          }}
+        >
+          +
+        </button>
+
+        {/* Right-aligned status pill — renders only when we know
+            the last-run state. */}
+        {lastRun && (
+          <span style={{ marginLeft: "auto" }}>
+            <LastRunPill
+              prefix={L.lastRun}
+              at={lastRun.at}
+              status={lastRun.status}
+              relTemplates={{
+                now: L.relNow,
+                min: L.relMin,
+                hr: L.relHr,
+                day: L.relDay,
+              }}
+            />
+          </span>
+        )}
+      </div>
+
+      {/* Add-tab modal */}
+      {showAdd && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.5)",
+            zIndex: 1000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+          onClick={(e) => e.target === e.currentTarget && setShowAdd(false)}
+        >
+          <form
+            onSubmit={handleAddTab}
+            style={{
+              background: "var(--app-card)",
+              border: "1px solid var(--app-border)",
+              borderRadius: 12,
+              padding: 24,
+              width: 360,
+              display: "flex",
+              flexDirection: "column",
+              gap: 12,
             }}
-          />
-        </span>
+          >
+            <p style={{ fontWeight: 700, fontSize: 14, margin: 0 }}>
+              Tab toevoegen
+            </p>
+            <input
+              autoFocus
+              placeholder="Naam (bijv. Outreach dashboard)"
+              value={addLabel}
+              onChange={(e) => setAddLabel(e.target.value)}
+              required
+              style={{
+                padding: "8px 10px",
+                borderRadius: 8,
+                border: "1px solid var(--app-border)",
+                background: "var(--app-card-2)",
+                color: "var(--app-fg)",
+                fontSize: 13,
+              }}
+            />
+            <input
+              placeholder="URL (bijv. https://tromptech.life/srv/outreach-dashboard)"
+              value={addUrl}
+              onChange={(e) => setAddUrl(e.target.value)}
+              required
+              type="url"
+              style={{
+                padding: "8px 10px",
+                borderRadius: 8,
+                border: "1px solid var(--app-border)",
+                background: "var(--app-card-2)",
+                color: "var(--app-fg)",
+                fontSize: 13,
+              }}
+            />
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={() => setShowAdd(false)}
+                style={{
+                  padding: "7px 16px",
+                  borderRadius: 8,
+                  border: "1px solid var(--app-border)",
+                  background: "transparent",
+                  color: "var(--app-fg-2)",
+                  fontSize: 13,
+                  cursor: "pointer",
+                }}
+              >
+                Annuleer
+              </button>
+              <button
+                type="submit"
+                disabled={adding}
+                style={{
+                  padding: "7px 16px",
+                  borderRadius: 8,
+                  border: "none",
+                  background: "var(--tt-green)",
+                  color: "#fff",
+                  fontWeight: 700,
+                  fontSize: 13,
+                  cursor: adding ? "not-allowed" : "pointer",
+                  opacity: adding ? 0.7 : 1,
+                }}
+              >
+                {adding ? "Toevoegen…" : "Toevoegen"}
+              </button>
+            </div>
+          </form>
+        </div>
       )}
-    </div>
+    </>
   );
 }
 

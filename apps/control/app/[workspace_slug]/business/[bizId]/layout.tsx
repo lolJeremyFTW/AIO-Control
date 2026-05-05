@@ -39,7 +39,7 @@ export default async function BusinessLayout({ children, params }: Props) {
   // Pull the two pieces of context BusinessTabs needs in parallel.
   // Both are RLS-gated so we don't have to re-check membership.
   const supabase = await createSupabaseServerClient();
-  const [{ count: routinesCount }, { data: lastRunRow }, dict] =
+  const [{ count: routinesCount }, { data: lastRunRow }, { data: customTabRows }, dict] =
     await Promise.all([
       supabase
         .from("schedules")
@@ -54,6 +54,11 @@ export default async function BusinessLayout({ children, params }: Props) {
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle(),
+      supabase
+        .from("custom_tabs")
+        .select("id, label, url")
+        .eq("business_id", bizId)
+        .order("sort_order", { ascending: true }),
       getDict(),
     ]);
 
@@ -78,13 +83,21 @@ export default async function BusinessLayout({ children, params }: Props) {
 
   const { t } = dict;
 
+  const customTabEntries = (customTabRows ?? []).map((tab) => ({
+    id: tab.id as string,
+    href: `/tab/${tab.id}`,
+    label: tab.label as string,
+  }));
+
   return (
     <>
       <BusinessTabs
         workspaceSlug={workspace_slug}
         businessId={bizId}
+        workspaceId={workspace.id}
         routinesCount={routinesCount ?? 0}
         lastRun={lastRun}
+        topicTabs={customTabEntries}
         labels={{
           overview: t("biztabs.overview"),
           agents: t("biztabs.agents"),
