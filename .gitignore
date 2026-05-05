@@ -27,6 +27,10 @@ out/
 build
 dist
 
+# VPS staged build artifacts (platform-specific symlinks; must not sync between machines)
+.staged-aio/
+.staged-root/
+
 
 # Debug
 npm-debug.log*
