@@ -1,18 +1,20 @@
-// MiniMax provider — direct HTTP path against MiniMax's
-// OpenAI-compatible chat completions endpoint. Multiple bases:
+// MiniMax provider — two paths:
 //
-//   https://api.minimax.io/v1/text/chatcompletion_v2     (Coder Plan,
-//                                                        global)
-//   https://api.minimaxi.com/v1/text/chatcompletion_v2   (international
-//                                                        platform key)
-//   https://api.minimax.chat/v1/text/chatcompletion_v2   (China region)
+// 1. Anthropic endpoint (default for MCP tool calls, more reliable):
+//    https://api.minimax.io/v1/anthropic   (global Coder Plan)
+//    Uses Anthropic SDK with custom baseURL. MiniMax's /anthropic path is
+//    a drop-in Messages-API endpoint — same as Hermes Agent and OpenClaw
+//    use under the hood. Tool arguments arrive as structured `input` objects
+//    rather than JSON strings, eliminating the "invalid function arguments
+//    json string" class of errors.
 //
-// When `agent.config.mcpServers` is set we additionally spawn the MCP
-// servers via @modelcontextprotocol/sdk, expose their tools to MiniMax
-// as OpenAI-style function tools, and run a multi-turn loop dispatching
-// tool calls back to the MCP host. This means MiniMax + MCP works
-// WITHOUT routing through claude-cli — i.e. without Anthropic auth.
+// 2. OpenAI-compatible endpoint (plain text, no tools):
+//    https://api.minimax.io/v1/text/chatcompletion_v2   (Coder Plan, global)
+//    https://api.minimaxi.com/v1/text/chatcompletion_v2 (international)
+//    https://api.minimax.chat/v1/text/chatcompletion_v2 (China region)
+//    Used when no MCP servers are configured (fast, cheap plain chat).
 
+import Anthropic from "@anthropic-ai/sdk";
 import { randomUUID } from "node:crypto";
 
 import type { AGUIEvent, ChatMessage } from "../ag-ui";
@@ -32,7 +34,10 @@ export async function* streamMinimax(
 ): AsyncIterable<AGUIEvent> {
   const mcpServers = opts.config.mcpServers ?? [];
   if (mcpServers.length > 0) {
-    yield* streamMinimaxWithTools(opts, mcpServers);
+    // Use Anthropic endpoint for tool calls — same approach as Hermes Agent
+    // and OpenClaw. More reliable than OpenAI /chatcompletion_v2 because tool
+    // arguments arrive as parsed objects, not streamed JSON fragments.
+    yield* streamMinimaxWithToolsAnthropic(opts, mcpServers);
     return;
   }
   yield* streamMinimaxPlain(opts);
@@ -102,7 +107,232 @@ async function* streamMinimaxPlain(
   };
 }
 
-// ── MCP-enabled path: multi-turn loop with tool dispatch ───────────
+// ── Anthropic-endpoint MCP path ────────────────────────────────────
+//
+// Uses MiniMax's /anthropic endpoint (Anthropic Messages-API compatible).
+// Tool arguments come back as parsed objects — no streaming JSON fragment
+// accumulation, no "invalid function arguments json string" errors.
+// This is what Hermes Agent and OpenClaw use when routing MiniMax + tools.
+
+async function* streamMinimaxWithToolsAnthropic(
+  opts: StreamChatOptions,
+  serverIds: string[],
+): AsyncIterable<AGUIEvent> {
+  const apiKey = opts.apiKey || process.env.MINIMAX_API_KEY;
+  if (!apiKey) {
+    yield {
+      type: "error",
+      code: "missing_key",
+      message:
+        "Geen MiniMax API key gevonden. Stel 'm in via Settings → API Keys.",
+    };
+    return;
+  }
+
+  const base =
+    opts.config.endpoint ?? process.env.MINIMAX_BASE_URL ?? DEFAULT_BASE;
+  const model =
+    opts.config.model ?? process.env.MINIMAX_DEFAULT_MODEL ?? DEFAULT_MODEL;
+
+  // MiniMax's Anthropic-compatible endpoint sits at <base>/anthropic.
+  // The Anthropic SDK appends /messages automatically, so the final
+  // request lands at e.g. https://api.minimax.io/v1/anthropic/messages.
+  const anthropicBase = `${base}/anthropic`;
+
+  // MiniMax accepts the key via Authorization: Bearer (same as the
+  // OpenAI path) rather than x-api-key. We override both so the SDK's
+  // default x-api-key header is also present — one of them will match.
+  const client = new Anthropic({
+    apiKey,
+    baseURL: anthropicBase,
+    defaultHeaders: {
+      Authorization: `Bearer ${apiKey}`,
+    },
+  });
+
+  const messageId = randomUUID();
+  yield { type: "message_start", message_id: messageId, role: "assistant" };
+
+  const host = new McpHost();
+  try {
+    try {
+      const permissions =
+        (opts.config.mcpPermissions as
+          | { filesystem?: "off" | "ro" | "rw"; aio?: "off" | "ro" | "rw" }
+          | undefined) ?? {};
+      const envOverrides: Record<string, string> = { MINIMAX_API_KEY: apiKey };
+      if (opts.tenant?.workspaceId) {
+        envOverrides.AIO_WORKSPACE_ID = opts.tenant.workspaceId;
+      }
+      await host.connect(serverIds, envOverrides, permissions);
+    } catch (err) {
+      yield {
+        type: "error",
+        code: "mcp_spawn_failed",
+        message: `Kon MCP server(s) niet starten: ${err instanceof Error ? err.message : err}.`,
+      };
+      return;
+    }
+
+    const mcpTools = host.tools();
+    if (mcpTools.length === 0) {
+      yield {
+        type: "error",
+        code: "mcp_no_tools",
+        message:
+          "MCP host opgestart maar geen tools beschikbaar. Controleer de servers in agent.config.mcpServers.",
+      };
+      return;
+    }
+
+    // Convert MCP tool definitions to Anthropic format.
+    const anthropicTools: Anthropic.Tool[] = mcpTools.map((t) => ({
+      name: t.name,
+      description: t.description,
+      input_schema: {
+        type: "object" as const,
+        properties:
+          (t.parameters as { properties?: Record<string, unknown> })
+            ?.properties ?? {},
+        required:
+          (t.parameters as { required?: string[] })?.required ?? [],
+      },
+    }));
+
+    // Build initial message history. The Anthropic SDK wants alternating
+    // user/assistant turns — system goes in the top-level `system` param.
+    const messages: Anthropic.MessageParam[] = opts.messages
+      .filter(
+        (m): m is ChatMessage =>
+          m.role === "user" || m.role === "assistant",
+      )
+      .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+
+    let totalInputTokens = 0;
+    let totalOutputTokens = 0;
+    let assistantTextSoFar = "";
+
+    for (let hop = 0; hop < getHopsMax(opts.config); hop++) {
+      let turnText = "";
+
+      // Stream one turn from MiniMax via the Anthropic endpoint.
+      const stream = client.messages.stream({
+        model,
+        max_tokens: opts.config.maxTokens ?? 8192,
+        ...(opts.config.systemPrompt
+          ? { system: opts.config.systemPrompt }
+          : {}),
+        tools: anthropicTools,
+        tool_choice: { type: "auto" },
+        messages,
+        ...(opts.config.temperature != null
+          ? { temperature: opts.config.temperature }
+          : {}),
+      });
+
+      // Forward token deltas live so the run drawer streams in real time.
+      try {
+        for await (const event of stream) {
+          if (
+            event.type === "content_block_delta" &&
+            event.delta.type === "text_delta"
+          ) {
+            turnText += event.delta.text;
+            yield { type: "token", message_id: messageId, delta: event.delta.text };
+          }
+        }
+      } catch (err) {
+        yield {
+          type: "error",
+          code: "minimax_anthropic_stream",
+          message: `MiniMax stream fout: ${err instanceof Error ? err.message : String(err)}`,
+        };
+        return;
+      }
+
+      const finalMsg = await stream.finalMessage();
+      totalInputTokens += finalMsg.usage.input_tokens;
+      totalOutputTokens += finalMsg.usage.output_tokens;
+      assistantTextSoFar += turnText;
+
+      yield {
+        type: "cost_update",
+        cost_cents: priceTokens(model, totalInputTokens, totalOutputTokens),
+        input_tokens: totalInputTokens,
+        output_tokens: totalOutputTokens,
+      };
+
+      // Collect tool_use blocks from this turn.
+      const toolUseBlocks = finalMsg.content.filter(
+        (b): b is Anthropic.ToolUseBlock => b.type === "tool_use",
+      );
+
+      if (toolUseBlocks.length === 0) {
+        // No tool calls — final turn complete.
+        yield {
+          type: "message_end",
+          message_id: messageId,
+          usage: {
+            input_tokens: totalInputTokens,
+            output_tokens: totalOutputTokens,
+            cost_cents: priceTokens(model, totalInputTokens, totalOutputTokens),
+          },
+        };
+        return;
+      }
+
+      // Append the full assistant turn (text + tool_use blocks) so
+      // MiniMax can resume from here on the next hop.
+      messages.push({ role: "assistant", content: finalMsg.content });
+
+      // Execute each tool call and collect results.
+      const toolResults: Anthropic.ToolResultBlockParam[] = [];
+      for (const tc of toolUseBlocks) {
+        yield {
+          type: "tool_call_start",
+          tool_call_id: tc.id,
+          name: tc.name,
+          args: tc.input,
+        };
+        const result = await host.call(tc.name, tc.input);
+        yield {
+          type: "tool_call_result",
+          tool_call_id: tc.id,
+          output: result,
+        };
+        toolResults.push({
+          type: "tool_result",
+          tool_use_id: tc.id,
+          content: result,
+        });
+      }
+
+      // Feed tool results back as a user turn so MiniMax continues.
+      messages.push({ role: "user", content: toolResults });
+    }
+
+    // Hop limit reached — emit what we have as the final response.
+    yield {
+      type: "message_end",
+      message_id: messageId,
+      usage: {
+        input_tokens: totalInputTokens,
+        output_tokens: totalOutputTokens,
+        cost_cents: priceTokens(model, totalInputTokens, totalOutputTokens),
+      },
+    };
+    void assistantTextSoFar;
+  } finally {
+    await host.close();
+  }
+}
+
+// ── OpenAI-compatible multi-turn loop (kept for reference / fallback) ─
+//
+// Previously the default MCP path. Replaced by streamMinimaxWithToolsAnthropic
+// because MiniMax's /chatcompletion_v2 endpoint occasionally emits malformed
+// tool argument JSON ("invalid function arguments json string"). Not currently
+// called but retained so it can be re-enabled via a config flag if needed.
 
 type OAIMsg =
   | { role: "system" | "user"; content: string }
@@ -144,24 +374,15 @@ async function* streamMinimaxWithTools(
   const host = new McpHost();
   try {
     try {
-      // Force-pass the resolved MINIMAX_API_KEY into the MCP child so
-      // it works even when the Next worker forked us without inheriting
-      // env vars from the parent service. The MiniMax MCP server bails
-      // with "MINIMAX_API_KEY env or header cannot be empty" otherwise.
       const permissions =
         (opts.config.mcpPermissions as
           | { filesystem?: "off" | "ro" | "rw"; aio?: "off" | "ro" | "rw" }
           | undefined) ?? {};
       const envOverrides: Record<string, string> = { MINIMAX_API_KEY: apiKey };
-      // Forward the workspace id so the AIO MCP server knows which workspace to query.
       if (opts.tenant?.workspaceId) {
         envOverrides.AIO_WORKSPACE_ID = opts.tenant.workspaceId;
       }
-      await host.connect(
-        serverIds,
-        envOverrides,
-        permissions,
-      );
+      await host.connect(serverIds, envOverrides, permissions);
     } catch (err) {
       yield {
         type: "error",
@@ -203,9 +424,6 @@ async function* streamMinimaxWithTools(
     let assistantTextSoFar = "";
 
     for (let hop = 0; hop < getHopsMax(opts.config); hop++) {
-      // Live-stream tokens as they come in. We buffer the per-turn
-      // text alongside so we can feed the assistant turn back into
-      // `messages` once the turn closes.
       let turnText = "";
       let turnToolCalls: ToolCall[] = [];
       let turnInputTokens = 0;
@@ -247,8 +465,6 @@ async function* streamMinimaxWithTools(
       totalOutputTokens += turnOutputTokens;
       assistantTextSoFar += turnText;
 
-      // Emit live cost after every hop so the dispatcher can write a
-      // partial DB update — the run list then shows cost building up.
       yield {
         type: "cost_update",
         cost_cents: priceTokens(model, totalInputTokens, totalOutputTokens),
@@ -256,7 +472,6 @@ async function* streamMinimaxWithTools(
         output_tokens: totalOutputTokens,
       };
 
-      // No tool calls → final assistant turn complete.
       if (turnToolCalls.length === 0) {
         yield {
           type: "message_end",
@@ -274,15 +489,12 @@ async function* streamMinimaxWithTools(
         return;
       }
 
-      // Append the assistant turn (text + tool_calls) into the
-      // history so MiniMax can resume from this point on the next hop.
       messages.push({
         role: "assistant",
         content: turnText || null,
         tool_calls: turnToolCalls,
       });
 
-      // Dispatch each tool call against the MCP host.
       for (const tc of turnToolCalls) {
         let argsObj: unknown = {};
         try {
@@ -310,11 +522,8 @@ async function* streamMinimaxWithTools(
           content: result,
         });
       }
-      // Loop continues — MiniMax gets called again with the tool results.
     }
 
-    // Hop limit reached without a tool-free final turn. Treat the
-    // accumulated text as the final response.
     yield {
       type: "message_end",
       message_id: messageId,
@@ -335,12 +544,6 @@ async function* streamMinimaxWithTools(
 }
 
 // ── shared single-turn helper ──────────────────────────────────────
-//
-// One round-trip to MiniMax. Async-generator so token deltas yield as
-// they arrive — that's what powers the run drawer's live streaming.
-// At the very end we also yield a single "done" envelope with the
-// accumulated tool_calls + usage. Errors come through as a single
-// "error" event and short-circuit the stream.
 
 type TurnEvent =
   | { kind: "token"; delta: string }
@@ -352,8 +555,6 @@ type TurnEvent =
       outputTokens: number;
     };
 
-// Plain HTTP path doesn't need tool_calls; uses this as a back-compat
-// wrapper that just collects all events.
 type TurnResult =
   | { kind: "error"; code: string; message: string }
   | {
@@ -421,8 +622,6 @@ async function* streamOneTurnEvents(args: {
     return;
   }
 
-  // MiniMax returns HTTP 200 + a JSON envelope when the key is missing
-  // or invalid. Detect that BEFORE we start reading SSE chunks.
   const ctype = response.headers.get("content-type") ?? "";
   if (ctype.includes("application/json") && !ctype.includes("event-stream")) {
     const body = await response.text().catch(() => "");
@@ -445,8 +644,6 @@ async function* streamOneTurnEvents(args: {
 
   const decoder = new TextDecoder();
   let buf = "";
-  // tool_calls arrive in delta-fragments keyed by index. We accumulate
-  // each slot and finalise once the stream ends.
   const toolCallSlots: Map<
     number,
     { id: string; name: string; arguments: string }
@@ -518,3 +715,6 @@ async function* streamOneTurnEvents(args: {
 
   yield { kind: "done", toolCalls, inputTokens, outputTokens };
 }
+
+// Keep streamOneTurn exported for any future direct callers.
+export { streamOneTurn };
