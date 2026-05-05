@@ -92,48 +92,101 @@ export async function POST(req: Request) {
     .maybeSingle();
 
   ttsProvider = talkSettings?.provider ?? "elevenlabs";
-  sttProvider = talkSettings?.stt ?? "whisper-1";
+  // Normalise to "elevenlabs" regardless of whether the UI saved "elevenlabs-stt".
+  const rawStt = talkSettings?.stt ?? "elevenlabs-stt";
+  sttProvider = rawStt === "elevenlabs-stt" ? "elevenlabs" : rawStt;
   voiceId = resolveVoiceId(talkSettings?.voice ?? "rachel");
 
-  // ── 5. STT — Whisper-1 ───────────────────────────────────────────────────
-  const openAiKey = await resolveApiKey("openai", {
-    workspaceId: workspace.id,
-    businessId: agent.business_id,
-  });
+  console.info(
+    `[talk] request — ws=${workspaceSlug} agent=${agentId} ` +
+      `size=${audioBlob.size}B stt=${sttProvider} tts=${ttsProvider}`,
+  );
 
-  if (!openAiKey) {
+  // ── 5. STT ───────────────────────────────────────────────────────────────
+  // Supported providers:
+  //   "elevenlabs" — ElevenLabs Scribe v1 (no OpenAI key needed)
+  //   "whisper-1"  — OpenAI Whisper (needs OPENAI_API_KEY or db key)
+  // Falls back to ElevenLabs when Whisper is selected but no OpenAI key.
+
+  const [openAiKey, elevenlabsKeyForStt] = await Promise.all([
+    resolveApiKey("openai", { workspaceId: workspace.id, businessId: agent.business_id }),
+    resolveApiKey("elevenlabs", { workspaceId: workspace.id, businessId: agent.business_id }),
+  ]);
+
+  // Decide effective STT provider based on available keys.
+  const effectiveStt =
+    sttProvider === "whisper-1" && openAiKey
+      ? "whisper-1"
+      : elevenlabsKeyForStt
+        ? "elevenlabs"
+        : sttProvider === "whisper-1" && !openAiKey
+          ? null // will error below
+          : null;
+
+  if (!effectiveStt) {
+    const missing = sttProvider === "whisper-1" ? "OpenAI" : "ElevenLabs";
+    console.error(`[talk] STT: geen ${missing} key geconfigureerd`);
     return NextResponse.json(
-      { error: "Geen OpenAI API key geconfigureerd voor STT." },
+      { error: `Geen ${missing} API key geconfigureerd voor spraakherkenning. Voeg deze toe via Instellingen → API Keys.` },
       { status: 500 },
     );
   }
 
-  try {
-    const sttForm = new FormData();
-    sttForm.append("file", audioBlob, "recording.webm");
-    sttForm.append("model", "whisper-1");
-    sttForm.append("response_format", "json");
+  console.info(`[talk] STT start — provider=${effectiveStt}`);
+  const sttStart = Date.now();
 
-    const sttRes = await fetch(
-      "https://api.openai.com/v1/audio/transcriptions",
-      {
+  try {
+    if (effectiveStt === "elevenlabs") {
+      // ElevenLabs Scribe v1 — launched 2025, no OpenAI key needed.
+      const sttForm = new FormData();
+      sttForm.append("audio", audioBlob, "recording.webm");
+      sttForm.append("model_id", "scribe_v1");
+
+      const sttRes = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
+        method: "POST",
+        headers: { "xi-api-key": elevenlabsKeyForStt! },
+        body: sttForm,
+      });
+
+      if (!sttRes.ok) {
+        const err = await sttRes.text();
+        console.error("[talk] ElevenLabs STT error:", sttRes.status, err);
+        return NextResponse.json(
+          { error: `Spraakherkenning fout (ElevenLabs ${sttRes.status}).` },
+          { status: 502 },
+        );
+      }
+
+      const sttData = (await sttRes.json()) as { text?: string };
+      transcription = sttData.text?.trim() ?? "";
+    } else {
+      // OpenAI Whisper-1
+      const sttForm = new FormData();
+      sttForm.append("file", audioBlob, "recording.webm");
+      sttForm.append("model", "whisper-1");
+      sttForm.append("response_format", "json");
+
+      const sttRes = await fetch("https://api.openai.com/v1/audio/transcriptions", {
         method: "POST",
         headers: { Authorization: `Bearer ${openAiKey}` },
         body: sttForm,
-      },
-    );
+      });
 
-    if (!sttRes.ok) {
-      const err = await sttRes.json().catch(() => ({}));
-      console.error("[talk] Whisper error:", err);
-      return NextResponse.json(
-        { error: `STT fout: ${(err as { error?: { message?: string } }).error?.message ?? "onbekend"}` },
-        { status: 502 },
-      );
+      if (!sttRes.ok) {
+        const err = await sttRes.json().catch(() => ({}));
+        console.error("[talk] Whisper error:", sttRes.status, err);
+        return NextResponse.json(
+          { error: `Spraakherkenning fout (Whisper ${sttRes.status}).` },
+          { status: 502 },
+        );
+      }
+
+      const sttData = (await sttRes.json()) as { text?: string };
+      transcription = sttData.text?.trim() ?? "";
     }
 
-    const sttData = (await sttRes.json()) as { text?: string };
-    transcription = sttData.text?.trim() ?? "";
+    console.info(`[talk] STT done — ms=${Date.now() - sttStart} text="${transcription.slice(0, 80)}"`);
+
     if (!transcription) {
       return NextResponse.json(
         { error: "Kon spraak niet verstaan. Praat harder of duidelijker." },
@@ -141,9 +194,9 @@ export async function POST(req: Request) {
       );
     }
   } catch (err) {
-    console.error("[talk] Whisper fetch failed:", err);
+    console.error("[talk] STT fetch failed:", err);
     return NextResponse.json(
-      { error: "Kon STT service niet bereiken." },
+      { error: "Kon spraakherkenning niet bereiken." },
       { status: 502 },
     );
   }
@@ -172,6 +225,9 @@ export async function POST(req: Request) {
   });
 
   const ollamaEndpoint = await resolveOllamaEndpoint(workspace.id);
+
+  console.info(`[talk] LLM start — provider=${resolvedProvider} model=${resolvedModel}`);
+  const llmStart = Date.now();
 
   // Build the same context-rich system prompt as chat/dispatch so the
   // agent knows about its business, integrations, sibling agents, etc.
@@ -215,44 +271,42 @@ export async function POST(req: Request) {
       if (event.type === "message_end") break;
     }
     llmResponseText = fullText.join("");
+    console.info(`[talk] LLM done — ms=${Date.now() - llmStart} chars=${llmResponseText.length}`);
   } catch (err) {
     console.error("[talk] LLM error:", err);
     return NextResponse.json(
-      { error: "Kon LLM service niet bereiken." },
+      { error: `LLM fout (${resolvedProvider}/${resolvedModel}): kon antwoord niet genereren.` },
       { status: 502 },
     );
   }
 
-  // ── 7. TTS — ElevenLabs ──────────────────────────────────────────────────
-  if (ttsProvider !== "elevenlabs") {
-    // Only ElevenLabs is implemented for now — fallback to ElevenLabs anyway
-    console.warn(`[talk] Provider ${ttsProvider} not implemented, using elevenlabs`);
+  if (!llmResponseText.trim()) {
+    console.warn("[talk] LLM returned empty response");
+    return NextResponse.json(
+      { error: "Agent gaf een leeg antwoord. Probeer het opnieuw." },
+      { status: 422 },
+    );
   }
 
-  const elevenlabsKey = await resolveApiKey("elevenlabs", {
+  // ── 7. TTS — ElevenLabs ──────────────────────────────────────────────────
+  console.info(`[talk] TTS start — provider=${ttsProvider} voice=${voiceId}`);
+  const ttsStart = Date.now();
+
+  const elevenlabsKey = elevenlabsKeyForStt ?? await resolveApiKey("elevenlabs", {
     workspaceId: workspace.id,
     businessId: agent.business_id,
   });
 
   if (!elevenlabsKey) {
+    console.error("[talk] TTS: geen ElevenLabs key geconfigureerd");
     return NextResponse.json(
-      { error: "Geen ElevenLabs API key geconfigureerd." },
+      { error: "Geen ElevenLabs API key geconfigureerd voor spraaksynthese. Voeg deze toe via Instellingen → API Keys." },
       { status: 500 },
     );
   }
 
   const stability = talkSettings?.stability ?? 0.55;
   const similarity = talkSettings?.similarity ?? 0.75;
-
-  const encoder = new TextEncoder();
-  const durationMs = Date.now() - startedAt;
-
-  console.info(
-    `[talk] OK — ws=${workspaceSlug} agent=${agentId} ` +
-      `stt=${sttProvider} transcription="${transcription}" ` +
-      `llm=${llmConfig} response_len=${llmResponseText.length} ` +
-      `tts=${ttsProvider} voice=${voiceId} duration_ms=${durationMs}`,
-  );
 
   // ── 8. Stream ElevenLabs audio back ──────────────────────────────────────
   try {
@@ -280,12 +334,13 @@ export async function POST(req: Request) {
 
     if (!ttsRes.ok) {
       const err = await ttsRes.text();
-      console.error("[talk] ElevenLabs error:", err);
+      console.error("[talk] ElevenLabs TTS error:", ttsRes.status, err.slice(0, 200));
       return NextResponse.json(
-        { error: `TTS fout: kon audio niet genereren.` },
+        { error: `Spraaksynthese fout (ElevenLabs ${ttsRes.status}).` },
         { status: 502 },
       );
     }
+    console.info(`[talk] TTS done — ms=${Date.now() - ttsStart}`);
 
     // Pipe the audio stream back to the browser
     if (!ttsRes.body) {
