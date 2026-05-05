@@ -6,7 +6,7 @@
 
 import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
-import { useMemo, useState, useTransition, type ReactNode } from "react";
+import { useMemo, useState, useTransition, useCallback, type ReactNode } from "react";
 
 import { ContextMenu, type ContextMenuItem } from "@aio/ui/context-menu";
 import { Header } from "@aio/ui/header";
@@ -185,6 +185,27 @@ export function WorkspaceShell({
   const [railOpen, setRailOpen] = useState(false);
   const closeRail = () => setRailOpen(false);
 
+  // Live notification items from the bell — null until the bell fetches
+  // for the first time. Once loaded, rail badges reflect the live state
+  // (including dismissals) rather than the stale server-rendered counts.
+  const [liveNotifItems, setLiveNotifItems] = useState<
+    Array<{ business_id: string | null }> | null
+  >(null);
+  const handleNotifItemsChange = useCallback(
+    (items: Array<{ business_id: string | null }>) => setLiveNotifItems(items),
+    [],
+  );
+  const effectiveCounts = useMemo(() => {
+    if (liveNotifItems === null) return notifCounts;
+    const counts: Record<string, number> = {};
+    for (const item of liveNotifItems) {
+      if (item.business_id) {
+        counts[item.business_id] = (counts[item.business_id] ?? 0) + 1;
+      }
+    }
+    return counts;
+  }, [liveNotifItems, notifCounts]);
+
   // Transition for the language switcher in the header. We await the
   // setLocale server action BEFORE calling router.refresh() — the
   // earlier `void setLocale(…).then(…)` ran refresh too eagerly, the
@@ -353,7 +374,7 @@ export function WorkspaceShell({
   }, [agents, businesses]);
 
   const railBusinesses: RailItem[] = businesses.map((b) => {
-    const count = notifCounts[b.id] ?? 0;
+    const count = effectiveCounts[b.id] ?? 0;
     return {
       id: b.id,
       name: b.name,
@@ -894,6 +915,7 @@ export function WorkspaceShell({
                 variant: b.variant ?? "brand",
                 color_hex: b.color_hex ?? null,
               }))}
+              onItemsChange={handleNotifItemsChange}
             />
           }
           lang={locale.toUpperCase() as "NL" | "EN" | "DE"}

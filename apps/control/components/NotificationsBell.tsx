@@ -38,12 +38,16 @@ type Props = {
   /** Workspace businesses — used to render a per-business header
    *  (avatar dot + name) above each notification group. */
   businesses?: BusinessLookup[];
+  /** Called whenever the items list changes so the caller can sync
+   *  rail badges without a page reload. */
+  onItemsChange?: (items: Array<{ business_id: string | null }>) => void;
 };
 
 export function NotificationsBell({
   workspaceSlug,
   workspaceId,
   businesses = [],
+  onItemsChange,
 }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -125,6 +129,13 @@ export function NotificationsBell({
   useEffect(() => {
     void refresh();
   }, []);
+
+  // Propagate live items to parent so rail badges stay in sync
+  // without requiring a full page reload.
+  useEffect(() => {
+    onItemsChange?.(items);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items]);
 
   // Refresh whenever a queue_items or runs row changes for this
   // workspace. Realtime gives us the push, then we re-fetch the list
