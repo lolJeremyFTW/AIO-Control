@@ -5,7 +5,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { RunStep } from "../lib/runs/message-history";
 import { getSupabaseBrowserClient } from "../lib/supabase/client";
@@ -59,6 +59,26 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
   // streams its updates into this drawer live (status: running → done,
   // message_history grows with each tool call).
   const [tick, setTick] = useState(0);
+
+  // Auto-scroll: keep the drawer pinned to the bottom while new steps
+  // arrive. If the user scrolls up we stop auto-scrolling; when a new
+  // run opens (currentRunId changes) we reset back to bottom.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const userScrolledRef = useRef(false);
+
+  useEffect(() => {
+    userScrolledRef.current = false;
+    bottomRef.current?.scrollIntoView({ behavior: "instant" });
+  }, [currentRunId]);
+
+  const histLen = run?.message_history?.length ?? 0;
+  const runStatus = run?.status;
+  useEffect(() => {
+    if (!userScrolledRef.current) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [histLen, runStatus]);
 
   useEffect(() => {
     const ctl = new AbortController();
@@ -317,6 +337,13 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
         </header>
 
         <div
+          ref={scrollRef}
+          onScroll={() => {
+            const el = scrollRef.current;
+            if (!el) return;
+            const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+            userScrolledRef.current = distFromBottom > 120;
+          }}
           style={{
             flex: 1,
             overflow: "auto",
@@ -344,6 +371,7 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
             </p>
           )}
           {run && <RunBody run={run} />}
+          <div ref={bottomRef} />
         </div>
 
         {/* Follow-up composer — always visible, disabled while a run is
