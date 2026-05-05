@@ -72,13 +72,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Agent niet gevonden." }, { status: 404 });
   }
 
-  const { data: workspace } = await getServiceRoleSupabase()
+  const { data: workspace, error: wsError } = await getServiceRoleSupabase()
     .from("workspaces")
     .select("id, slug, ollama_endpoint")
     .eq("id", agent.workspace_id)
     .maybeSingle();
 
   if (!workspace) {
+    console.error("[talk] workspace not found — agent.workspace_id:", agent.workspace_id, "wsError:", wsError);
     return NextResponse.json({ error: "Workspace niet gevonden." }, { status: 404 });
   }
 
