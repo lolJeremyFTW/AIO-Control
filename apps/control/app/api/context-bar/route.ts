@@ -88,7 +88,15 @@ export async function GET(request: Request) {
   const since30d = new Date(Date.now() - 30 * 24 * 3600_000).toISOString();
   const since24h = new Date(Date.now() - 24 * 3600_000).toISOString();
 
-  const [runs30dRes, runs24hRes, reviewRes, autoRes] = await Promise.all([
+  const [
+    runs30dRes,
+    runs24hRes,
+    reviewRes,
+    autoRes,
+    runsOkRes,
+    runsFailRes,
+    agentsRes,
+  ] = await Promise.all([
     supabase
       .from("runs")
       .select("cost_cents")
@@ -111,6 +119,23 @@ export async function GET(request: Request) {
       .in("nav_node_id", scopeIds)
       .is("resolved_at", null)
       .eq("state", "auto"),
+    supabase
+      .from("runs")
+      .select("id", { count: "exact", head: true })
+      .in("nav_node_id", scopeIds)
+      .eq("status", "done")
+      .gte("created_at", since24h),
+    supabase
+      .from("runs")
+      .select("id", { count: "exact", head: true })
+      .in("nav_node_id", scopeIds)
+      .eq("status", "failed")
+      .gte("created_at", since24h),
+    supabase
+      .from("agents")
+      .select("id", { count: "exact", head: true })
+      .in("nav_node_id", scopeIds)
+      .is("archived_at", null),
   ]);
 
   type RunCost = { cost_cents: number | null };
@@ -124,6 +149,9 @@ export async function GET(request: Request) {
     type: "topic",
     cost_30d_eur: cost30dCents / 100,
     runs_24h: runs24hRes.count ?? 0,
+    runs_ok_24h: runsOkRes.count ?? 0,
+    runs_fail_24h: runsFailRes.count ?? 0,
+    agents_count: agentsRes.count ?? 0,
     queue_review: reviewRes.count ?? 0,
     queue_auto: autoRes.count ?? 0,
   });

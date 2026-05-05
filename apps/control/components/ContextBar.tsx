@@ -42,6 +42,9 @@ type TopicData = {
   type: "topic";
   cost_30d_eur: number;
   runs_24h: number;
+  runs_ok_24h: number;
+  runs_fail_24h: number;
+  agents_count: number;
   queue_review: number;
   queue_auto: number;
 };
@@ -310,13 +313,32 @@ function TopicBar({
           <span className="val">{fmtEur(data.cost_30d_eur)}</span>
         </Link>
 
+        <span className="vrule" />
+
         <Link
           href={`${base}/schedules`}
           className="kpi"
           style={{ textDecoration: "none" }}
         >
           <span className="lbl">Runs 24h</span>
-          <span className="val">{data.runs_24h}</span>
+          <span className="val">
+            {data.runs_24h}
+            {data.runs_ok_24h > 0 && (
+              <span className="delta">✓{data.runs_ok_24h}</span>
+            )}
+            {data.runs_fail_24h > 0 && (
+              <span className="delta down">✗{data.runs_fail_24h}</span>
+            )}
+          </span>
+        </Link>
+
+        <Link
+          href={`${base}/agents`}
+          className="kpi"
+          style={{ textDecoration: "none" }}
+        >
+          <span className="lbl">Agents</span>
+          <span className="val">{data.agents_count}</span>
         </Link>
       </div>
 
@@ -343,14 +365,7 @@ function TopicBar({
 
       <div className="grow" />
 
-      <div
-        className="pbtn-split"
-        style={{
-          borderColor: "var(--app-border)",
-          background: "var(--app-card-2)",
-          color: "var(--app-fg)",
-        }}
-      >
+      <div className="pbtn-split">
         <Link
           href={`${base}/agents`}
           className="main"
@@ -358,10 +373,7 @@ function TopicBar({
         >
           + Nieuw agent
         </Link>
-        <span
-          className="caret"
-          style={{ borderColor: "rgba(255,255,255,0.12)" }}
-        >
+        <span className="caret">
           <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
             <path
               d="M3 4.5L6 7.5L9 4.5"
