@@ -75,11 +75,11 @@ export async function POST(req: Request) {
   const { data: workspace } = await supabase
     .from("workspaces")
     .select("id, slug, ollama_endpoint")
-    .eq("slug", workspaceSlug)
+    .eq("id", agent.workspace_id)
     .maybeSingle();
 
-  if (!workspace || workspace.id !== agent.workspace_id) {
-    return NextResponse.json({ error: "Workspace mismatch." }, { status: 403 });
+  if (!workspace) {
+    return NextResponse.json({ error: "Workspace niet gevonden." }, { status: 404 });
   }
 
   // ── 4. Load talk_settings ─────────────────────────────────────────────────
