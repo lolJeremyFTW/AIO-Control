@@ -188,6 +188,9 @@ export async function updateAgent(input: {
     mcpPermissions?: {
       filesystem?: "off" | "ro" | "rw";
     } | null;
+    /** Maximum tool-call hops for MiniMax agents. null = use the global
+     *  AGENT_MAX_HOPS env var (default 150). */
+    maxHops?: number | null;
   };
 }): Promise<ActionResult<null>> {
   const patch: Record<string, unknown> = {};
@@ -227,7 +230,8 @@ export async function updateAgent(input: {
     input.patch.systemPrompt !== undefined ||
     input.patch.endpoint !== undefined ||
     input.patch.mcpServers !== undefined ||
-    input.patch.mcpPermissions !== undefined
+    input.patch.mcpPermissions !== undefined ||
+    input.patch.maxHops !== undefined
   ) {
     const supabase = await createSupabaseServerClient();
     const { data: cur } = await supabase
@@ -255,6 +259,13 @@ export async function updateAgent(input: {
         delete config.mcpPermissions;
       } else {
         config.mcpPermissions = perms;
+      }
+    }
+    if (input.patch.maxHops !== undefined) {
+      if (!input.patch.maxHops || input.patch.maxHops <= 0) {
+        delete config.maxHops;
+      } else {
+        config.maxHops = input.patch.maxHops;
       }
     }
     patch.config = config;

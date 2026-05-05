@@ -104,6 +104,7 @@ export function EditAgentDialog({
     endpoint?: string | null;
     mcpServers?: string[] | null;
     mcpPermissions?: { filesystem?: "off" | "ro" | "rw"; aio?: "off" | "ro" | "rw" } | null;
+    maxHops?: number | null;
   };
 
   const [name, setName] = useState(agent.name);
@@ -127,6 +128,9 @@ export function EditAgentDialog({
     filesystem?: "off" | "ro" | "rw";
     aio?: "off" | "ro" | "rw";
   }>(cfg.mcpPermissions ?? {});
+  const [maxHops, setMaxHops] = useState<string>(
+    cfg.maxHops ? String(cfg.maxHops) : "",
+  );
   const [telegramTargetId, setTelegramTargetId] = useState(
     agent.telegram_target_id ?? "",
   );
@@ -193,6 +197,10 @@ export function EditAgentDialog({
         mcpServers: provider === "minimax" ? mcpServers : [],
         mcpPermissions:
           provider === "minimax" ? mcpPermissions : null,
+        maxHops:
+          provider === "minimax"
+            ? (Number(maxHops) > 0 ? Number(maxHops) : null)
+            : null,
       },
     });
     setPending(false);
@@ -337,12 +345,25 @@ export function EditAgentDialog({
         </Field>
 
         {provider === "minimax" && (
-          <McpServersField
-            value={mcpServers}
-            onToggle={toggleMcp}
-            permissions={mcpPermissions}
-            onPermissionsChange={setMcpPermissions}
-          />
+          <>
+            <McpServersField
+              value={mcpServers}
+              onToggle={toggleMcp}
+              permissions={mcpPermissions}
+              onPermissionsChange={setMcpPermissions}
+            />
+            <Field label="Max. tool-stappen">
+              <input
+                type="number"
+                min={1}
+                max={500}
+                value={maxHops}
+                onChange={(e) => setMaxHops(e.target.value)}
+                placeholder="150 (standaard)"
+                style={inp}
+              />
+            </Field>
+          </>
         )}
 
         <SkillsPickerField
