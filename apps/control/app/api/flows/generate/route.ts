@@ -1,16 +1,15 @@
 // POST /api/flows/generate
 // Takes a natural-language description and returns a FlowPlan — the
 // complete spec for an agent + optional schedule + optional skills.
-// Delegates to @aio/ai/flow-planner which owns the Anthropic SDK call.
-// Resolves the API key via the workspace key hierarchy (same as agents).
+// Resolution order: Claude (DB → env) → MiniMax (DB → env).
 
 import { NextRequest, NextResponse } from "next/server";
 
 import { generateFlowPlan } from "@aio/ai/flow-planner";
+import type { FlowPlanProvider } from "@aio/ai/flow-planner";
 
-import { getCurrentUser, getWorkspaceBySlug } from "../../../../lib/auth/workspace";
+import { getCurrentUser } from "../../../../lib/auth/workspace";
 import { resolveApiKey } from "../../../../lib/api-keys/resolve";
-import { createSupabaseServerClient } from "../../../../lib/supabase/server";
 
 // Re-export types so components can import from here without depending on @aio/ai directly.
 export type {
@@ -32,23 +31,41 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "description is verplicht" }, { status: 400 });
   }
 
-  // Resolve Claude API key the same way agents do — workspace hierarchy + env fallback.
+  // Resolve the best available API key: Claude first, then MiniMax fallback.
   let apiKey: string | null = null;
+  let provider: FlowPlanProvider = "claude";
+
   if (workspaceId) {
     apiKey = await resolveApiKey("claude", { workspaceId });
   }
   if (!apiKey) {
     apiKey = process.env.ANTHROPIC_API_KEY ?? null;
   }
+
+  if (!apiKey) {
+    // MiniMax fallback — uses Anthropic-compatible endpoint
+    if (workspaceId) {
+      apiKey = await resolveApiKey("minimax", { workspaceId });
+    }
+    if (!apiKey) {
+      apiKey = process.env.MINIMAX_API_KEY ?? null;
+    }
+    if (apiKey) provider = "minimax";
+  }
+
   if (!apiKey) {
     return NextResponse.json(
-      { ok: false, error: "Geen Anthropic API key geconfigureerd. Voeg er een toe via Settings → API Keys." },
+      {
+        ok: false,
+        error: "Geen API key geconfigureerd. Voeg een Claude of MiniMax key toe via Settings → API Keys.",
+        needsApiKey: true,
+      },
       { status: 500 },
     );
   }
 
   try {
-    const plan = await generateFlowPlan(description, apiKey);
+    const plan = await generateFlowPlan(description, apiKey, provider);
     return NextResponse.json({ ok: true, plan });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Genereren mislukt.";
