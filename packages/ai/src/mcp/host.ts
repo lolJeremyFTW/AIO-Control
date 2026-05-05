@@ -178,21 +178,41 @@ export class McpHost {
     for (const [k, v] of Object.entries(process.env)) {
       if (typeof v === "string") cleanProcessEnv[k] = v;
     }
+    const fullEnv = {
+      ...cleanProcessEnv,
+      ...(spec.env?.() ?? {}),
+      ...envOverrides,
+    };
+    console.log(`[mcp] connectOne spawning: ${spec.command} ${spec.args.join(" ")}`);
+    console.log(`[mcp] env keys: ${Object.keys(fullEnv).join(", ")}`);
     const transport = new StdioClientTransport({
       command: spec.command,
       args: spec.args,
-      env: {
-        ...cleanProcessEnv,
-        ...(spec.env?.() ?? {}),
-        ...envOverrides,
-      },
+      env: fullEnv,
       stderr: "pipe",
+    });
+    // Capture subprocess stderr so we can see crash output
+    let stderrChunks: Buffer[] = [];
+    transport.stderr?.on("data", (chunk: Buffer) => {
+      stderrChunks.push(chunk);
+      process.stderr.write(`[mcp][${id}] stderr: ${chunk.toString()}`);
+    });
+    transport.stderr?.on("close", () => {
+      const stderrText = Buffer.concat(stderrChunks).toString();
+      if (stderrText) console.log(`[mcp][${id}] stderr closed: ${stderrText}`);
     });
     const client = new Client(
       { name: "aio-control", version: "1.0.0" },
       { capabilities: {} },
     );
-    await client.connect(transport);
+    try {
+      await client.connect(transport);
+    } catch (connErr) {
+      const stderrText = Buffer.concat(stderrChunks).toString();
+      console.error(`[mcp][${id}] connect failed: ${connErr instanceof Error ? connErr.message : connErr}`);
+      console.error(`[mcp][${id}] stderr collected: ${stderrText}`);
+      throw connErr;
+    }
     const list = await client.listTools();
     const fsScope = permissions.filesystem ?? "rw";
     const tools: McpToolDef[] = list.tools
