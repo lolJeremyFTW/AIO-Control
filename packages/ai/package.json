@@ -9,7 +9,8 @@
     "./ag-ui": "./src/ag-ui.ts",
     "./pricing": "./src/pricing.ts",
     "./routines": "./src/routines.ts",
-    "./aio-tools": "./src/aio-tools.ts"
+    "./aio-tools": "./src/aio-tools.ts",
+    "./flow-planner": "./src/flow-planner.ts"
   },
   "scripts": {
     "lint": "eslint . --max-warnings 0",

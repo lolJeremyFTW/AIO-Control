@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { createFlow } from "../app/actions/flows";
-import type { FlowPlan, AgentPlan, SchedulePlan, SkillPlan } from "../app/api/flows/generate/route";
+import type { FlowPlan, AgentPlan, SchedulePlan, SkillPlan } from "@aio/ai/flow-planner";
 import type { BusinessRow } from "../lib/queries/businesses";
 
 type Props = {
