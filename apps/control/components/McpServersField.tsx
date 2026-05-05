@@ -13,7 +13,7 @@ export type McpPermissions = {
   aio?: "off" | "ro" | "rw";
 };
 
-const BUILTIN_SERVERS: Array<{ id: string; label: string; desc: string }> = [
+const BUILTIN_SERVERS: Array<{ id: string; label: string; desc: string; badge?: string }> = [
   {
     id: "minimax",
     label: "MiniMax Coder-Plan",
@@ -22,22 +22,41 @@ const BUILTIN_SERVERS: Array<{ id: string; label: string; desc: string }> = [
   {
     id: "aio",
     label: "AIO Control",
-    desc: "list_businesses, list_agents, list_runs. Secret reads require explicit server opt-in.",
+    desc: "list_businesses, list_agents, list_runs, send_telegram_message.",
   },
   {
     id: "bash",
     label: "Bash Shell",
-    desc: "Volledige shell-toegang op de VPS. Gevaarlijke commands (rm -rf, shutdown, etc.) vereisen goedkeuring.",
+    desc: "Volledige shell-toegang op de VPS. Gevaarlijke commands vereisen goedkeuring.",
   },
   {
     id: "filesystem",
     label: "Filesystem",
-    desc: "Read / Write / List binnen MCP_FS_ROOT (default /home/jeremy/aio-control).",
+    desc: "Read / Write / List binnen MCP_FS_ROOT (default /home/jeremy).",
   },
   {
     id: "fetch",
     label: "Web Fetch",
-    desc: "Trekt willekeurige URLs op en geeft de body terug.",
+    desc: "Trekt willekeurige URLs op en retourneert de body als tekst/markdown. Officieel Anthropic MCP.",
+    badge: "official",
+  },
+  {
+    id: "playwright",
+    label: "Playwright Browser",
+    desc: "Volledig Chromium browser met JS-rendering. Navigeren, klikken, formulieren, screenshots. Models zijn hier op getraind.",
+    badge: "official",
+  },
+  {
+    id: "brave",
+    label: "Brave Search",
+    desc: "Hoge-kwaliteit web + nieuws zoekopdrachten via Brave Search API. Vereist BRAVE_API_KEY in workspace secrets.",
+    badge: "official",
+  },
+  {
+    id: "memory",
+    label: "Memory (Knowledge Graph)",
+    desc: "Persistent geheugen tussen runs: entities, relaties, observaties. Agents kunnen feiten opslaan en ophalen.",
+    badge: "official",
   },
 ];
 
@@ -119,6 +138,22 @@ export function McpServersField({
               />
               <span>
                 <span style={{ fontWeight: 700 }}>{opt.label}</span>
+                {opt.badge === "official" && (
+                  <span style={{
+                    display: "inline-block",
+                    marginLeft: 6,
+                    fontSize: 9,
+                    fontWeight: 700,
+                    letterSpacing: "0.1em",
+                    textTransform: "uppercase",
+                    background: "rgba(57,178,85,0.15)",
+                    color: "var(--tt-green)",
+                    border: "1px solid var(--tt-green)",
+                    borderRadius: 4,
+                    padding: "1px 5px",
+                    verticalAlign: "middle",
+                  }}>official</span>
+                )}
                 <span
                   style={{
                     display: "block",

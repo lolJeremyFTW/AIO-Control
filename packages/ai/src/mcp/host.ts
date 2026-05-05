@@ -121,6 +121,41 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
     command: "npx",
     args: ["-y", "tsx", "/home/jeremy/aio-control/packages/ai/src/mcp/servers/bash-server.ts"],
   },
+  // Official Anthropic fetch MCP — retrieves arbitrary URLs and returns
+  // the body as text/markdown. Useful for reading web pages without a
+  // full browser (static sites, APIs, sitemaps).
+  fetch: {
+    command: "npx",
+    args: ["-y", "@modelcontextprotocol/server-fetch"],
+  },
+  // Microsoft Playwright MCP — full Chromium browser with JS rendering.
+  // Models are natively trained on Playwright tool signatures. Headless
+  // mode so it works on a headless VPS without a display server.
+  playwright: {
+    command: "npx",
+    args: ["-y", "@playwright/mcp", "--headless", "--browser", "chromium"],
+  },
+  // Brave Search MCP — high-quality web + news search backed by the
+  // Brave Search API. Needs BRAVE_API_KEY set in workspace secrets.
+  brave: {
+    command: "npx",
+    args: ["-y", "@modelcontextprotocol/server-brave-search"],
+    env: () => ({
+      ...(process.env.BRAVE_API_KEY
+        ? { BRAVE_API_KEY: process.env.BRAVE_API_KEY }
+        : {}),
+    }),
+  },
+  // Memory MCP — persistent knowledge graph (entities + relations +
+  // observations). Agents can store facts between runs and retrieve
+  // them semantically. Stored in a local SQLite file on the VPS.
+  memory: {
+    command: "npx",
+    args: ["-y", "@modelcontextprotocol/server-memory"],
+    env: () => ({
+      MEMORY_FILE_PATH: process.env.MEMORY_FILE_PATH ?? "/home/jeremy/.aio-memory.json",
+    }),
+  },
 };
 
 type Connected = {
