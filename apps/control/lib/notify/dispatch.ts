@@ -353,11 +353,11 @@ function formatRunMessage(
     lines.push(`Duration: ${(run.duration_ms / 1000).toFixed(1)}s`);
   }
   if (event === "failed" && run.error_text) {
-    lines.push(`\n${truncate(run.error_text, 800)}`);
+    lines.push(`\n${stripMarkdown(truncate(run.error_text, 800))}`);
   }
   if (event === "done") {
     const out = extractText(run.output);
-    if (out) lines.push(`\n${truncate(out, 800)}`);
+    if (out) lines.push(`\n${stripMarkdown(truncate(out, 800))}`);
   }
   return lines.join("\n");
 }
@@ -373,6 +373,10 @@ function extractText(output: unknown): string | null {
 function truncate(s: string, max: number) {
   if (s.length <= max) return s;
   return s.slice(0, max - 1) + "…";
+}
+
+function stripMarkdown(s: string): string {
+  return s.replace(/[*_`]/g, "");
 }
 
 // Tiny in-process cache so we don't hammer the workspaces table with
