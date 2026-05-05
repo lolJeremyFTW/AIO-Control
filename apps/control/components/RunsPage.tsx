@@ -24,6 +24,8 @@ type Run = {
   output: { text?: string } | null;
   error_text: string | null;
   created_at: string;
+  schedule_id: string | null;
+  schedules: { title: string | null } | null;
 };
 
 type Props = {
@@ -218,6 +220,7 @@ export function RunsPage({
                   ? (businessName?.[r.business_id] ?? null)
                   : null
               }
+              scheduleTitle={r.schedules?.title ?? null}
               onOpen={() => setOpenRunId(r.id)}
             />
           ))}
@@ -257,11 +260,13 @@ function RunRow({
   run,
   agentName,
   businessLabel,
+  scheduleTitle,
   onOpen,
 }: {
   run: Run;
   agentName: string;
   businessLabel: string | null;
+  scheduleTitle: string | null;
   onOpen: () => void;
 }) {
   const failed = run.status === "failed" || run.status === "fail";
@@ -331,6 +336,7 @@ function RunRow({
         )}
         <span style={{ color: "var(--app-fg-3)", fontSize: 11 }}>
           {run.status} · {run.triggered_by}
+          {scheduleTitle && ` · ${scheduleTitle}`}
         </span>
         <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--app-fg-3)" }}>
           {run.duration_ms != null && run.duration_ms > 0

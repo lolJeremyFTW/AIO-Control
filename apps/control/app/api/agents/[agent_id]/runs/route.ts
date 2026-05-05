@@ -27,7 +27,7 @@ export async function GET(
   const { data, error } = await supabase
     .from("runs")
     .select(
-      "id, status, triggered_by, started_at, ended_at, duration_ms, cost_cents, output, error_text, created_at",
+      "id, status, triggered_by, started_at, ended_at, duration_ms, cost_cents, output, error_text, created_at, schedule_id, schedules:schedule_id(title)",
     )
     .eq("agent_id", agent_id)
     .order("created_at", { ascending: false })

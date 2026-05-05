@@ -17,6 +17,8 @@ type Run = {
   output: { text?: string } | null;
   error_text: string | null;
   created_at: string;
+  schedule_id: string | null;
+  schedules: { title: string | null } | null;
 };
 
 type Props = {
@@ -91,7 +93,7 @@ export function AgentRunsPanel({ agentId, workspaceSlug }: Props) {
           )}
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {runs.map((r) => (
-              <RunRow key={r.id} run={r} />
+              <RunRow key={r.id} run={r} scheduleTitle={r.schedules?.title ?? null} />
             ))}
           </div>
         </div>
@@ -100,7 +102,7 @@ export function AgentRunsPanel({ agentId, workspaceSlug }: Props) {
   );
 }
 
-function RunRow({ run }: { run: Run }) {
+function RunRow({ run, scheduleTitle }: { run: Run; scheduleTitle: string | null }) {
   const [expanded, setExpanded] = useState(false);
   const ok = run.status === "done";
   const fail = run.status === "failed" || run.status === "fail";
@@ -145,7 +147,7 @@ function RunRow({ run }: { run: Run }) {
             {run.status}
           </span>
           <span style={{ color: "var(--app-fg-3)" }}>
-            · {run.triggered_by}
+            · {run.triggered_by}{scheduleTitle && ` · ${scheduleTitle}`}
           </span>
         </div>
         <div style={{ color: "var(--app-fg-3)", fontSize: 10.5 }}>
