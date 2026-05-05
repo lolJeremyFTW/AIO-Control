@@ -105,6 +105,10 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
       SUPABASE_URL: process.env.SUPABASE_URL ?? "",
       SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
       AIO_WORKSPACE_ID: process.env.AIO_WORKSPACE_ID ?? "default",
+      // Master key for pgcrypto symmetric decrypt — needed by the
+      // send_telegram_message tool to resolve the Telegram bot token
+      // through the resolve_api_key RPC.
+      AGENT_SECRET_KEY: process.env.AGENT_SECRET_KEY ?? "",
       ...(process.env.AIO_MCP_ALLOW_READ_SECRET
         ? { AIO_MCP_ALLOW_READ_SECRET: process.env.AIO_MCP_ALLOW_READ_SECRET }
         : {}),
