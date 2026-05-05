@@ -155,7 +155,13 @@ export async function POST(req: Request) {
   const llmConfig = talkSettings?.llm ?? "claude-sonnet-4-5";
   const [resolvedProvider, resolvedModel] = resolveLlmProviderModel(llmConfig, llmProvider);
 
-  const apiKey = await resolveApiKey(resolvedProvider === "ollama" ? "ollama" : "openrouter", {
+  const llmKeyName =
+    resolvedProvider === "ollama"
+      ? "ollama"
+      : resolvedProvider === "claude" || resolvedProvider === "claude_cli"
+        ? "anthropic"
+        : "openrouter";
+  const apiKey = await resolveApiKey(llmKeyName, {
     workspaceId: workspace.id,
     businessId: agent.business_id,
   });
