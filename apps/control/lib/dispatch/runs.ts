@@ -228,7 +228,7 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
     try {
       await supabase
         .from("runs")
-        .update({ message_history: history })
+        .update({ message_history: history, cost_cents: cost })
         .eq("id", runId);
     } catch (err) {
       // Non-fatal; the final write at the end will catch up.
@@ -273,6 +273,11 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
         cost = event.usage.cost_cents;
         inputTokens = event.usage.input_tokens;
         outputTokens = event.usage.output_tokens;
+      } else if (event.type === "cost_update") {
+        cost = event.cost_cents;
+        inputTokens = event.input_tokens;
+        outputTokens = event.output_tokens;
+        void flushHistory();
       } else if (event.type === "tool_call_start") {
         const step: RunStep & { kind: "tool_call" } = {
           kind: "tool_call",
