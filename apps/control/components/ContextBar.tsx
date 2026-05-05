@@ -363,5 +363,6 @@ const fmtEur = (n: number) =>
   n.toLocaleString("nl-NL", {
     style: "currency",
     currency: "EUR",
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   });
