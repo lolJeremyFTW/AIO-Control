@@ -151,6 +151,12 @@ export function RunsTimeline({ runs, agents, businessId, workspaceId }: Props) {
                     marginTop: 2,
                   }}
                 >
+                  {r.schedules?.title && (
+                    <span style={{ color: "var(--app-fg-2)", fontWeight: 600 }}>
+                      {r.schedules.title}
+                      {" · "}
+                    </span>
+                  )}
                   {r.triggered_by}
                   {r.duration_ms != null
                     ? ` · ${(r.duration_ms / 1000).toFixed(1)}s`
