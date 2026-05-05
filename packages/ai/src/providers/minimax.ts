@@ -247,6 +247,15 @@ async function* streamMinimaxWithTools(
       totalOutputTokens += turnOutputTokens;
       assistantTextSoFar += turnText;
 
+      // Emit live cost after every hop so the dispatcher can write a
+      // partial DB update — the run list then shows cost building up.
+      yield {
+        type: "cost_update",
+        cost_cents: priceTokens(model, totalInputTokens, totalOutputTokens),
+        input_tokens: totalInputTokens,
+        output_tokens: totalOutputTokens,
+      };
+
       // No tool calls → final assistant turn complete.
       if (turnToolCalls.length === 0) {
         yield {

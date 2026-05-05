@@ -23,6 +23,12 @@ export type AGUIEvent =
     }
   | { type: "state_update"; patch: Record<string, unknown> }
   | { type: "error"; code: string; message: string }
+  | {
+      type: "cost_update";
+      cost_cents: number;
+      input_tokens: number;
+      output_tokens: number;
+    }
   // ── AIO Control extensions to AG-UI ────────────────────────────────
   // These flow from the chat-route tool-dispatcher to the chat-panel
   // (and beyond) — they're not standard AG-UI events but the panel
