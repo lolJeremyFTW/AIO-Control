@@ -56,7 +56,7 @@ export function FlowBuilder({ workspaceSlug, workspaceId, businesses }: Props) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
-        body: JSON.stringify({ description }),
+        body: JSON.stringify({ description, workspace_id: workspaceId }),
       });
       const json = await res.json();
       if (!res.ok || !json.ok) {
