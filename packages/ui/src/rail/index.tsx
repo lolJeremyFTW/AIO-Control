@@ -89,7 +89,9 @@ type Props = {
   /** Optional handler for the "Workspace agents" rail-bottom row.
    *  When omitted the row hides — used in early phases. */
   onOpenWorkspaceAgents?: () => void;
-  page?: "dashboard" | "settings" | "profile" | "agents";
+  /** Optional handler for the "AI Flow Builder" rail-bottom row. */
+  onOpenWorkspaceFlows?: () => void;
+  page?: "dashboard" | "settings" | "profile" | "agents" | "flows";
   /** Right-click handlers — surface a custom context menu in the shell. */
   onContextMenuRail?: (
     e: ReactMouseEvent,
@@ -117,6 +119,7 @@ type Props = {
     newBusiness?: string;
     settings?: string;
     workspaceAgents?: string;
+    workspaceFlows?: string;
     emptyTopics?: string;
   };
 };
@@ -144,6 +147,7 @@ export function Rail({
   onReorderBusiness,
   onCreateTopic,
   onOpenWorkspaceAgents,
+  onOpenWorkspaceFlows,
   emptyTopicsLabel,
   labels,
 }: Props) {
@@ -154,6 +158,7 @@ export function Rail({
     newBusiness: labels?.newBusiness ?? "New business",
     settings: labels?.settings ?? "Settings",
     workspaceAgents: labels?.workspaceAgents ?? "Workspace agents",
+    workspaceFlows: labels?.workspaceFlows ?? "AI Flow Builder",
     emptyTopics:
       labels?.emptyTopics ??
       emptyTopicsLabel ??
@@ -460,6 +465,28 @@ export function Rail({
             expanded={expanded}
             selected={page === "agents"}
             onClick={onOpenWorkspaceAgents}
+          />
+        )}
+        {onOpenWorkspaceFlows && (
+          <ActionRow
+            icon={
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M12 3l1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5L12 3z" />
+              </svg>
+            }
+            label={L.workspaceFlows}
+            expanded={expanded}
+            selected={page === "flows"}
+            onClick={onOpenWorkspaceFlows}
           />
         )}
         <ActionRow

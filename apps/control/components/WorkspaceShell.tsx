@@ -315,17 +315,19 @@ export function WorkspaceShell({
   // to deducing from the pathname so /agents / /settings / /profile
   // automatically light up the right rail row without the page having
   // to explicitly pass `page=`.
-  const page: "dashboard" | "settings" | "profile" | "agents" = drilledBiz
+  const page: "dashboard" | "settings" | "profile" | "agents" | "flows" = drilledBiz
     ? "dashboard"
     : pageProp !== "dashboard"
       ? pageProp
       : pathname.startsWith(`/${workspace.slug}/agents`)
         ? "agents"
-        : pathname.startsWith(`/${workspace.slug}/settings`)
-          ? "settings"
-          : pathname.startsWith(`/${workspace.slug}/profile`)
-            ? "profile"
-            : "dashboard";
+        : pathname.startsWith(`/${workspace.slug}/flows`)
+          ? "flows"
+          : pathname.startsWith(`/${workspace.slug}/settings`)
+            ? "settings"
+            : pathname.startsWith(`/${workspace.slug}/profile`)
+              ? "profile"
+              : "dashboard";
 
   const profileItem: RailItem = {
     id: "me",
@@ -763,6 +765,7 @@ export function WorkspaceShell({
           newBusiness: t("nav.newBusiness"),
           settings: t("nav.settings"),
           workspaceAgents: t("nav.workspaceAgents"),
+          workspaceFlows: t("nav.workspaceFlows"),
           emptyTopics: t("rail.emptyTopics"),
         }}
         onBack={() => {
@@ -801,6 +804,10 @@ export function WorkspaceShell({
         onOpenWorkspaceAgents={() => {
           closeRail();
           router.push(`/${workspace.slug}/agents`);
+        }}
+        onOpenWorkspaceFlows={() => {
+          closeRail();
+          router.push(`/${workspace.slug}/flows`);
         }}
         onCreateBusiness={() => {
           closeRail();
