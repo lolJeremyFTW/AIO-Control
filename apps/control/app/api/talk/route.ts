@@ -200,7 +200,10 @@ export async function POST(req: Request) {
   // agent's own provider + model so the voice conversation feels like
   // talking directly to that agent.
   const agentConfig = (agent.config ?? {}) as AgentConfig;
-  const llmConfig = talkSettings?.llm ?? null;
+  // "__header_agent__" is a sentinel meaning "use the selected agent's own model".
+  const llmConfig = (talkSettings?.llm && talkSettings.llm !== "__header_agent__")
+    ? talkSettings.llm
+    : null;
   const [resolvedProvider, resolvedModel] = llmConfig
     ? resolveLlmProviderModel(llmConfig, agent.provider)
     : [agent.provider, agent.model ?? ""];
