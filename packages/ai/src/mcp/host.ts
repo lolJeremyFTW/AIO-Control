@@ -97,14 +97,15 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
     args: ["-y", "@modelcontextprotocol/server-fetch"],
   },
   // AIO Control platform tools (list_businesses, read_secret, list_agents,
-  // list_runs). Spawns as a local TypeScript subprocess via tsx.
+  // list_runs). Spawns as a local TypeScript subprocess via tsx (npx ensures
+  // tsx is available without requiring a global install).
   // Credentials come via env — SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY
   // are forwarded by McpHost.connect() via envOverrides.
   // Workspace is scoped by AIO_WORKSPACE_ID env var (set at the agent/
   // workspace level in aio-control).
   aio: {
-    command: "/home/jeremy/aio-control/packages/ai/node_modules/.bin/tsx",
-    args: ["/home/jeremy/mcp-servers/aio-server.ts"],
+    command: "npx",
+    args: ["-y", "tsx", "/home/jeremy/aio-control/packages/ai/src/mcp/servers/aio-server.ts"],
     env: () => ({
       SUPABASE_URL: process.env.SUPABASE_URL ?? "",
       SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
@@ -112,11 +113,11 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
     }),
   },
   // Bash shell access — executes commands locally on the VPS.
-  // Dangerous commands (rm -rf, shutdown, dd, etc.) are blocked
-  // unless prefixed with "Approved: " (user approved via ask_followup).
+  // execute_code and cli_tool are exposed as aliases alongside bash so
+  // agents that reference those names in their system prompts work correctly.
   bash: {
-    command: "/home/jeremy/aio-control/packages/ai/node_modules/.bin/tsx",
-    args: ["/home/jeremy/mcp-servers/bash-server.ts"],
+    command: "npx",
+    args: ["-y", "tsx", "/home/jeremy/aio-control/packages/ai/src/mcp/servers/bash-server.ts"],
   },
 };
 
@@ -213,7 +214,12 @@ export class McpHost {
       console.error(`[mcp][${id}] stderr collected: ${stderrText}`);
       throw connErr;
     }
-    const list = await client.listTools();
+    const list = await client.listTools().catch((listErr: unknown) => {
+      const stderrText = Buffer.concat(stderrChunks).toString();
+      console.error(`[mcp][${id}] listTools failed: ${listErr instanceof Error ? listErr.message : listErr}`);
+      console.error(`[mcp][${id}] stderr at listTools: ${stderrText}`);
+      throw listErr;
+    });
     const fsScope = permissions.filesystem ?? "rw";
     const tools: McpToolDef[] = list.tools
       .filter((t) => {

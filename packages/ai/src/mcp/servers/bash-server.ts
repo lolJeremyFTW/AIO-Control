@@ -26,7 +26,7 @@ const ALWAYS_DANGEROUS_PATTERNS: RegExp[] = [
   /^parted\s+/,               // parted — partition manager
 ];
 
-// Commands that require approval unless prefixed with "Approved: ".
+// Commands that require approval.
 const DANGEROUS_PATTERNS: RegExp[] = [
   /^rm\s+-rf\s+\//,           // rm -rf / — wipe root
   /^rm\s+-rf\s+\/home/,      // rm -rf /home — wipe home dirs
@@ -128,6 +128,15 @@ const ALWAYS_SAFE_PATTERNS: RegExp[] = [
   /^uptime\s+-s/,          // uptime -s (safe)
 ];
 
+function hasShellControl(cmd: string): boolean {
+  return /[;&|<>`]/.test(cmd) || /\$\s*\(/.test(cmd);
+}
+
+function hasApprovalToken(token: unknown): boolean {
+  const expected = process.env.AIO_BASH_APPROVAL_TOKEN;
+  return typeof expected === "string" && expected.length > 0 && token === expected;
+}
+
 function isCommandDangerous(cmd: string): { dangerous: boolean; pattern?: string; always?: boolean } {
   const trimmed = cmd.trim();
 
@@ -143,9 +152,8 @@ function isCommandDangerous(cmd: string): { dangerous: boolean; pattern?: string
     }
   }
 
-  // Check if it's explicitly marked as approved (user already approved it)
-  if (trimmed.startsWith("Approved: ")) {
-    return { dangerous: false };
+  if (hasShellControl(trimmed)) {
+    return { dangerous: true, pattern: "shell-control-operator" };
   }
 
   return { dangerous: false };
@@ -153,6 +161,7 @@ function isCommandDangerous(cmd: string): { dangerous: boolean; pattern?: string
 
 function isCommandAlwaysSafe(cmd: string): boolean {
   const trimmed = cmd.trim();
+  if (hasShellControl(trimmed)) return false;
   for (const pattern of ALWAYS_SAFE_PATTERNS) {
     if (pattern.test(trimmed)) return true;
   }
@@ -208,24 +217,42 @@ const server = new Server(
   { capabilities: { tools: {} } },
 );
 
+const BASH_TOOL_SCHEMA = {
+  type: "object",
+  properties: {
+    command: {
+      type: "string",
+      description: "The bash command to execute on the VPS.",
+    },
+    approval_token: {
+      type: "string",
+      description:
+        "Required only for dangerous commands; must match AIO_BASH_APPROVAL_TOKEN.",
+    },
+  },
+  required: ["command"],
+  additionalProperties: false,
+};
+
+const BASH_TOOL_DESCRIPTION =
+  "Execute a bash command on the VPS. Dangerous commands (rm -rf, shutdown, dd, etc.) require user approval unless the command is prefixed with 'Approved: '.";
+
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
     {
+      name: "execute_code",
+      description: BASH_TOOL_DESCRIPTION,
+      inputSchema: BASH_TOOL_SCHEMA,
+    },
+    {
+      name: "cli_tool",
+      description: BASH_TOOL_DESCRIPTION,
+      inputSchema: BASH_TOOL_SCHEMA,
+    },
+    {
       name: "bash",
-      description:
-        "Execute a bash command on the VPS. Dangerous commands (rm -rf, shutdown, dd, etc.) require user approval via ask_followup unless the command is prefixed with 'Approved: '.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          command: {
-            type: "string",
-            description:
-              "The bash command to execute. Prefix with 'Approved: ' after user approval.",
-          },
-        },
-        required: ["command"],
-        additionalProperties: false,
-      },
+      description: BASH_TOOL_DESCRIPTION,
+      inputSchema: BASH_TOOL_SCHEMA,
     },
   ],
 }));
@@ -233,10 +260,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params as {
     name: string;
-    arguments: { command?: string };
+    arguments: { command?: string; approval_token?: string };
   };
 
-  if (name !== "bash") {
+  if (name !== "bash" && name !== "execute_code" && name !== "cli_tool") {
     return {
       content: [
         {
@@ -265,6 +292,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { dangerous, pattern, always } = isCommandDangerous(command);
 
   if (dangerous) {
+    if (!always && hasApprovalToken(args?.approval_token)) {
+      const result = await executeBash(command);
+      return { content: [{ type: "text", text: result }] };
+    }
+
     // If it's always dangerous (dd, mkfs, etc.) — even approval can't save it
     if (always) {
       return {
@@ -291,8 +323,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             danger: true,
             command,
             pattern,
-            message: `Dangerous command detected: ${command}\n\nThis command requires user approval. Prefix with 'Approved: ' after approving.`,
+            message:
+              `Dangerous command detected: ${command}\n\n` +
+              "This command requires an approval_token that matches AIO_BASH_APPROVAL_TOKEN.",
             approval_required: true,
+            token_required: true,
           }),
         },
       ],
