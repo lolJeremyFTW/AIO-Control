@@ -68,6 +68,7 @@ export function TalkModule({ agents, workspaceSlug, defaultAgentId }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const currentUrlRef = useRef<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   // Refs so the stable onComplete callback always sees the latest values.
   const agentIdRef = useRef(agentId);
@@ -80,6 +81,12 @@ export function TalkModule({ agents, workspaceSlug, defaultAgentId }: Props) {
   // this promise resolves (or rejects).
   const handleComplete = useCallback(async (blob: Blob) => {
     setUiError(null);
+
+    const abort = new AbortController();
+    abortRef.current = abort;
+
+    // 45 s hard timeout so a hanging API call doesn't freeze the button.
+    const timeoutId = setTimeout(() => abort.abort(), 45_000);
 
     const form = new FormData();
     form.append("audio", blob, "recording.webm");
@@ -94,11 +101,18 @@ export function TalkModule({ agents, workspaceSlug, defaultAgentId }: Props) {
         method: "POST",
         body: form,
         credentials: "same-origin",
+        signal: abort.signal,
       });
-    } catch {
-      setUiError("Kon server niet bereiken.");
+    } catch (err) {
+      clearTimeout(timeoutId);
+      abortRef.current = null;
+      if ((err as Error).name !== "AbortError") {
+        setUiError("Kon server niet bereiken.");
+      }
       return;
     }
+    clearTimeout(timeoutId);
+    abortRef.current = null;
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: "Onbekende fout" }));
@@ -141,7 +155,8 @@ export function TalkModule({ agents, workspaceSlug, defaultAgentId }: Props) {
   const isProcessing = state === "processing";
   const isRequesting = state === "requesting";
   const isError = state === "error";
-  const isBusy = isProcessing || playing;
+  // Only block clicks during audio playback — processing is cancellable.
+  const isBusy = playing;
 
   // Click-outside dismiss for the dropdown.
   useEffect(() => {
@@ -182,14 +197,22 @@ export function TalkModule({ agents, workspaceSlug, defaultAgentId }: Props) {
   };
 
   const handleMicClick = useCallback(async () => {
-    if (isBusy) return;
+    if (isBusy) return; // only blocks during playback
+
+    if (isProcessing) {
+      // Cancel the in-flight server request — hook auto-resets to idle.
+      abortRef.current?.abort();
+      return;
+    }
+
     if (isRecording) {
       stop();
-    } else {
-      if (isError) reset();
-      await start();
+      return;
     }
-  }, [isBusy, isRecording, isError, start, stop, reset]);
+
+    if (isError) reset();
+    await start();
+  }, [isBusy, isProcessing, isRecording, isError, start, stop, reset]);
 
   if (!agent) {
     return (
@@ -216,7 +239,7 @@ export function TalkModule({ agents, workspaceSlug, defaultAgentId }: Props) {
   const micClass = [
     "talk-mic",
     isRecording ? "is-listening" : "",
-    isBusy ? "is-busy" : "",
+    isProcessing || isBusy ? "is-busy" : "",
     displayError ? "is-error" : "",
   ]
     .filter(Boolean)
@@ -224,11 +247,13 @@ export function TalkModule({ agents, workspaceSlug, defaultAgentId }: Props) {
 
   const micTitle = isRecording
     ? "Klik om te stoppen"
-    : isBusy
-      ? "Verwerken…"
-      : displayError
-        ? displayError
-        : `Praat met ${agent.name}`;
+    : isProcessing
+      ? "Klik om te annuleren"
+      : isBusy
+        ? "Speelt af…"
+        : displayError
+          ? displayError
+          : `Praat met ${agent.name}`;
 
   return (
     <div className="talk-module" ref={containerRef}>
@@ -249,7 +274,7 @@ export function TalkModule({ agents, workspaceSlug, defaultAgentId }: Props) {
         className={micClass}
         onClick={handleMicClick}
         title={micTitle}
-        disabled={isBusy}
+        disabled={isBusy} // only true during playback
       >
         <span className="talk-mic-pulse">
           {displayError ? (
