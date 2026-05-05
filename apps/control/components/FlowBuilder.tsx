@@ -1,9 +1,10 @@
 // AI-powered flow builder. The user describes an automation in natural
-// language; Claude generates a complete FlowPlan (agent + schedule +
-// skills). The user can edit each card before creating everything in one shot.
+// language; Claude or MiniMax generates a complete FlowPlan (agent + schedule
+// + skills). The user can edit each card before creating everything in one shot.
 
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
@@ -38,7 +39,7 @@ export function FlowBuilder({ workspaceSlug, workspaceId, businesses }: Props) {
   const [businessId, setBusinessId] = useState<string | null>(businesses[0]?.id ?? null);
   const [generating, setGenerating] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ msg: string; needsApiKey?: boolean } | null>(null);
   const [plan, setPlan] = useState<FlowPlan | null>(null);
 
   // Editable plan state — copied from generated plan and locally mutable
@@ -60,7 +61,7 @@ export function FlowBuilder({ workspaceSlug, workspaceId, businesses }: Props) {
       });
       const json = await res.json();
       if (!res.ok || !json.ok) {
-        setError(json.error ?? "Genereren mislukt.");
+        setError({ msg: json.error ?? "Genereren mislukt.", needsApiKey: !!json.needsApiKey });
         return;
       }
       const p: FlowPlan = json.plan;
@@ -69,7 +70,7 @@ export function FlowBuilder({ workspaceSlug, workspaceId, businesses }: Props) {
       setSchedDraft(p.schedule ? { ...p.schedule } : null);
       setSkillsDraft(p.skills.map((s) => ({ ...s })));
     } catch {
-      setError("Netwerk fout bij genereren.");
+      setError({ msg: "Netwerk fout bij genereren." });
     } finally {
       setGenerating(false);
     }
@@ -93,12 +94,19 @@ export function FlowBuilder({ workspaceSlug, workspaceId, businesses }: Props) {
       });
       setCreating(false);
       if (!result.ok) {
-        setError(result.error);
+        setError({ msg: result.error });
         return;
       }
       router.push(`/${workspaceSlug}/agents`);
       router.refresh();
     });
+  }
+
+  function addEmptySkill() {
+    setSkillsDraft((s) => [
+      ...s,
+      { name: "", description: "", body: "" },
+    ]);
   }
 
   return (
@@ -142,6 +150,9 @@ export function FlowBuilder({ workspaceSlug, workspaceId, businesses }: Props) {
             boxSizing: "border-box",
           }}
           disabled={generating}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) handleGenerate();
+          }}
         />
 
         <div
@@ -226,7 +237,20 @@ export function FlowBuilder({ workspaceSlug, workspaceId, businesses }: Props) {
             color: "var(--rose-fg, #dc2626)",
           }}
         >
-          {error}
+          {error.needsApiKey ? (
+            <>
+              Geen API key geconfigureerd.{" "}
+              <Link
+                href={`/${workspaceSlug}/settings/api-keys`}
+                style={{ color: "inherit", fontWeight: 600, textDecoration: "underline" }}
+              >
+                Voeg een Claude of MiniMax key toe via Settings → API Keys
+              </Link>
+              .
+            </>
+          ) : (
+            error.msg
+          )}
         </div>
       )}
 
@@ -438,11 +462,27 @@ export function FlowBuilder({ workspaceSlug, workspaceId, businesses }: Props) {
           <PlanCard
             title={`Skills (${skillsDraft.length})`}
             icon={<BookIcon />}
+            onAddSkill={addEmptySkill}
           >
             {skillsDraft.length === 0 ? (
               <p style={{ fontSize: 12.5, color: "var(--app-fg-3)", margin: 0 }}>
                 Geen skills gegenereerd. AI bepaalde dat herbruikbare kennis
-                hier niet nodig is.
+                hier niet nodig is.{" "}
+                <button
+                  onClick={addEmptySkill}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    color: "var(--brand)",
+                    fontSize: 12.5,
+                    padding: 0,
+                    fontFamily: "inherit",
+                    textDecoration: "underline",
+                  }}
+                >
+                  Skill toevoegen
+                </button>
               </p>
             ) : (
               skillsDraft.map((skill, i) => (
@@ -619,6 +659,7 @@ function PlanCard({
   toggle,
   enabled,
   onToggle,
+  onAddSkill,
 }: {
   title: string;
   icon: React.ReactNode;
@@ -626,6 +667,7 @@ function PlanCard({
   toggle?: boolean;
   enabled?: boolean;
   onToggle?: (on: boolean) => void;
+  onAddSkill?: () => void;
 }) {
   return (
     <section
@@ -669,6 +711,27 @@ function PlanCard({
             />
             {enabled ? "Ingeschakeld" : "Uitgeschakeld"}
           </label>
+        )}
+        {onAddSkill && (
+          <button
+            onClick={onAddSkill}
+            style={{
+              marginLeft: "auto",
+              background: "none",
+              border: "1px solid var(--app-border)",
+              borderRadius: 5,
+              cursor: "pointer",
+              color: "var(--app-fg-2)",
+              fontSize: 11.5,
+              padding: "3px 10px",
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+            }}
+          >
+            <PlusIcon />
+            Skill toevoegen
+          </button>
         )}
       </div>
       {(enabled === undefined || enabled) && (
@@ -771,6 +834,15 @@ function CheckIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="20 6 9 17 4 12" />
+    </svg>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
     </svg>
   );
 }

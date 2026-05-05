@@ -1,6 +1,6 @@
 // AI-powered flow plan generator. Takes a natural-language description and
 // returns a complete FlowPlan — agent + optional schedule + optional skills.
-// Lives in @aio/ai so we can use the Anthropic SDK that's already here.
+// Supports Claude (Anthropic SDK) and MiniMax (via Anthropic-compatible endpoint).
 
 import Anthropic from "@anthropic-ai/sdk";
 
@@ -33,7 +33,15 @@ export type FlowPlan = {
   explanation: string;
 };
 
-const SYSTEM = `Je bent een expert in het ontwerpen van AI-agent workflows voor AIO Control.
+export type FlowPlanProvider = "claude" | "minimax";
+
+function buildSystem(provider: FlowPlanProvider): string {
+  const defaultProvider =
+    provider === "minimax"
+      ? `- "minimax"    + model "MiniMax-M2.7-Highspeed"  (standaard, geconfigureerd in dit systeem)`
+      : `- "claude"     + model "claude-sonnet-4-6"  (standaard, beste kwaliteit)`;
+
+  return `Je bent een expert in het ontwerpen van AI-agent workflows voor AIO Control.
 AIO Control is een multi-agent task management platform. Jouw taak: vertaal een gebruikersbeschrijving
 naar een concreet uitvoerbaar plan bestaande uit een agent, een optionele schedule, en optionele skills.
 
@@ -44,10 +52,11 @@ naar een concreet uitvoerbaar plan bestaande uit een agent, een optionele schedu
 - "reviewer"  — beoordeelt of keurt goed/af
 - "router"    — routeert naar andere agents op basis van regels
 
-## Providers + modellen
-- "claude"      + model "claude-sonnet-4-6"  (standaard, beste kwaliteit)
+## Providers + modellen (kies de standaard tenzij de gebruiker iets anders vraagt)
+${defaultProvider}
+- "claude"      + model "claude-sonnet-4-6"  (beste kwaliteit)
 - "claude"      + model "claude-haiku-4-5-20251001"  (snel + goedkoop)
-- "minimax"     + model "MiniMax-M2.7-highspeed"  (Chinees, snel)
+- "minimax"     + model "MiniMax-M2.7-Highspeed"  (snel, goedkoop)
 - "openrouter"  + model "meta-llama/llama-3.3-70b-instruct"  (open source)
 - "ollama"      + model "llama3.2"  (lokaal, geen kosten)
 
@@ -71,6 +80,7 @@ Maak alleen skills aan als de agent duidelijk herbruikbare instructies nodig hee
 
 Geef altijd een heldere system_prompt die exact beschrijft wat de agent moet doen.
 Schrijf de system_prompt in dezelfde taal als de gebruikersbeschrijving.`;
+}
 
 const TOOL: Anthropic.Tool = {
   name: "create_flow_plan",
@@ -144,18 +154,26 @@ const TOOL: Anthropic.Tool = {
   },
 };
 
+const MINIMAX_ANTHROPIC_BASE = "https://api.minimax.io/v1/anthropic";
+const MINIMAX_MODEL = "MiniMax-M2.7-Highspeed";
+
 export async function generateFlowPlan(
   description: string,
-  apiKey?: string,
+  apiKey: string,
+  provider: FlowPlanProvider = "claude",
 ): Promise<FlowPlan> {
-  const key = apiKey ?? process.env.ANTHROPIC_API_KEY;
-  if (!key) throw new Error("Geen Anthropic API key geconfigureerd.");
+  const clientOpts: ConstructorParameters<typeof Anthropic>[0] = { apiKey };
+  if (provider === "minimax") {
+    clientOpts.baseURL = MINIMAX_ANTHROPIC_BASE;
+  }
 
-  const client = new Anthropic({ apiKey: key });
+  const model = provider === "minimax" ? MINIMAX_MODEL : "claude-sonnet-4-6";
+  const client = new Anthropic(clientOpts);
+
   const msg = await client.messages.create({
-    model: "claude-sonnet-4-6",
+    model,
     max_tokens: 4096,
-    system: SYSTEM,
+    system: buildSystem(provider),
     tools: [TOOL],
     tool_choice: { type: "any" },
     messages: [
