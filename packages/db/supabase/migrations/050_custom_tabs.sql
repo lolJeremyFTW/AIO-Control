@@ -31,3 +31,5 @@ drop policy if exists "custom_tabs_delete" on aio_control.custom_tabs;
 create policy "custom_tabs_delete"
   on aio_control.custom_tabs for delete
   using (aio_control.workspace_role(workspace_id) in ('owner', 'admin', 'editor'));
+grant select, insert, update, delete on aio_control.custom_tabs to authenticated;
+grant select on aio_control.custom_tabs to anon;
