@@ -888,7 +888,9 @@ export function WorkspaceShell({
                   ? t("page.profile")
                   : page === "agents"
                     ? t("page.workspaceAgents")
-                    : t("page.dashboard"),
+                    : page === "flows"
+                      ? t("page.flows")
+                      : t("page.dashboard"),
             pageSub: drilledBiz?.biz.sub ?? undefined,
           }}
           searchPlaceholder={t("header.searchPlaceholder")}

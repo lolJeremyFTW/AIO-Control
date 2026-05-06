@@ -77,6 +77,7 @@ const nl: Dict = {
   "page.talk": "Talk to AI",
   "page.talk.sub":
     "Provider · stem · log voor de microfoon-knop in de header",
+  "page.flows": "AI Flow Builder",
   "page.workspaceAgents": "Workspace agents",
   "page.workspaceAgents.sub":
     "Agenda · revenue · alle agents in deze workspace, gegroepeerd per business.",
@@ -944,6 +945,7 @@ const en: Partial<Dict> = {
   "page.talk": "Talk to AI",
   "page.talk.sub":
     "Provider · voice · log for the microphone button in the header",
+  "page.flows": "AI Flow Builder",
   "page.workspaceAgents": "Workspace agents",
   "page.workspaceAgents.sub":
     "Calendar · revenue · every agent in this workspace, grouped by business.",
@@ -1522,6 +1524,7 @@ const de: Partial<Dict> = {
   "page.talk": "Talk to AI",
   "page.talk.sub":
     "Provider · Stimme · Log für den Mikrofon-Button im Header",
+  "page.flows": "AI Flow Builder",
   "page.workspaceAgents": "Workspace-Agents",
   "page.workspaceAgents.sub":
     "Kalender · Umsatz · alle Agents in diesem Workspace, gruppiert nach Business.",
