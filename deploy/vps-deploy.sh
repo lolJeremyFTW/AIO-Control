@@ -18,6 +18,11 @@ APP="$ROOT/apps/control"
 STAGE_AIO="$ROOT/.staged-aio"
 STAGE_ROOT="$ROOT/.staged-root"
 
+# Bump node heap. The default ~2 GB cap is too tight for Turbopack on this
+# repo — building two basePath variants in series OOM-kills (exit 137) on
+# the VPS without this. 8 GB leaves plenty of headroom on a 23 GB box.
+export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=8192}"
+
 cd "$ROOT"
 
 echo "▸ Fetching latest main"

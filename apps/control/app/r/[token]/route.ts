@@ -53,6 +53,35 @@ function hashIp(ip: string): string {
   return createHash("sha256").update(`${salt}:${ip}`).digest("hex").slice(0, 32);
 }
 
+// In-process rate limiter: cap views per (token, ip_hash) bucket. Keeps a
+// rogue bot from spamming the same report and inflating view counts. Memory
+// footprint is bounded by tokenIpMap.size — we sweep entries older than the
+// window every 1000 hits.
+type RateBucket = { count: number; firstAt: number };
+const rateLimitWindowMs = 60 * 60_000; // 1 hour
+const rateLimitMax = 30; // max 30 views per token+ip per hour
+const tokenIpMap = new Map<string, RateBucket>();
+let rateSweepCounter = 0;
+
+function rateLimitCheck(token: string, ipHash: string): boolean {
+  rateSweepCounter++;
+  if (rateSweepCounter % 1000 === 0) {
+    const cutoff = Date.now() - rateLimitWindowMs;
+    for (const [k, v] of tokenIpMap) {
+      if (v.firstAt < cutoff) tokenIpMap.delete(k);
+    }
+  }
+  const key = `${token}:${ipHash}`;
+  const now = Date.now();
+  const cur = tokenIpMap.get(key);
+  if (!cur || now - cur.firstAt > rateLimitWindowMs) {
+    tokenIpMap.set(key, { count: 1, firstAt: now });
+    return true;
+  }
+  cur.count++;
+  return cur.count <= rateLimitMax;
+}
+
 type RouteCtx = { params: Promise<{ token: string }> };
 
 export async function GET(req: NextRequest, ctx: RouteCtx) {
@@ -78,6 +107,21 @@ export async function GET(req: NextRequest, ctx: RouteCtx) {
     const ip = clientIp(req);
     const ipHash = hashIp(ip);
     const referer = (req.headers.get("referer") ?? "").slice(0, 200) || null;
+
+    // Rate-limit BEFORE the DB insert — a hostile bot spamming this URL
+    // shouldn't be able to bloat the views table or skew counts. The
+    // user still gets the HTML; we just stop logging.
+    if (!rateLimitCheck(token, ipHash)) {
+      return new NextResponse(lead.html_content, {
+        status: 200,
+        headers: {
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": "private, max-age=60",
+          "x-frame-options": "DENY",
+          "x-rate-limit": "exceeded",
+        },
+      });
+    }
 
     // Dedup window: skip if same lead+ip viewed in last 60 seconds.
     const sixtySecondsAgo = new Date(Date.now() - 60_000).toISOString();

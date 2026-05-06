@@ -15,7 +15,7 @@
 //    Used when no MCP servers are configured (fast, cheap plain chat).
 
 import Anthropic from "@anthropic-ai/sdk";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import type { AGUIEvent, ChatMessage } from "../ag-ui";
 import { McpHost } from "../mcp/host";
@@ -67,41 +67,139 @@ function backoffMs(klass: MinimaxErrorClass, attempt: number): number {
   return Math.min(1000 * Math.pow(2, attempt), 4_000);
 }
 
-/** Per-API-key concurrency guard. Token/Coder Plan allows ~5 concurrent
- *  connections per key; we cap at 3 by default to leave headroom for
- *  interactive chat. Each MiniMax key gets its own slot pool so workspace
- *  A's cron run never blocks workspace B's interactive chat. */
+/** Per-API-key concurrency guard + DB-backed 429 cooldown.
+ *
+ *  Concurrency: Token/Coder Plan allows ~5 concurrent connections per key;
+ *  we cap at 3 to leave headroom for interactive chat. In-process Map ok
+ *  here because it's enforced PER NODE PROCESS — different processes share
+ *  the same Token Plan bucket but the cooldown table absorbs the overflow.
+ *
+ *  Cooldown: shared across all Node processes (aio-control + aio-control-root,
+ *  and any other consumer of the same key) via aio_control.provider_cooldowns.
+ *  When workspace A trips a 429 on :3010, workspace B's chat on :3012 sees
+ *  the cooldown row and waits its turn — no double-tripping the bucket.
+ *
+ *  Multi-tenant: keyed by SHA-256(provider:apiKey). Same key shared across
+ *  workspaces shares the cooldown (correct — same upstream bucket). Different
+ *  keys are independent.
+ */
 const MINIMAX_MAX_CONCURRENT = Number(process.env.MINIMAX_MAX_CONCURRENT ?? "3");
 
 type KeyState = {
   inFlight: number;
   waiters: Array<() => void>;
-  /** When set, no new acquires allowed until this timestamp (ms) — used
-   *  by the 429 cooldown. */
-  cooldownUntil: number;
 };
 const minimaxKeyState = new Map<string, KeyState>();
+const cooldownCache = new Map<
+  string,
+  { until: number; cachedAt: number }
+>();
+const COOLDOWN_CACHE_TTL_MS = 5_000;
+
+function hashKey(apiKey: string): string {
+  return createHash("sha256").update(`minimax:${apiKey}`).digest("hex");
+}
 
 function getKeyState(apiKey: string): KeyState {
   let s = minimaxKeyState.get(apiKey);
   if (!s) {
-    s = { inFlight: 0, waiters: [], cooldownUntil: 0 };
+    s = { inFlight: 0, waiters: [] };
     minimaxKeyState.set(apiKey, s);
   }
   return s;
 }
 
+/** Direct Supabase REST helpers — packaged here so @aio/ai stays free of
+ *  app-layer imports. Uses SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY env
+ *  vars; if either is missing we silently degrade to in-process state. */
+function supabaseEnv(): { url: string; key: string } | null {
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return null;
+  return { url: url.replace(/\/$/, ""), key };
+}
+
+async function readSharedCooldown(keyHash: string): Promise<number> {
+  const cached = cooldownCache.get(keyHash);
+  if (cached && Date.now() - cached.cachedAt < COOLDOWN_CACHE_TTL_MS) {
+    return cached.until;
+  }
+  let until = 0;
+  const env = supabaseEnv();
+  if (env) {
+    try {
+      const r = await fetch(
+        `${env.url}/rest/v1/provider_cooldowns?key_hash=eq.${encodeURIComponent(keyHash)}&select=cooldown_until&limit=1`,
+        {
+          headers: {
+            apikey: env.key,
+            Authorization: `Bearer ${env.key}`,
+            "Accept-Profile": "aio_control",
+          },
+        },
+      );
+      if (r.ok) {
+        const rows = (await r.json()) as { cooldown_until?: string }[];
+        const v = rows[0]?.cooldown_until;
+        if (v) until = new Date(v).getTime();
+      }
+    } catch {
+      // network blip — fall back to in-process state
+    }
+  }
+  cooldownCache.set(keyHash, { until, cachedAt: Date.now() });
+  return until;
+}
+
+async function writeSharedCooldown(
+  keyHash: string,
+  until: number,
+  reason: string,
+): Promise<void> {
+  cooldownCache.set(keyHash, { until, cachedAt: Date.now() });
+  const env = supabaseEnv();
+  if (!env) return;
+  try {
+    await fetch(`${env.url}/rest/v1/provider_cooldowns?on_conflict=key_hash`, {
+      method: "POST",
+      headers: {
+        apikey: env.key,
+        Authorization: `Bearer ${env.key}`,
+        "Content-Type": "application/json",
+        "Accept-Profile": "aio_control",
+        "Content-Profile": "aio_control",
+        Prefer: "resolution=merge-duplicates,return=minimal",
+      },
+      body: JSON.stringify({
+        key_hash: keyHash,
+        provider: "minimax",
+        cooldown_until: new Date(until).toISOString(),
+        reason: reason.slice(0, 200),
+        updated_at: new Date().toISOString(),
+      }),
+    });
+  } catch (err) {
+    console.error("[minimax] failed to persist cooldown:", err);
+  }
+}
+
 async function acquireMinimaxSlot(apiKey: string): Promise<void> {
   const s = getKeyState(apiKey);
-  // Honor cooldown — if we got rate-limited recently, wait it out before
-  // even attempting the next request. Logged so the user can see it in
-  // the run drawer instead of guessing why their cron is slow.
-  const now = Date.now();
-  if (s.cooldownUntil > now) {
-    const wait = s.cooldownUntil - now;
-    console.log(`[minimax] cooldown active — sleeping ${(wait / 1000).toFixed(1)}s before next request`);
-    await new Promise((r) => setTimeout(r, wait));
+  const keyHash = hashKey(apiKey);
+
+  // Honor any active cooldown — DB-backed so it works across processes.
+  // We loop in case multiple cooldown bumps stack up while we're waiting.
+  for (let i = 0; i < 5; i++) {
+    const until = await readSharedCooldown(keyHash);
+    const wait = until - Date.now();
+    if (wait <= 0) break;
+    const capped = Math.min(wait, 120_000);
+    console.log(
+      `[minimax] cooldown active — sleeping ${(capped / 1000).toFixed(1)}s before next request`,
+    );
+    await new Promise((r) => setTimeout(r, capped));
   }
+
   if (s.inFlight < MINIMAX_MAX_CONCURRENT) {
     s.inFlight++;
     return;
@@ -117,20 +215,19 @@ function releaseMinimaxSlot(apiKey: string): void {
   if (next) next();
 }
 
-/** Trigger a 429 cooldown for this key. Subsequent acquireMinimaxSlot()
- *  calls will sleep until the cooldown elapses. Cooldown duration scales
- *  with consecutive 429s to back off harder when the bucket is hot. */
+/** Trigger a 429 cooldown for this key, shared across all processes via
+ *  the provider_cooldowns table. */
 function triggerCooldown(apiKey: string, attempt: number): void {
-  const s = getKeyState(apiKey);
-  // 30s, 60s, 120s — Token Plan refill window starts at ~30s. We add a
-  // small jitter so multiple workers don't all wake at the exact same
-  // moment and immediately cause another 429.
+  const keyHash = hashKey(apiKey);
+  // 30s, 60s, 120s — Token Plan refill window starts at ~30s. Jitter so
+  // multiple processes don't wake simultaneously and re-hammer the bucket.
   const base = Math.min(30_000 * Math.pow(2, attempt), 120_000);
   const jitter = Math.floor(Math.random() * 5_000);
-  s.cooldownUntil = Math.max(s.cooldownUntil, Date.now() + base + jitter);
+  const until = Date.now() + base + jitter;
   console.log(
-    `[minimax] 429 — cooldown set to ${((base + jitter) / 1000).toFixed(1)}s for this key`,
+    `[minimax] 429 — cooldown set to ${((base + jitter) / 1000).toFixed(1)}s for this key (shared)`,
   );
+  void writeSharedCooldown(keyHash, until, `429 attempt ${attempt}`);
 }
 
 export async function* streamMinimax(
@@ -545,7 +642,35 @@ async function* streamMinimaxWithToolsAnthropic(
       );
 
       if (toolUseBlocks.length === 0) {
-        // No tool calls — final turn complete.
+        // Empty-turn detector: MiniMax sometimes returns stop_reason=end_turn
+        // with NO text and NO tool_use — a "ghost done" where the model just
+        // gave up. Don't trust that as a real completion: nudge the model
+        // once with a continuation prompt and try again. If it still returns
+        // empty, we accept it as the agent's final word.
+        const isEmptyTurn =
+          turnText.trim().length === 0 &&
+          assistantTextSoFar.trim().length === 0 &&
+          finalMsg.stop_reason === "end_turn";
+        if (isEmptyTurn && hop < getHopsMax(opts.config) - 1) {
+          console.log(
+            "[minimax] empty end_turn — nudging the model to continue",
+          );
+          // Push the empty assistant turn (so the next user message is
+          // a valid alternation) then a nudge.
+          messages.push({ role: "assistant", content: finalMsg.content });
+          messages.push({
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text:
+                  "Je vorige beurt was leeg. Ga door met de taak — voer de volgende stap uit, of geef een kort eindrapport als je klaar bent.",
+              },
+            ],
+          });
+          continue; // → next hop iteration
+        }
+        // No tool calls and not an empty-ghost — final turn complete.
         yield {
           type: "message_end",
           message_id: messageId,

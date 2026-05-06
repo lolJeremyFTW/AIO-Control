@@ -32,3 +32,4 @@ create policy "agent_dashboards_write"
   using (aio_control.workspace_role(workspace_id) in ('owner', 'admin', 'editor'));
 
 grant select, insert, update, delete on aio_control.agent_dashboards to authenticated;
+grant select, insert, update, delete on aio_control.agent_dashboards to service_role;

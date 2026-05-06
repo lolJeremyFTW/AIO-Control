@@ -419,23 +419,30 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
     })
     .eq("id", runId);
 
-  // Fire outbound notifications (Telegram / custom HTTP / email) for
-  // this terminal run. Background path — chat-route fires its own from
-  // the streaming finally{}; cron / webhook / runAgentNow / chain land
-  // here and would otherwise complete silently. Re-fetch the row so we
-  // have schedule_id + nav_node_id for proper per-topic routing.
-  const { data: notifyRun } = await supabase
-    .from("runs")
-    .select(
-      "id, workspace_id, business_id, nav_node_id, agent_id, schedule_id, status, cost_cents, duration_ms, output, error_text",
-    )
-    .eq("id", runId)
-    .maybeSingle();
-  if (notifyRun) {
-    void dispatchRunEvent(
-      notifyRun as Parameters<typeof dispatchRunEvent>[0],
-      finalStatus,
-    ).catch((err) => console.error("dispatchRunEvent failed", err));
+  // Fire outbound notifications (Telegram / custom HTTP / email).
+  //
+  // De-noise rule: if this fail will be auto-retried (next_retry_at set),
+  // skip the alert — the user shouldn't get pinged on transient hiccups.
+  // Only notify on:
+  //   • done                       (success)
+  //   • failed without retry queued (final fail or non-transient error)
+  // The dispatcher's per-workspace queue may still bounce-process the
+  // retry. The notification fires when the FINAL attempt lands.
+  const willRetry = finalStatus === "failed" && nextRetryAt !== null;
+  if (!willRetry) {
+    const { data: notifyRun } = await supabase
+      .from("runs")
+      .select(
+        "id, workspace_id, business_id, nav_node_id, agent_id, schedule_id, status, cost_cents, duration_ms, output, error_text",
+      )
+      .eq("id", runId)
+      .maybeSingle();
+    if (notifyRun) {
+      void dispatchRunEvent(
+        notifyRun as Parameters<typeof dispatchRunEvent>[0],
+        finalStatus,
+      ).catch((err) => console.error("dispatchRunEvent failed", err));
+    }
   }
 
   // Chain dispatch: queue the next agent with this run's output as

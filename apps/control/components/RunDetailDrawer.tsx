@@ -28,6 +28,9 @@ type RunDetail = {
   error_text: string | null;
   message_history: RunStep[] | null;
   created_at: string;
+  attempt?: number | null;
+  max_attempts?: number | null;
+  next_retry_at?: string | null;
   agents: { id: string; name: string; provider: string; model: string | null } | null;
 };
 
@@ -54,7 +57,28 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
   const [stopping, setStopping] = useState(false);
   const [followupText, setFollowupText] = useState("");
   const [followupSending, setFollowupSending] = useState(false);
+  // Tools-filter preference persists per browser via localStorage so a
+  // user's choice survives page reload. Defaults to "show".
   const [showTools, setShowTools] = useState(true);
+  useEffect(() => {
+    try {
+      const v = window.localStorage.getItem("aio-run-drawer-show-tools");
+      if (v === "0") setShowTools(false);
+      else if (v === "1") setShowTools(true);
+    } catch {
+      // SSR or storage blocked — keep default
+    }
+  }, []);
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        "aio-run-drawer-show-tools",
+        showTools ? "1" : "0",
+      );
+    } catch {
+      // ignore
+    }
+  }, [showTools]);
 
   // Re-fetch counter — bumped on realtime events so a still-running run
   // streams its updates into this drawer live (status: running → done,
@@ -273,7 +297,32 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
           >
             {run?.agents?.name ?? "Run detail"}
           </span>
-          {run && <StatusPill status={run.status} />}
+          {run && <StatusPill status={run.status} run={run} />}
+          {run &&
+            run.attempt != null &&
+            run.max_attempts != null &&
+            run.attempt > 1 && (
+              <span
+                title={
+                  run.next_retry_at
+                    ? `Retry queued for ${new Date(run.next_retry_at).toLocaleString("nl-NL")}`
+                    : "Retry attempt"
+                }
+                style={{
+                  padding: "3px 8px",
+                  background: "rgba(212,117,42,0.12)",
+                  border: "1px solid rgba(212,117,42,0.4)",
+                  color: "#a35820",
+                  borderRadius: 99,
+                  fontSize: 10,
+                  fontWeight: 700,
+                  letterSpacing: ".05em",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                attempt {run.attempt}/{run.max_attempts}
+              </span>
+            )}
           {run &&
             (run.status === "queued" || run.status === "running") && (
               <button
@@ -820,7 +869,43 @@ function previewJson(value: unknown): string {
   }
 }
 
-function StatusPill({ status }: { status: string }) {
+function StatusPill({
+  status,
+  run,
+}: {
+  status: string;
+  run?: RunDetail;
+}) {
+  // Special case: a run that was killed by a service restart or zombie
+  // sweep is fundamentally different from an agent that "failed" — it
+  // never got to finish. Render it in a softer amber tone so users can
+  // scan a list and skip the orphans (they auto-retry anyway).
+  const isOrphan =
+    status === "failed" &&
+    run?.error_text != null &&
+    /orphan|abandoned|service restarted|zombie cleanup/i.test(run.error_text);
+
+  if (isOrphan) {
+    return (
+      <span
+        title={run?.error_text ?? ""}
+        style={{
+          fontSize: 10,
+          fontWeight: 700,
+          letterSpacing: "0.16em",
+          textTransform: "uppercase",
+          color: "#a35820",
+          background: "rgba(212,117,42,0.10)",
+          border: "1.5px solid rgba(212,117,42,0.45)",
+          padding: "3px 8px",
+          borderRadius: 999,
+        }}
+      >
+        orphaned
+      </span>
+    );
+  }
+
   const tone =
     status === "done"
       ? "var(--tt-green)"

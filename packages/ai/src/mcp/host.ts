@@ -54,6 +54,16 @@ const WRITE_TOOL_PATTERNS = [
   /[-_]edit$/i,
 ];
 
+// npm global bin dir on the VPS — set NPM_GLOBAL_BIN env var to
+// override. All MCP server packages are pre-installed here so we
+// bypass npx's npm-registry lookup (which takes 30+ s on every run).
+const NPM_GLOBAL_BIN =
+  process.env.NPM_GLOBAL_BIN ??
+  `${process.env.HOME ?? "/home/jeremy"}/.npm-global/bin`;
+
+// Local TypeScript MCP servers — resolved relative to this project.
+const AIO_SRC = "/home/jeremy/aio-control/packages/ai/src/mcp/servers";
+
 type ServerSpec = {
   command: string;
   args: string[];
@@ -66,8 +76,8 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
   // backed by MiniMax's own search/vision endpoints. Note: the npm
   // package is published WITHOUT the @minimax-ai/ scope.
   minimax: {
-    command: "npx",
-    args: ["-y", "minimax-coding-plan-mcp"],
+    command: `${NPM_GLOBAL_BIN}/minimax-coding-plan-mcp`,
+    args: [],
     env: () => ({
       ...(process.env.MINIMAX_API_KEY
         ? { MINIMAX_API_KEY: process.env.MINIMAX_API_KEY }
@@ -83,24 +93,18 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
   // MCP_FS_ROOT (default /home/jeremy so agents can reach all project
   // dirs under the user home without re-configuring the env var).
   filesystem: {
-    command: "npx",
-    args: [
-      "-y",
-      "@modelcontextprotocol/server-filesystem",
-      process.env.MCP_FS_ROOT ?? "/home/jeremy",
-    ],
+    command: `${NPM_GLOBAL_BIN}/mcp-server-filesystem`,
+    args: [process.env.MCP_FS_ROOT ?? "/home/jeremy"],
   },
   // AIO Control platform tools (list_businesses, list_agents, list_runs).
   // read_secret is gated by AIO_MCP_ALLOW_READ_SECRET in aio-server.
-  // Spawns as a local TypeScript subprocess via tsx (npx ensures
-  // tsx is available without requiring a global install).
   // Credentials come via env — SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY
   // are forwarded by McpHost.connect() via envOverrides.
   // Workspace is scoped by AIO_WORKSPACE_ID env var (set at the agent/
   // workspace level in aio-control).
   aio: {
-    command: "npx",
-    args: ["-y", "tsx", "/home/jeremy/aio-control/packages/ai/src/mcp/servers/aio-server.ts"],
+    command: `${NPM_GLOBAL_BIN}/tsx`,
+    args: [`${AIO_SRC}/aio-server.ts`],
     env: () => ({
       SUPABASE_URL: process.env.SUPABASE_URL ?? "",
       SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
@@ -119,15 +123,15 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
   // execute_code and cli_tool are exposed as aliases alongside bash so
   // agents that reference those names in their system prompts work correctly.
   bash: {
-    command: "npx",
-    args: ["-y", "tsx", "/home/jeremy/aio-control/packages/ai/src/mcp/servers/bash-server.ts"],
+    command: `${NPM_GLOBAL_BIN}/tsx`,
+    args: [`${AIO_SRC}/bash-server.ts`],
   },
   // Local fetch MCP — retrieves arbitrary URLs and returns the body as
   // text (HTML is stripped to plain text). Built-in local server so it
   // starts instantly without any npm download.
   fetch: {
-    command: "npx",
-    args: ["-y", "tsx", "/home/jeremy/aio-control/packages/ai/src/mcp/servers/fetch-server.ts"],
+    command: `${NPM_GLOBAL_BIN}/tsx`,
+    args: [`${AIO_SRC}/fetch-server.ts`],
   },
   // Microsoft Playwright MCP — full Chromium browser with JS rendering.
   // Models are natively trained on Playwright tool signatures. Headless
@@ -136,8 +140,8 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
   // playwright chromium bundle so the MCP server doesn't need to download
   // chrome-for-testing (a separate 175 MB download).
   playwright: {
-    command: "npx",
-    args: ["-y", "@playwright/mcp", "--headless", "--browser", "chromium"],
+    command: `${NPM_GLOBAL_BIN}/playwright-mcp`,
+    args: ["--headless", "--browser", "chromium"],
     env: () => ({
       PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH:
         process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ??
@@ -147,8 +151,8 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
   // Brave Search MCP — high-quality web + news search backed by the
   // Brave Search API. Needs BRAVE_API_KEY set in workspace secrets.
   brave: {
-    command: "npx",
-    args: ["-y", "@modelcontextprotocol/server-brave-search"],
+    command: `${NPM_GLOBAL_BIN}/mcp-server-brave-search`,
+    args: [],
     env: () => ({
       ...(process.env.BRAVE_API_KEY
         ? { BRAVE_API_KEY: process.env.BRAVE_API_KEY }
@@ -159,8 +163,8 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
   // observations). Agents can store facts between runs and retrieve
   // them semantically. Stored in a local SQLite file on the VPS.
   memory: {
-    command: "npx",
-    args: ["-y", "@modelcontextprotocol/server-memory"],
+    command: `${NPM_GLOBAL_BIN}/mcp-server-memory`,
+    args: [],
     env: () => ({
       MEMORY_FILE_PATH: process.env.MEMORY_FILE_PATH ?? "/home/jeremy/.aio-memory.json",
     }),
@@ -169,8 +173,8 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
   // Supports single-page scrape, full-site crawl, and deep research
   // modes. Needs FIRECRAWL_API_KEY set in workspace secrets.
   firecrawl: {
-    command: "npx",
-    args: ["-y", "firecrawl-mcp"],
+    command: `${NPM_GLOBAL_BIN}/firecrawl-mcp`,
+    args: [],
     env: () => ({
       // Self-hosted Firecrawl instance running on port 3002.
       // Falls back to cloud API if FIRECRAWL_API_URL is not set.
@@ -187,9 +191,10 @@ type Connected = {
   server: string;
   client: Client;
   tools: McpToolDef[];
-  /** The stdio transport — kept so close() can SIGKILL the subprocess as
-   *  a backstop when the MCP SDK's graceful close leaves it running. */
-  transport: StdioClientTransport;
+  /** PID of the spawned subprocess — stored immediately after spawn so we
+   *  can SIGKILL it in close() even if the MCP SDK property was mangled by
+   *  the bundler. Also used to kill timed-out servers that leaked. */
+  pid: number | undefined;
 };
 
 export class McpHost {
@@ -226,16 +231,26 @@ export class McpHost {
       // Wrap each connectOne with a 30 s timeout so a slow server (e.g.
       // playwright launching Chromium) can't block the entire connect()
       // via Promise.all and leave the agent with zero tools.
+      //
+      // IMPORTANT: when the timeout fires, connectOne keeps running in
+      // the background and its child process becomes an orphan. We track
+      // the PID via a shared variable so the timeout handler can SIGKILL
+      // it before giving up.
       const CONNECT_TIMEOUT_MS = 30_000;
+      let spawnedPid: number | undefined;
+      const setPid = (pid: number) => { spawnedPid = pid; };
       const timeoutRace = new Promise<null>((resolve) =>
         setTimeout(() => {
           console.warn(`[mcp] server '${id}' timed out after ${CONNECT_TIMEOUT_MS}ms — skipping`);
+          if (spawnedPid) {
+            try { process.kill(spawnedPid, "SIGKILL"); } catch { /* ignore */ }
+          }
           resolve(null);
         }, CONNECT_TIMEOUT_MS),
       );
       tasks.push(
         Promise.race([
-          this.connectOne(id, spec, envOverrides ?? {}, permissions).catch(
+          this.connectOne(id, spec, envOverrides ?? {}, permissions, setPid).catch(
             (err) => {
               console.warn(
                 `[mcp] server '${id}' failed to start — skipping (${err instanceof Error ? err.message : err})`,
@@ -258,6 +273,9 @@ export class McpHost {
     spec: ServerSpec,
     envOverrides: Record<string, string>,
     permissions: McpPermissions,
+    /** Called as soon as the child process is spawned with its PID so the
+     *  caller can kill it if the 30 s timeout fires first. */
+    onSpawn?: (pid: number) => void,
   ): Promise<Connected> {
     // Strip undefined values from process.env before spreading (some
     // Node versions throw when a spawn env contains undefined values).
@@ -271,16 +289,47 @@ export class McpHost {
       ...envOverrides,
     };
     console.log(`[mcp] connectOne spawning: ${spec.command} ${spec.args.join(" ")}`);
-    console.log(`[mcp] env keys: ${Object.keys(fullEnv).join(", ")}`);
     const transport = new StdioClientTransport({
       command: spec.command,
       args: spec.args,
       env: fullEnv,
       stderr: "pipe",
     });
-    // Capture subprocess stderr so we can see crash output
+
+    // --- PID capture strategy -------------------------------------------
+    // We need the child PID BEFORE the 30 s timeout so we can kill it if
+    // the MCP handshake hangs. The transport spawns the process internally
+    // when client.connect() calls transport.start(). We patch start() to
+    // read the PID immediately after spawn — works even if the bundler
+    // renamed the private _process field, because we check right at the
+    // moment the process is freshly set.
+    let childPid: number | undefined;
+    const tryCapturePid = () => {
+      if (childPid) return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const t = transport as any;
+      const proc = t._process ?? t.process ?? t._subprocess;
+      if (proc?.pid) {
+        childPid = proc.pid as number;
+        onSpawn?.(childPid);
+        console.log(`[mcp][${id}] spawned pid=${childPid}`);
+      }
+    };
+    // Patch transport.start() — called by client.connect() internally.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const origStart: () => Promise<void> = (transport as any).start.bind(transport);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (transport as any).start = async function patchedStart() {
+      await origStart();
+      tryCapturePid(); // process is now set
+    };
+    // -----------------------------------------------------------------------
+
     let stderrChunks: Buffer[] = [];
     transport.stderr?.on("data", (chunk: Buffer) => {
+      // Stderr fires once the child starts — another PID capture opportunity
+      // for servers that write startup messages (filesystem, memory, etc.).
+      tryCapturePid();
       stderrChunks.push(chunk);
       process.stderr.write(`[mcp][${id}] stderr: ${chunk.toString()}`);
     });
@@ -327,7 +376,7 @@ export class McpHost {
           properties: {},
         },
       }));
-    return { server: id, client, transport, tools };
+    return { server: id, client, pid: childPid, tools };
   }
 
   /** Flat list of all tools across every connected server, with names
@@ -384,10 +433,10 @@ export class McpHost {
   }
 
   /** Tear down every connected server. Safe to call after partial
-   *  connect failure. Graceful SDK close first, then SIGKILL the
-   *  subprocess as a backstop — the SDK only closes stdio pipes which
-   *  some servers (e.g. filesystem, memory) don't treat as an exit
-   *  signal, leading to hundreds of orphaned node processes over time. */
+   *  connect failure. Graceful SDK close first, then SIGKILL via stored PID
+   *  as a backstop — the SDK only closes stdio pipes which some servers
+   *  (e.g. filesystem, memory) don't treat as an exit signal, leading to
+   *  hundreds of orphaned node processes that OOM the VPS. */
   async close(): Promise<void> {
     await Promise.all(
       this.connected.map(async (c) => {
@@ -396,22 +445,30 @@ export class McpHost {
         } catch {
           /* ignore */
         }
-        // Forcibly kill the subprocess. StdioClientTransport exposes the
-        // child process as _process (private). We reach in deliberately
-        // because leaking subprocesses OOMs the VPS in hours.
-        try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const proc = (c.transport as any)._process as import("child_process").ChildProcess | undefined;
-          if (proc && proc.exitCode === null) {
-            proc.kill("SIGTERM");
+        // Kill the child by PID — the PID was captured at spawn time so it
+        // is bundler-safe (no reliance on mangled private properties).
+        if (c.pid) {
+          try {
+            process.kill(c.pid, "SIGTERM");
             // Give it 2 s to die gracefully, then SIGKILL.
             await new Promise<void>((resolve) => {
-              const t = setTimeout(() => { proc.kill("SIGKILL"); resolve(); }, 2000);
-              proc.once("exit", () => { clearTimeout(t); resolve(); });
+              const t = setTimeout(() => {
+                try { process.kill(c.pid!, "SIGKILL"); } catch { /* already gone */ }
+                resolve();
+              }, 2000);
+              // Poll until the process is gone (no ChildProcess reference to
+              // attach an "exit" listener, so we check via kill(0)).
+              const check = setInterval(() => {
+                try { process.kill(c.pid!, 0); } catch {
+                  clearInterval(check);
+                  clearTimeout(t);
+                  resolve();
+                }
+              }, 100);
             });
+          } catch {
+            /* ignore — process already gone */
           }
-        } catch {
-          /* ignore */
         }
       }),
     );
