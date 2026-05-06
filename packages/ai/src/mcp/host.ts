@@ -191,9 +191,10 @@ type Connected = {
   server: string;
   client: Client;
   tools: McpToolDef[];
-  /** The stdio transport — kept so close() can SIGKILL the subprocess as
-   *  a backstop when the MCP SDK's graceful close leaves it running. */
-  transport: StdioClientTransport;
+  /** PID of the spawned subprocess — stored immediately after spawn so we
+   *  can SIGKILL it in close() even if the MCP SDK property was mangled by
+   *  the bundler. Also used to kill timed-out servers that leaked. */
+  pid: number | undefined;
 };
 
 export class McpHost {
@@ -230,16 +231,26 @@ export class McpHost {
       // Wrap each connectOne with a 30 s timeout so a slow server (e.g.
       // playwright launching Chromium) can't block the entire connect()
       // via Promise.all and leave the agent with zero tools.
+      //
+      // IMPORTANT: when the timeout fires, connectOne keeps running in
+      // the background and its child process becomes an orphan. We track
+      // the PID via a shared variable so the timeout handler can SIGKILL
+      // it before giving up.
       const CONNECT_TIMEOUT_MS = 30_000;
+      let spawnedPid: number | undefined;
+      const setPid = (pid: number) => { spawnedPid = pid; };
       const timeoutRace = new Promise<null>((resolve) =>
         setTimeout(() => {
           console.warn(`[mcp] server '${id}' timed out after ${CONNECT_TIMEOUT_MS}ms — skipping`);
+          if (spawnedPid) {
+            try { process.kill(spawnedPid, "SIGKILL"); } catch { /* ignore */ }
+          }
           resolve(null);
         }, CONNECT_TIMEOUT_MS),
       );
       tasks.push(
         Promise.race([
-          this.connectOne(id, spec, envOverrides ?? {}, permissions).catch(
+          this.connectOne(id, spec, envOverrides ?? {}, permissions, setPid).catch(
             (err) => {
               console.warn(
                 `[mcp] server '${id}' failed to start — skipping (${err instanceof Error ? err.message : err})`,
@@ -262,6 +273,9 @@ export class McpHost {
     spec: ServerSpec,
     envOverrides: Record<string, string>,
     permissions: McpPermissions,
+    /** Called as soon as the child process is spawned with its PID so the
+     *  caller can kill it if the 30 s timeout fires first. */
+    onSpawn?: (pid: number) => void,
   ): Promise<Connected> {
     // Strip undefined values from process.env before spreading (some
     // Node versions throw when a spawn env contains undefined values).
@@ -281,9 +295,41 @@ export class McpHost {
       env: fullEnv,
       stderr: "pipe",
     });
-    // Capture subprocess stderr so we can see crash output
+
+    // --- PID capture strategy -------------------------------------------
+    // We need the child PID BEFORE the 30 s timeout so we can kill it if
+    // the MCP handshake hangs. The transport spawns the process internally
+    // when client.connect() calls transport.start(). We patch start() to
+    // read the PID immediately after spawn — works even if the bundler
+    // renamed the private _process field, because we check right at the
+    // moment the process is freshly set.
+    let childPid: number | undefined;
+    const tryCapturePid = () => {
+      if (childPid) return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const t = transport as any;
+      const proc = t._process ?? t.process ?? t._subprocess;
+      if (proc?.pid) {
+        childPid = proc.pid as number;
+        onSpawn?.(childPid);
+        console.log(`[mcp][${id}] spawned pid=${childPid}`);
+      }
+    };
+    // Patch transport.start() — called by client.connect() internally.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const origStart: () => Promise<void> = (transport as any).start.bind(transport);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (transport as any).start = async function patchedStart() {
+      await origStart();
+      tryCapturePid(); // process is now set
+    };
+    // -----------------------------------------------------------------------
+
     let stderrChunks: Buffer[] = [];
     transport.stderr?.on("data", (chunk: Buffer) => {
+      // Stderr fires once the child starts — another PID capture opportunity
+      // for servers that write startup messages (filesystem, memory, etc.).
+      tryCapturePid();
       stderrChunks.push(chunk);
       process.stderr.write(`[mcp][${id}] stderr: ${chunk.toString()}`);
     });
@@ -330,7 +376,7 @@ export class McpHost {
           properties: {},
         },
       }));
-    return { server: id, client, transport, tools };
+    return { server: id, client, pid: childPid, tools };
   }
 
   /** Flat list of all tools across every connected server, with names
@@ -387,10 +433,10 @@ export class McpHost {
   }
 
   /** Tear down every connected server. Safe to call after partial
-   *  connect failure. Graceful SDK close first, then SIGKILL the
-   *  subprocess as a backstop — the SDK only closes stdio pipes which
-   *  some servers (e.g. filesystem, memory) don't treat as an exit
-   *  signal, leading to hundreds of orphaned node processes over time. */
+   *  connect failure. Graceful SDK close first, then SIGKILL via stored PID
+   *  as a backstop — the SDK only closes stdio pipes which some servers
+   *  (e.g. filesystem, memory) don't treat as an exit signal, leading to
+   *  hundreds of orphaned node processes that OOM the VPS. */
   async close(): Promise<void> {
     await Promise.all(
       this.connected.map(async (c) => {
@@ -399,22 +445,30 @@ export class McpHost {
         } catch {
           /* ignore */
         }
-        // Forcibly kill the subprocess. StdioClientTransport exposes the
-        // child process as _process (private). We reach in deliberately
-        // because leaking subprocesses OOMs the VPS in hours.
-        try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const proc = (c.transport as any)._process as import("child_process").ChildProcess | undefined;
-          if (proc && proc.exitCode === null) {
-            proc.kill("SIGTERM");
+        // Kill the child by PID — the PID was captured at spawn time so it
+        // is bundler-safe (no reliance on mangled private properties).
+        if (c.pid) {
+          try {
+            process.kill(c.pid, "SIGTERM");
             // Give it 2 s to die gracefully, then SIGKILL.
             await new Promise<void>((resolve) => {
-              const t = setTimeout(() => { proc.kill("SIGKILL"); resolve(); }, 2000);
-              proc.once("exit", () => { clearTimeout(t); resolve(); });
+              const t = setTimeout(() => {
+                try { process.kill(c.pid!, "SIGKILL"); } catch { /* already gone */ }
+                resolve();
+              }, 2000);
+              // Poll until the process is gone (no ChildProcess reference to
+              // attach an "exit" listener, so we check via kill(0)).
+              const check = setInterval(() => {
+                try { process.kill(c.pid!, 0); } catch {
+                  clearInterval(check);
+                  clearTimeout(t);
+                  resolve();
+                }
+              }, 100);
             });
+          } catch {
+            /* ignore — process already gone */
           }
-        } catch {
-          /* ignore */
         }
       }),
     );
