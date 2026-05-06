@@ -6,8 +6,8 @@
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 
-import { createAgent } from "./agents";
-import { createSkill, setAgentSkills } from "./skills";
+import { createAgent, archiveAgent } from "./agents";
+import { createSkill, archiveSkill, setAgentSkills } from "./skills";
 import { createCronSchedule, createWebhookSchedule, createManualSchedule } from "./schedules";
 import type { FlowPlan } from "@aio/ai/flow-planner";
 
@@ -21,6 +21,21 @@ export type CreateFlowInput = {
 export type CreateFlowResult =
   | { ok: true; data: { agent_id: string; schedule_id?: string; skill_ids: string[] } }
   | { ok: false; error: string };
+
+async function rollback(
+  workspace_slug: string,
+  business_id: string | null,
+  agent_id: string | null,
+  skill_ids: string[],
+) {
+  // Best-effort cleanup — ignore individual rollback errors.
+  for (const id of skill_ids) {
+    await archiveSkill({ workspace_slug, id }).catch(() => {});
+  }
+  if (agent_id) {
+    await archiveAgent({ workspace_slug, business_id, id: agent_id }).catch(() => {});
+  }
+}
 
 export async function createFlow(input: CreateFlowInput): Promise<CreateFlowResult> {
   const { workspace_slug, workspace_id, business_id, plan } = input;
@@ -51,6 +66,7 @@ export async function createFlow(input: CreateFlowInput): Promise<CreateFlowResu
       body: skillPlan.body,
     });
     if (!skillResult.ok) {
+      await rollback(workspace_slug, business_id, agent_id, skill_ids);
       return { ok: false, error: `Skill "${skillPlan.name}" aanmaken mislukt: ${skillResult.error}` };
     }
     skill_ids.push(skillResult.data.id);
@@ -65,6 +81,7 @@ export async function createFlow(input: CreateFlowInput): Promise<CreateFlowResu
       skill_ids,
     });
     if (!setResult.ok) {
+      await rollback(workspace_slug, business_id, agent_id, skill_ids);
       return { ok: false, error: `Skills koppelen mislukt: ${setResult.error}` };
     }
   }
@@ -93,6 +110,7 @@ export async function createFlow(input: CreateFlowInput): Promise<CreateFlowResu
         callback_origin,
       });
       if (!schedResult.ok) {
+        await rollback(workspace_slug, business_id, agent_id, skill_ids);
         return { ok: false, error: `Schedule aanmaken mislukt: ${schedResult.error}` };
       }
       schedule_id = schedResult.data.id;
@@ -104,6 +122,7 @@ export async function createFlow(input: CreateFlowInput): Promise<CreateFlowResu
         business_id,
       });
       if (!schedResult.ok) {
+        await rollback(workspace_slug, business_id, agent_id, skill_ids);
         return { ok: false, error: `Webhook aanmaken mislukt: ${schedResult.error}` };
       }
       schedule_id = schedResult.data.id;
@@ -115,6 +134,7 @@ export async function createFlow(input: CreateFlowInput): Promise<CreateFlowResu
         business_id,
       });
       if (!schedResult.ok) {
+        await rollback(workspace_slug, business_id, agent_id, skill_ids);
         return { ok: false, error: `Manual schedule aanmaken mislukt: ${schedResult.error}` };
       }
       schedule_id = schedResult.data.id;
