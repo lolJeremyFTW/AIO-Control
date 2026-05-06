@@ -54,6 +54,16 @@ const WRITE_TOOL_PATTERNS = [
   /[-_]edit$/i,
 ];
 
+// npm global bin dir on the VPS — set NPM_GLOBAL_BIN env var to
+// override. All MCP server packages are pre-installed here so we
+// bypass npx's npm-registry lookup (which takes 30+ s on every run).
+const NPM_GLOBAL_BIN =
+  process.env.NPM_GLOBAL_BIN ??
+  `${process.env.HOME ?? "/home/jeremy"}/.npm-global/bin`;
+
+// Local TypeScript MCP servers — resolved relative to this project.
+const AIO_SRC = "/home/jeremy/aio-control/packages/ai/src/mcp/servers";
+
 type ServerSpec = {
   command: string;
   args: string[];
@@ -66,8 +76,8 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
   // backed by MiniMax's own search/vision endpoints. Note: the npm
   // package is published WITHOUT the @minimax-ai/ scope.
   minimax: {
-    command: "npx",
-    args: ["-y", "minimax-coding-plan-mcp"],
+    command: `${NPM_GLOBAL_BIN}/minimax-coding-plan-mcp`,
+    args: [],
     env: () => ({
       ...(process.env.MINIMAX_API_KEY
         ? { MINIMAX_API_KEY: process.env.MINIMAX_API_KEY }
@@ -83,24 +93,18 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
   // MCP_FS_ROOT (default /home/jeremy so agents can reach all project
   // dirs under the user home without re-configuring the env var).
   filesystem: {
-    command: "npx",
-    args: [
-      "-y",
-      "@modelcontextprotocol/server-filesystem",
-      process.env.MCP_FS_ROOT ?? "/home/jeremy",
-    ],
+    command: `${NPM_GLOBAL_BIN}/mcp-server-filesystem`,
+    args: [process.env.MCP_FS_ROOT ?? "/home/jeremy"],
   },
   // AIO Control platform tools (list_businesses, list_agents, list_runs).
   // read_secret is gated by AIO_MCP_ALLOW_READ_SECRET in aio-server.
-  // Spawns as a local TypeScript subprocess via tsx (npx ensures
-  // tsx is available without requiring a global install).
   // Credentials come via env — SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY
   // are forwarded by McpHost.connect() via envOverrides.
   // Workspace is scoped by AIO_WORKSPACE_ID env var (set at the agent/
   // workspace level in aio-control).
   aio: {
-    command: "npx",
-    args: ["-y", "tsx", "/home/jeremy/aio-control/packages/ai/src/mcp/servers/aio-server.ts"],
+    command: `${NPM_GLOBAL_BIN}/tsx`,
+    args: [`${AIO_SRC}/aio-server.ts`],
     env: () => ({
       SUPABASE_URL: process.env.SUPABASE_URL ?? "",
       SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
@@ -119,15 +123,15 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
   // execute_code and cli_tool are exposed as aliases alongside bash so
   // agents that reference those names in their system prompts work correctly.
   bash: {
-    command: "npx",
-    args: ["-y", "tsx", "/home/jeremy/aio-control/packages/ai/src/mcp/servers/bash-server.ts"],
+    command: `${NPM_GLOBAL_BIN}/tsx`,
+    args: [`${AIO_SRC}/bash-server.ts`],
   },
   // Local fetch MCP — retrieves arbitrary URLs and returns the body as
   // text (HTML is stripped to plain text). Built-in local server so it
   // starts instantly without any npm download.
   fetch: {
-    command: "npx",
-    args: ["-y", "tsx", "/home/jeremy/aio-control/packages/ai/src/mcp/servers/fetch-server.ts"],
+    command: `${NPM_GLOBAL_BIN}/tsx`,
+    args: [`${AIO_SRC}/fetch-server.ts`],
   },
   // Microsoft Playwright MCP — full Chromium browser with JS rendering.
   // Models are natively trained on Playwright tool signatures. Headless
@@ -136,8 +140,8 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
   // playwright chromium bundle so the MCP server doesn't need to download
   // chrome-for-testing (a separate 175 MB download).
   playwright: {
-    command: "npx",
-    args: ["-y", "@playwright/mcp", "--headless", "--browser", "chromium"],
+    command: `${NPM_GLOBAL_BIN}/playwright-mcp`,
+    args: ["--headless", "--browser", "chromium"],
     env: () => ({
       PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH:
         process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ??
@@ -147,8 +151,8 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
   // Brave Search MCP — high-quality web + news search backed by the
   // Brave Search API. Needs BRAVE_API_KEY set in workspace secrets.
   brave: {
-    command: "npx",
-    args: ["-y", "@modelcontextprotocol/server-brave-search"],
+    command: `${NPM_GLOBAL_BIN}/mcp-server-brave-search`,
+    args: [],
     env: () => ({
       ...(process.env.BRAVE_API_KEY
         ? { BRAVE_API_KEY: process.env.BRAVE_API_KEY }
@@ -159,8 +163,8 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
   // observations). Agents can store facts between runs and retrieve
   // them semantically. Stored in a local SQLite file on the VPS.
   memory: {
-    command: "npx",
-    args: ["-y", "@modelcontextprotocol/server-memory"],
+    command: `${NPM_GLOBAL_BIN}/mcp-server-memory`,
+    args: [],
     env: () => ({
       MEMORY_FILE_PATH: process.env.MEMORY_FILE_PATH ?? "/home/jeremy/.aio-memory.json",
     }),
@@ -169,8 +173,8 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
   // Supports single-page scrape, full-site crawl, and deep research
   // modes. Needs FIRECRAWL_API_KEY set in workspace secrets.
   firecrawl: {
-    command: "npx",
-    args: ["-y", "firecrawl-mcp"],
+    command: `${NPM_GLOBAL_BIN}/firecrawl-mcp`,
+    args: [],
     env: () => ({
       // Self-hosted Firecrawl instance running on port 3002.
       // Falls back to cloud API if FIRECRAWL_API_URL is not set.
@@ -271,7 +275,6 @@ export class McpHost {
       ...envOverrides,
     };
     console.log(`[mcp] connectOne spawning: ${spec.command} ${spec.args.join(" ")}`);
-    console.log(`[mcp] env keys: ${Object.keys(fullEnv).join(", ")}`);
     const transport = new StdioClientTransport({
       command: spec.command,
       args: spec.args,
