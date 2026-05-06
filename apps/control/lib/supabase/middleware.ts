@@ -66,6 +66,8 @@ export async function updateSession(request: NextRequest) {
     path.startsWith("/share/") ||
     // Public freebie reports — token in URL is the only auth needed.
     path.startsWith("/r/") ||
+    // Public agent dashboards — slug in URL is the only auth needed.
+    path.startsWith("/d/") ||
     // Telegram webhook authenticates via the secret in the URL.
     path.startsWith("/api/integrations/telegram/webhook") ||
     // Internal automation APIs authenticate via AGENT_SECRET_KEY Bearer token.
