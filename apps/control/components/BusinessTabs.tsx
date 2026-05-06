@@ -89,7 +89,6 @@ type Props = {
     routines?: string;
     runs?: string;
     integrations?: string;
-    topics?: string;
     /** Right-aligned status pill prefix, e.g. "Laatste run". */
     lastRun?: string;
     /** Relative-time templates with {n} placeholder. Used by the
@@ -170,7 +169,6 @@ export function BusinessTabs({
     routines: labels?.routines ?? "Routines",
     runs: labels?.runs ?? "Runs",
     integrations: labels?.integrations ?? "Integrations",
-    topics: labels?.topics ?? "Topics",
     lastRun: labels?.lastRun ?? "Laatste run",
   };
 
@@ -198,16 +196,6 @@ export function BusinessTabs({
       href: `${base}/integrations`,
       label: L.integrations,
       match: (p) => p.startsWith(`${base}/integrations`),
-    },
-    {
-      // Topics opens a flat list of every nav_node in this business
-      // (./topics) so the user can find a topic without first locating
-      // it in the rail. The tab also lights up when the URL is /n/…
-      // (drilled into a specific topic).
-      href: `${base}/topics`,
-      label: L.topics,
-      match: (p) =>
-        p.startsWith(`${base}/topics`) || p.startsWith(`${base}/n/`),
     },
     {
       href: `${base}/schedules`,
