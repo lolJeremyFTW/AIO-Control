@@ -207,18 +207,28 @@ export class McpHost {
       // — we honour the agent-level permission gate before spawning.
       if (id === "filesystem" && permissions.filesystem === "off") continue;
       if (id === "aio" && permissions.aio === "off") continue;
-      // Wrap each connectOne so a single server crash doesn't kill the
-      // whole connect() via Promise.all rejection. Failed servers log
-      // a warning and resolve to null so the others keep working.
+      // Wrap each connectOne with a 30 s timeout so a slow server (e.g.
+      // playwright launching Chromium) can't block the entire connect()
+      // via Promise.all and leave the agent with zero tools.
+      const CONNECT_TIMEOUT_MS = 30_000;
+      const timeoutRace = new Promise<null>((resolve) =>
+        setTimeout(() => {
+          console.warn(`[mcp] server '${id}' timed out after ${CONNECT_TIMEOUT_MS}ms — skipping`);
+          resolve(null);
+        }, CONNECT_TIMEOUT_MS),
+      );
       tasks.push(
-        this.connectOne(id, spec, envOverrides ?? {}, permissions).catch(
-          (err) => {
-            console.warn(
-              `[mcp] server '${id}' failed to start — skipping (${err instanceof Error ? err.message : err})`,
-            );
-            return null;
-          },
-        ),
+        Promise.race([
+          this.connectOne(id, spec, envOverrides ?? {}, permissions).catch(
+            (err) => {
+              console.warn(
+                `[mcp] server '${id}' failed to start — skipping (${err instanceof Error ? err.message : err})`,
+              );
+              return null as null;
+            },
+          ),
+          timeoutRace,
+        ]),
       );
     }
     const results = await Promise.all(tasks);
@@ -323,11 +333,20 @@ export class McpHost {
         error: `MCP server '${server}' niet verbonden`,
       });
     }
+    // 60 s hard cap per tool call — prevents a hanging filesystem glob or
+    // slow browser action from orphaning the entire server connection.
+    const CALL_TIMEOUT_MS = 60_000;
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`tool call timed out after ${CALL_TIMEOUT_MS}ms`)), CALL_TIMEOUT_MS),
+    );
     try {
-      const res = await conn.client.callTool({
-        name: raw,
-        arguments: (args as Record<string, unknown>) ?? {},
-      });
+      const res = await Promise.race([
+        conn.client.callTool({
+          name: raw,
+          arguments: (args as Record<string, unknown>) ?? {},
+        }),
+        timeoutPromise,
+      ]);
       // CallToolResult.content is an array of content blocks. We
       // flatten text blocks; non-text blocks (images, resources) get
       // serialized as JSON so the LLM at least sees their type.
