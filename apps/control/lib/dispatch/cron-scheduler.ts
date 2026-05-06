@@ -157,6 +157,13 @@ export function startCronScheduler(): void {
   void reapStartupOrphans().catch((err) =>
     console.error("[cron-scheduler] reap failed", err),
   );
+  // Re-dispatch any run left in "queued" from before a restart. The
+  // cron-tick inserts a run then immediately calls dispatchRun — if the
+  // process dies between those two steps the row is stuck "queued"
+  // forever. Guard with 90 s so we don't race with THIS tick's inserts.
+  void dispatchQueuedOrphans().catch((err) =>
+    console.error("[cron-scheduler] queued-orphan dispatch failed", err),
+  );
 
   // node-cron expression "* * * * *" = every minute on the wall clock.
   task = cron.schedule(
@@ -304,6 +311,32 @@ export function stopCronScheduler(): void {
     task = null;
   }
   started = false;
+}
+
+/** On boot: re-dispatch any run left in "queued" status by a previous
+ *  restart. The cron-tick inserts a run row and then calls dispatchRun;
+ *  if the process dies between those two steps the row is stuck "queued"
+ *  forever. We guard with a 90-second age window so we don't race with
+ *  runs that were just inserted by THIS tick. */
+async function dispatchQueuedOrphans(): Promise<void> {
+  const admin = getServiceRoleSupabase();
+  const cutoff = new Date(Date.now() - 90_000).toISOString();
+  const { data, error } = await admin
+    .from("runs")
+    .select("id")
+    .eq("status", "queued")
+    .lt("created_at", cutoff);
+  if (error) {
+    console.error("[cron-scheduler] queued-orphan sweep error", error);
+    return;
+  }
+  if (!data || data.length === 0) return;
+  for (const run of data) {
+    void dispatchRun(run.id as string).catch((err) =>
+      console.error(`[cron-scheduler] queued-orphan dispatch failed for ${run.id}`, err),
+    );
+  }
+  console.log(`[cron-scheduler] re-dispatched ${data.length} orphaned queued run(s)`);
 }
 
 /** One scan: find due cron schedules and dispatch a run for each. */
