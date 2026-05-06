@@ -29,17 +29,25 @@ import { getServiceRoleSupabase } from "../supabase/service";
 let started = false;
 let task: cron.ScheduledTask | null = null;
 
-// Per-workspace dispatch queue. Runs up to WORKSPACE_CONCURRENCY jobs
-// in parallel per workspace (default 2). This lets different agent types
-// run side-by-side (e.g. Outreach + self-improving-agent) without all
-// schedules firing simultaneously and saturating the shared API key.
-// Different workspaces always run fully in parallel.
+// Per-workspace dispatch queue. Up to WORKSPACE_CONCURRENCY (default 2)
+// runs execute in parallel per workspace, so different agent types can
+// run side-by-side (e.g. Outreach + self-improving) without blocking
+// each other while still sharing a single API key safely. Different
+// workspaces always run fully in parallel.
+//
+// Each queue entry carries an enqueue timestamp so we can drop stale
+// retries that piled up while the workspace was unhealthy: better to
+// run TODAY's find-leads than yesterday's failed retry.
 const WORKSPACE_CONCURRENCY = Number(
   process.env.WORKSPACE_CONCURRENCY ?? "2",
 );
 
+type QueueEntry = {
+  runId: string;
+  enqueuedAt: number;
+};
 type WorkspaceQueue = {
-  pending: string[];
+  pending: QueueEntry[];
   runningCount: number;
 };
 const workspaceQueues = new Map<string, WorkspaceQueue>();
@@ -47,6 +55,31 @@ const workspaceQueues = new Map<string, WorkspaceQueue>();
 const QUEUE_INTER_RUN_DELAY_MS = Number(
   process.env.CRON_QUEUE_INTER_RUN_DELAY_MS ?? "5000",
 );
+// Cap how many runs can pile up per workspace. With 5 cron-firings + N
+// retries from a transient outage, the queue can grow unbounded; cap so
+// new schedule ticks aren't blocked behind an hour of retries.
+const MAX_QUEUE_PER_WORKSPACE = Number(
+  process.env.CRON_QUEUE_MAX_PER_WORKSPACE ?? "5",
+);
+// Drop pending entries older than this from the queue head — they were
+// queued during a long outage and the data they're working against is
+// likely stale.
+const QUEUE_MAX_AGE_MS = Number(
+  process.env.CRON_QUEUE_MAX_AGE_MS ?? String(60 * 60_000),
+);
+
+async function markQueueRejected(runId: string, reason: string): Promise<void> {
+  const admin = getServiceRoleSupabase();
+  await admin
+    .from("runs")
+    .update({
+      status: "failed",
+      error_text: reason,
+      ended_at: new Date().toISOString(),
+    })
+    .eq("id", runId)
+    .eq("status", "queued");
+}
 
 function enqueueDispatch(workspaceId: string, runId: string): void {
   let q = workspaceQueues.get(workspaceId);
@@ -54,8 +87,36 @@ function enqueueDispatch(workspaceId: string, runId: string): void {
     q = { pending: [], runningCount: 0 };
     workspaceQueues.set(workspaceId, q);
   }
-  q.pending.push(runId);
-  // Spin up a new worker slot if we're below the concurrency cap.
+
+  // Evict aged-out entries before deciding capacity.
+  const ageCutoff = Date.now() - QUEUE_MAX_AGE_MS;
+  const aged = q.pending.filter((e) => e.enqueuedAt < ageCutoff);
+  if (aged.length > 0) {
+    q.pending = q.pending.filter((e) => e.enqueuedAt >= ageCutoff);
+    for (const e of aged) {
+      void markQueueRejected(
+        e.runId,
+        "Queue entry aged out — pending too long, data is stale",
+      );
+    }
+    console.log(
+      `[cron-queue] dropped ${aged.length} stale entries from workspace ${workspaceId}`,
+    );
+  }
+
+  if (q.pending.length >= MAX_QUEUE_PER_WORKSPACE) {
+    void markQueueRejected(
+      runId,
+      `Queue full for workspace (>${MAX_QUEUE_PER_WORKSPACE} pending) — try again next cycle`,
+    );
+    console.warn(
+      `[cron-queue] workspace ${workspaceId} queue full — rejecting ${runId}`,
+    );
+    return;
+  }
+
+  q.pending.push({ runId, enqueuedAt: Date.now() });
+  // Spin up a new worker slot if below the concurrency cap.
   if (q.runningCount < WORKSPACE_CONCURRENCY) {
     q.runningCount++;
     void drainWorkspaceQueue(workspaceId).catch((err) =>
@@ -68,12 +129,20 @@ async function drainWorkspaceQueue(workspaceId: string): Promise<void> {
   const q = workspaceQueues.get(workspaceId);
   if (!q) return;
   while (q.pending.length > 0) {
-    const runId = q.pending.shift();
-    if (!runId) break;
+    const entry = q.pending.shift();
+    if (!entry) break;
+    // Skip if the entry aged out while waiting in the queue.
+    if (Date.now() - entry.enqueuedAt > QUEUE_MAX_AGE_MS) {
+      void markQueueRejected(
+        entry.runId,
+        "Queue entry aged out before dispatch",
+      );
+      continue;
+    }
     try {
-      await dispatchRun(runId);
+      await dispatchRun(entry.runId);
     } catch (err) {
-      console.error(`[cron-queue] dispatch failed for ${runId}`, err);
+      console.error(`[cron-queue] dispatch failed for ${entry.runId}`, err);
     }
     if (q.pending.length > 0) {
       await new Promise((r) => setTimeout(r, QUEUE_INTER_RUN_DELAY_MS));
@@ -93,6 +162,13 @@ export function startCronScheduler(): void {
   // and the schedule is locked out by the "already running" guard.
   void reapStartupOrphans().catch((err) =>
     console.error("[cron-scheduler] reap failed", err),
+  );
+  // Re-dispatch any run left in "queued" from before a restart. The
+  // cron-tick inserts a run then immediately calls dispatchRun — if the
+  // process dies between those two steps the row is stuck "queued"
+  // forever. Guard with 90 s so we don't race with THIS tick's inserts.
+  void dispatchQueuedOrphans().catch((err) =>
+    console.error("[cron-scheduler] queued-orphan dispatch failed", err),
   );
 
   // node-cron expression "* * * * *" = every minute on the wall clock.
@@ -245,6 +321,32 @@ export function stopCronScheduler(): void {
     task = null;
   }
   started = false;
+}
+
+/** On boot: re-dispatch any run left in "queued" status by a previous
+ *  restart. The cron-tick inserts a run row and then calls dispatchRun;
+ *  if the process dies between those two steps the row is stuck "queued"
+ *  forever. We guard with a 90-second age window so we don't race with
+ *  runs that were just inserted by THIS tick. */
+async function dispatchQueuedOrphans(): Promise<void> {
+  const admin = getServiceRoleSupabase();
+  const cutoff = new Date(Date.now() - 90_000).toISOString();
+  const { data, error } = await admin
+    .from("runs")
+    .select("id")
+    .eq("status", "queued")
+    .lt("created_at", cutoff);
+  if (error) {
+    console.error("[cron-scheduler] queued-orphan sweep error", error);
+    return;
+  }
+  if (!data || data.length === 0) return;
+  for (const run of data) {
+    void dispatchRun(run.id as string).catch((err) =>
+      console.error(`[cron-scheduler] queued-orphan dispatch failed for ${run.id}`, err),
+    );
+  }
+  console.log(`[cron-scheduler] re-dispatched ${data.length} orphaned queued run(s)`);
 }
 
 /** One scan: find due cron schedules and dispatch a run for each. */
