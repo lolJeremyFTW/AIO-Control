@@ -262,6 +262,14 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
     }
   };
 
+  // Per-agent timeout override — set config.timeoutMs in the agent's
+  // advanced config to allow longer-running agents without changing the
+  // global cap. Falls back to AGENT_RUN_TIMEOUT_MS / 20-min default.
+  const runTimeoutMs =
+    typeof (config as { timeoutMs?: unknown }).timeoutMs === "number"
+      ? (config as { timeoutMs: number }).timeoutMs
+      : MAX_RUN_MS;
+
   // Consume the stream with a hard timeout so a hung MCP call or
   // network stall can't hold the run in "running" forever.
   const runLoop = (async () => {
@@ -343,10 +351,10 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
       () =>
         reject(
           new Error(
-            `Run exceeded timeout of ${Math.round(MAX_RUN_MS / 60_000)} minutes`,
+            `Run exceeded timeout of ${Math.round(runTimeoutMs / 60_000)} minutes`,
           ),
         ),
-      MAX_RUN_MS,
+      runTimeoutMs,
     ),
   );
 
@@ -518,7 +526,8 @@ async function maybeQueueChain(
 // retrying) versus a permanent config issue (no retry).
 function isTransientError(msg: string): boolean {
   const lc = msg.toLowerCase();
-  // Don't retry hard-config issues.
+  // Don't retry hard-config issues or hard-timeout — a run that already
+  // consumed its full time budget won't finish faster on the next attempt.
   if (
     lc.includes("missing key") ||
     lc.includes("api key") ||
@@ -527,7 +536,8 @@ function isTransientError(msg: string): boolean {
     lc.includes("invalid model") ||
     lc.includes("unauthorized") ||
     lc.includes("not configured") ||
-    lc.includes("unsupported")
+    lc.includes("unsupported") ||
+    lc.includes("exceeded timeout")
   ) {
     return false;
   }
