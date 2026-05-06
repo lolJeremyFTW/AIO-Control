@@ -15,6 +15,7 @@ import {
   listSchedulesForBusiness,
   listRecentRunsForBusiness,
 } from "../../../../../lib/queries/schedules";
+import { listFlatNavNodes } from "../../../../../lib/queries/nav-nodes";
 import { RunsTimeline } from "../../../../../components/RunsTimeline";
 import { ScheduleBuilder } from "../../../../../components/ScheduleBuilder";
 import { SchedulesPanel } from "../../../../../components/SchedulesPanel";
@@ -38,6 +39,7 @@ export default async function BusinessSchedulesPage({ params }: Props) {
     allAgents,
     schedules,
     runs,
+    navNodes,
     hdrs,
     { data: telegramRows },
     { data: customRows },
@@ -46,6 +48,7 @@ export default async function BusinessSchedulesPage({ params }: Props) {
     listAgentsForWorkspace(workspace.id),
     listSchedulesForBusiness(bizId),
     listRecentRunsForBusiness(bizId, 12),
+    listFlatNavNodes(bizId),
     headers(),
     supabase
       .from("telegram_targets")
@@ -101,6 +104,7 @@ export default async function BusinessSchedulesPage({ params }: Props) {
         agents={agents}
         schedules={schedules}
         triggerOrigin={triggerOrigin}
+        navNodes={navNodes}
         hideCreateForm={agents.length > 0}
       />
 

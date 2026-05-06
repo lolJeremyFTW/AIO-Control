@@ -28,6 +28,7 @@ type Props = {
   agents: AgentRow[];
   schedules: ScheduleRow[];
   triggerOrigin: string; // e.g. https://tromptech.life — used to render webhook URLs
+  navNodes?: { id: string; name: string; depth: number }[];
   /** When true, the panel only renders the "Bestaande schedules" list
    *  (and edit/delete/run-now actions per card) — the inline create
    *  form at the top is suppressed. Used by /business/[id]/schedules
@@ -43,6 +44,7 @@ export function SchedulesPanel({
   agents,
   schedules,
   triggerOrigin,
+  navNodes = [],
   hideCreateForm = false,
 }: Props) {
   const router = useRouter();
@@ -604,6 +606,7 @@ export function SchedulesPanel({
             name: a.name,
             provider: a.provider,
           }))}
+          navNodes={navNodes}
           onClose={() => {
             setEditingSchedule(null);
             router.refresh();

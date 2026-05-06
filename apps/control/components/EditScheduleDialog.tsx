@@ -24,6 +24,8 @@ type Mode = "interval" | "hourly" | "daily" | "weekly" | "custom";
 type Target = { id: string; name: string };
 type AgentChoice = { id: string; name: string; provider: string };
 
+type NavNodeChoice = { id: string; name: string; depth: number };
+
 type Props = {
   workspaceSlug: string;
   schedule: ScheduleRow;
@@ -32,6 +34,9 @@ type Props = {
   /** Agents in this business — used to repoint the schedule at a
    *  different agent without recreating the cron + Routine. */
   agents?: AgentChoice[];
+  /** Topics / modules for this business — pins the schedule (and its
+   *  run notifications) to a specific nav_node. */
+  navNodes?: NavNodeChoice[];
   onClose: () => void;
 };
 
@@ -41,6 +46,7 @@ export function EditScheduleDialog({
   telegramTargets = [],
   customIntegrations = [],
   agents = [],
+  navNodes = [],
   onClose,
 }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -66,6 +72,7 @@ export function EditScheduleDialog({
   );
   const [enabled, setEnabled] = useState(schedule.enabled);
   const [agentId, setAgentId] = useState(schedule.agent_id);
+  const [navNodeId, setNavNodeId] = useState(schedule.nav_node_id ?? "");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
@@ -100,6 +107,7 @@ export function EditScheduleDialog({
         cron_expr: cronExpr,
         telegram_target_id: telegramTargetId || null,
         custom_integration_id: customIntegrationId || null,
+        nav_node_id: navNodeId || null,
         enabled,
       },
     });
@@ -158,6 +166,24 @@ export function EditScheduleDialog({
               {agents.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.name} · {a.provider}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
+
+        {navNodes.length > 0 && (
+          <Field label="Module / topic">
+            <select
+              value={navNodeId}
+              onChange={(e) => setNavNodeId(e.target.value)}
+              style={inp}
+            >
+              <option value="">— Geen (business-niveau) —</option>
+              {navNodes.map((n) => (
+                <option key={n.id} value={n.id}>
+                  {"  ".repeat(n.depth)}
+                  {n.name}
                 </option>
               ))}
             </select>
