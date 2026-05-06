@@ -185,14 +185,18 @@ export function startCronScheduler(): void {
   console.log("[cron-scheduler] started — scanning every minute");
 }
 
-/** Mark runs stuck in "running" for > 25 min as failed. Most legit runs
- *  finish in 5-15 min, so 25 min is a safe backstop without killing
- *  active work. Earlier defenses kick in first:
+/** Mark runs stuck in "running" for > 90 min as failed. This threshold
+ *  sits above the maximum per-agent timeoutMs (currently 60 min for
+ *  self-improving-agent) so the timeoutRace in dispatchRun always fires
+ *  first. The zombie cleanup is only a safety net for process crashes
+ *  where dispatchRun exits without ever writing the final status.
+ *  Earlier defenses kick in first:
  *    - MiniMax stream stall watchdog: 90s
- *    - Per-run hard timeout in dispatchRun: 20 min */
+ *    - Per-run hard timeout in dispatchRun: 20 min (default), up to
+ *      timeoutMs if set on the agent config */
 async function cleanupZombieRuns(): Promise<void> {
   const admin = getServiceRoleSupabase();
-  const cutoff = new Date(Date.now() - 25 * 60_000).toISOString();
+  const cutoff = new Date(Date.now() - 90 * 60_000).toISOString();
   const nowIso = new Date().toISOString();
   const { error } = await admin
     .from("runs")
