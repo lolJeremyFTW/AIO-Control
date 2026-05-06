@@ -182,6 +182,9 @@ type Connected = {
   server: string;
   client: Client;
   tools: McpToolDef[];
+  /** The stdio transport — kept so close() can SIGKILL the subprocess as
+   *  a backstop when the MCP SDK's graceful close leaves it running. */
+  transport: StdioClientTransport;
 };
 
 export class McpHost {
@@ -319,7 +322,7 @@ export class McpHost {
           properties: {},
         },
       }));
-    return { server: id, client, tools };
+    return { server: id, client, transport, tools };
   }
 
   /** Flat list of all tools across every connected server, with names
@@ -376,12 +379,32 @@ export class McpHost {
   }
 
   /** Tear down every connected server. Safe to call after partial
-   *  connect failure. */
+   *  connect failure. Graceful SDK close first, then SIGKILL the
+   *  subprocess as a backstop — the SDK only closes stdio pipes which
+   *  some servers (e.g. filesystem, memory) don't treat as an exit
+   *  signal, leading to hundreds of orphaned node processes over time. */
   async close(): Promise<void> {
     await Promise.all(
       this.connected.map(async (c) => {
         try {
           await c.client.close();
+        } catch {
+          /* ignore */
+        }
+        // Forcibly kill the subprocess. StdioClientTransport exposes the
+        // child process as _process (private). We reach in deliberately
+        // because leaking subprocesses OOMs the VPS in hours.
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const proc = (c.transport as any)._process as import("child_process").ChildProcess | undefined;
+          if (proc && proc.exitCode === null) {
+            proc.kill("SIGTERM");
+            // Give it 2 s to die gracefully, then SIGKILL.
+            await new Promise<void>((resolve) => {
+              const t = setTimeout(() => { proc.kill("SIGKILL"); resolve(); }, 2000);
+              proc.once("exit", () => { clearTimeout(t); resolve(); });
+            });
+          }
         } catch {
           /* ignore */
         }
