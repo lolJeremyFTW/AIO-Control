@@ -121,12 +121,12 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
     command: "npx",
     args: ["-y", "tsx", "/home/jeremy/aio-control/packages/ai/src/mcp/servers/bash-server.ts"],
   },
-  // Official Anthropic fetch MCP — retrieves arbitrary URLs and returns
-  // the body as text/markdown. Useful for reading web pages without a
-  // full browser (static sites, APIs, sitemaps).
+  // Local fetch MCP — retrieves arbitrary URLs and returns the body as
+  // text (HTML is stripped to plain text). Built-in local server so it
+  // starts instantly without any npm download.
   fetch: {
     command: "npx",
-    args: ["-y", "@modelcontextprotocol/server-fetch"],
+    args: ["-y", "tsx", "/home/jeremy/aio-control/packages/ai/src/mcp/servers/fetch-server.ts"],
   },
   // Microsoft Playwright MCP — full Chromium browser with JS rendering.
   // Models are natively trained on Playwright tool signatures. Headless
@@ -163,6 +163,10 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
     command: "npx",
     args: ["-y", "firecrawl-mcp"],
     env: () => ({
+      // Self-hosted Firecrawl instance running on port 3002.
+      // Falls back to cloud API if FIRECRAWL_API_URL is not set.
+      FIRECRAWL_API_URL:
+        process.env.FIRECRAWL_API_URL ?? "http://localhost:3002",
       ...(process.env.FIRECRAWL_API_KEY
         ? { FIRECRAWL_API_KEY: process.env.FIRECRAWL_API_KEY }
         : {}),
