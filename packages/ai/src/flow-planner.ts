@@ -154,8 +154,15 @@ const TOOL: Anthropic.Tool = {
   },
 };
 
-const MINIMAX_ANTHROPIC_BASE = "https://api.minimax.io/v1/anthropic";
+const MINIMAX_BASE = "https://api.minimax.io/v1";
 const MINIMAX_MODEL = "MiniMax-M2.7-Highspeed";
+
+// Mirrors the logic in packages/ai/src/providers/minimax.ts:
+// strip the trailing /v1 and append /anthropic so the Anthropic SDK
+// constructs URLs like https://api.minimax.io/anthropic/v1/messages.
+function minimaxAnthropicBase(base = MINIMAX_BASE): string {
+  return base.replace(/\/v1\/?$/, "") + "/anthropic";
+}
 
 export async function generateFlowPlan(
   description: string,
@@ -164,7 +171,9 @@ export async function generateFlowPlan(
 ): Promise<FlowPlan> {
   const clientOpts: ConstructorParameters<typeof Anthropic>[0] = { apiKey };
   if (provider === "minimax") {
-    clientOpts.baseURL = MINIMAX_ANTHROPIC_BASE;
+    clientOpts.baseURL = minimaxAnthropicBase();
+    // MiniMax requires Bearer token auth in addition to x-api-key
+    clientOpts.defaultHeaders = { Authorization: `Bearer ${apiKey}` };
   }
 
   const model = provider === "minimax" ? MINIMAX_MODEL : "claude-sonnet-4-6";
