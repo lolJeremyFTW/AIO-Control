@@ -8,6 +8,7 @@
 //   - the active business (if any) — description, mission, targets
 //   - workspace-wide rules
 //   - the current spend / budget snapshot
+//   - exact MCP tool names for every configured MCP server
 //
 // Replaces the older `business-context.ts` (which only knew about
 // businesses). The old file re-exports buildBusinessContextPrefix
@@ -17,6 +18,47 @@ import "server-only";
 
 import { getServiceRoleSupabase } from "../supabase/service";
 import { getSpendSnapshot } from "../dispatch/spend-limit";
+
+// Static catalogue of known MCP servers and the tools they expose.
+// Updated when new servers are added to packages/ai/src/mcp/host.ts.
+const MCP_TOOL_CATALOGUE: Record<string, { description: string; tools: string[] }> = {
+  bash: {
+    description: "bash shell op de VPS — commando's uitvoeren, scripts draaien, bestanden lezen/schrijven",
+    tools: ["execute_code", "cli_tool", "bash"],
+  },
+  aio: {
+    description: "AIO Control platform — agents, businesses, runs, Telegram notificaties",
+    tools: ["list_businesses", "list_agents", "list_runs", "send_telegram_message"],
+  },
+  fetch: {
+    description: "HTTP fetch — willekeurige URLs ophalen, HTML wordt automatisch gestript naar plain text",
+    tools: ["fetch"],
+  },
+  playwright: {
+    description: "Chromium browser automation — navigeren, klikken, forms invullen, screenshots",
+    tools: ["browser_navigate", "browser_click", "browser_type", "browser_fill", "browser_screenshot", "browser_evaluate"],
+  },
+  minimax: {
+    description: "MiniMax web search + afbeelding begrijpen",
+    tools: ["web_search", "understand_image"],
+  },
+  filesystem: {
+    description: "bestandssysteem — lezen, schrijven, directory listing (sandbox: /home/jeremy)",
+    tools: ["read_file", "write_file", "list_directory", "create_directory", "move_file", "search_files"],
+  },
+  firecrawl: {
+    description: "web scraping + crawling — gestructureerde data extractie",
+    tools: ["scrape_url", "crawl_url", "deep_research"],
+  },
+  brave: {
+    description: "Brave web + lokale zoekresultaten",
+    tools: ["brave_web_search", "brave_local_search"],
+  },
+  memory: {
+    description: "kennisgraaf opslag — entiteiten, relaties, observaties opslaan en teruglezen",
+    tools: ["create_entities", "add_observations", "search_nodes", "open_nodes", "create_relations"],
+  },
+};
 
 type Target = {
   id?: string;
@@ -52,15 +94,17 @@ export async function buildAgentSystemPrompt(
 ): Promise<string> {
   const admin = getServiceRoleSupabase();
 
-  // First fetch this agent's allowed_skills array — drives the
-  // skills lookup below (skip the lookup entirely when empty).
+  // Fetch this agent's own config: allowed_skills drives the skills
+  // lookup; config.mcpServers tells us which tools to enumerate below.
   const { data: agentSelfRow } = await admin
     .from("agents")
-    .select("allowed_skills")
+    .select("allowed_skills, config")
     .eq("id", agent.id)
     .maybeSingle();
   const allowedSkillIds = ((agentSelfRow?.allowed_skills as string[] | null) ??
     []) as string[];
+  const agentConfig = (agentSelfRow?.config as Record<string, unknown> | null) ?? {};
+  const configuredMcpServers = (agentConfig.mcpServers as string[] | null) ?? [];
 
   // Fan out the lookups in parallel — single round-trip total.
   const [bizRes, wsRes, integrations, siblings, spend, skillsRes] =
@@ -173,17 +217,42 @@ export async function buildAgentSystemPrompt(
       "targets hieronder zijn vaste uitgangspunten — niet onderhandelbaar.",
   );
 
-  // ── Tooling note ──────────────────────────────────────────────────
-  // Source-of-truth reminder so the model doesn't hallucinate tool
-  // names. OpenClaw uses an identical short note up-front.
+  // ── Tooling ────────────────────────────────────────────────────────
+  // Enumerate the EXACT tools this agent has so it never claims to
+  // have no tools, and never hallucinates tool names.
+  // MCP servers are listed by catalogue; a trailing "..." means the
+  // MCP server may expose additional tools not in our catalogue.
   lines.push("");
-  lines.push("## Tooling");
+  lines.push("## Tooling — wat je kunt aanroepen");
+
+  if (configuredMcpServers.length > 0) {
+    lines.push(
+      "De volgende MCP-servers zijn geconfigureerd en starten bij elke run. " +
+        "Gebruik de exacte tool-namen zoals hieronder — roep ze gewoon aan, " +
+        "geen aankondiging, geen \"zal ik...?\".",
+    );
+    for (const serverId of configuredMcpServers) {
+      const cat = MCP_TOOL_CATALOGUE[serverId];
+      if (cat) {
+        const toolStr = cat.tools.map((t) => `\`${serverId}__${t}\``).join(", ");
+        lines.push(`- **${serverId}**: ${cat.description} → tools: ${toolStr}`);
+      } else {
+        lines.push(`- **${serverId}**: custom MCP server (tool-namen via API)`);
+      }
+    }
+  } else {
+    lines.push(
+      "Deze agent heeft **geen MCP-servers** geconfigureerd — bash, fetch, " +
+        "playwright en andere server-side tools zijn niet beschikbaar. " +
+        "Voeg ze toe via Agent-instellingen → MCP Servers als je ze nodig hebt.",
+    );
+  }
+
+  lines.push("");
   lines.push(
-    "De tools die hieronder via de API worden aangereikt zijn de **enige** " +
-      "tools die je hebt. Gebruik exact die namen. Hallucineer geen " +
-      "fictieve tools, en interpreteer geen `[run agent X]` of `[search " +
-      "the web]` als echte aanroepen — als 't niet in de tools-lijst " +
-      "staat, kun je 't niet doen.",
+    "**Onthoud**: de tools hierboven zijn de **enige** tools die je hebt. " +
+      "Hallucineer geen fictieve tool-namen en interpreteer geen " +
+      "`[run agent X]` als een echte aanroep.",
   );
 
   // ── Runtime / now ─────────────────────────────────────────────────
