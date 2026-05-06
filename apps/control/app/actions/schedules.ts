@@ -31,6 +31,7 @@ export async function createCronSchedule(input: {
   workspace_id: string;
   agent_id: string;
   business_id?: string | null;
+  nav_node_id?: string | null;
   cron_expr: string;
   prompt: string;
   /** Origin (no path) for building the Routines callback URL on the
@@ -107,6 +108,7 @@ export async function createCronSchedule(input: {
         timezone: input.timezone ?? "Europe/Amsterdam",
         telegram_target_id: input.telegram_target_id ?? null,
         custom_integration_id: input.custom_integration_id ?? null,
+        nav_node_id: input.nav_node_id ?? null,
       })
       .select("id, provider_routine_id")
       .single();
@@ -145,6 +147,7 @@ export async function createCronSchedule(input: {
       timezone: input.timezone ?? "Europe/Amsterdam",
       telegram_target_id: input.telegram_target_id ?? null,
       custom_integration_id: input.custom_integration_id ?? null,
+      nav_node_id: input.nav_node_id ?? null,
     })
     .select("id")
     .single();
@@ -165,6 +168,7 @@ export async function createWebhookSchedule(input: {
   workspace_id: string;
   agent_id: string;
   business_id?: string | null;
+  nav_node_id?: string | null;
 }): Promise<ActionResult<{ id: string; secret: string }>> {
   const supabase = await createSupabaseServerClient();
 
@@ -195,6 +199,7 @@ export async function createWebhookSchedule(input: {
       business_id: input.business_id ?? null,
       kind: "webhook" satisfies ScheduleKind,
       webhook_secret_hash: sha256(secret),
+      nav_node_id: input.nav_node_id ?? null,
     })
     .select("id")
     .single();

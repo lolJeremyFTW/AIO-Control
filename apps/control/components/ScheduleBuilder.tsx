@@ -36,6 +36,7 @@ type Props = {
   triggerOrigin: string;
   telegramTargets: Target[];
   customIntegrations: Target[];
+  navNodes?: { id: string; name: string; depth: number }[];
   onCreated?: () => void;
 };
 
@@ -47,12 +48,14 @@ export function ScheduleBuilder({
   triggerOrigin,
   telegramTargets,
   customIntegrations,
+  navNodes = [],
   onCreated,
 }: Props) {
   const [agentId, setAgentId] = useState(agents[0]?.id ?? "");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [instructions, setInstructions] = useState("");
+  const [navNodeId, setNavNodeId] = useState<string>("");
 
   const [mode, setMode] = useState<Mode>("daily");
   const [intervalMinutes, setIntervalMinutes] = useState(30);
@@ -101,6 +104,7 @@ export function ScheduleBuilder({
         workspace_id: workspaceId,
         agent_id: agentId,
         business_id: businessId,
+        nav_node_id: navNodeId || null,
         cron_expr: cronExpr,
         prompt: instructions,
         callback_origin: triggerOrigin,
@@ -388,6 +392,24 @@ export function ScheduleBuilder({
           </code>
         </div>
       </div>
+
+      {/* ── Topic / module assignment ────────────────────────── */}
+      {navNodes.length > 0 && (
+        <Field label="Topic / module (optioneel)">
+          <select
+            value={navNodeId}
+            onChange={(e) => setNavNodeId(e.target.value)}
+            style={inp}
+          >
+            <option value="">— Business-niveau (geen topic) —</option>
+            {navNodes.map((n) => (
+              <option key={n.id} value={n.id}>
+                {"  ".repeat(n.depth)}{n.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
 
       {/* ── Reporting targets ────────────────────────────────── */}
       {(telegramTargets.length > 0 || customIntegrations.length > 0) && (

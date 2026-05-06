@@ -63,7 +63,9 @@ export default async function BusinessSchedulesPage({ params }: Props) {
   ]);
   const biz = businesses.find((b) => b.id === bizId);
   if (!biz) notFound();
-  const agents = allAgents.filter((a) => a.business_id === bizId);
+  const agents = allAgents.filter(
+    (a) => a.business_id === bizId || a.business_id === null,
+  );
   const telegramTargets = (telegramRows ?? []) as { id: string; name: string }[];
   const customIntegrations = (customRows ?? []) as { id: string; name: string }[];
 
@@ -93,6 +95,7 @@ export default async function BusinessSchedulesPage({ params }: Props) {
             triggerOrigin={triggerOrigin}
             telegramTargets={telegramTargets}
             customIntegrations={customIntegrations}
+            navNodes={navNodes}
           />
         </div>
       )}
