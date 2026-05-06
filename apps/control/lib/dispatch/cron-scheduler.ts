@@ -29,6 +29,56 @@ import { getServiceRoleSupabase } from "../supabase/service";
 let started = false;
 let task: cron.ScheduledTask | null = null;
 
+// Per-workspace dispatch queue. When the tick finds 5 due schedules
+// in workspace W they go into W's queue and run *sequentially* — never
+// in parallel — with a small inter-run delay. This keeps the per-key
+// API rate (MiniMax/OpenAI/etc.) at one in-flight call per workspace,
+// which is exactly how OpenClaw and Hermes-Agent run cron-driven agents
+// without tripping rate limits. Different workspaces run independently
+// in parallel, so workspace A's busy queue never blocks workspace B.
+type WorkspaceQueue = {
+  pending: string[];
+  running: boolean;
+};
+const workspaceQueues = new Map<string, WorkspaceQueue>();
+
+const QUEUE_INTER_RUN_DELAY_MS = Number(
+  process.env.CRON_QUEUE_INTER_RUN_DELAY_MS ?? "5000",
+);
+
+function enqueueDispatch(workspaceId: string, runId: string): void {
+  let q = workspaceQueues.get(workspaceId);
+  if (!q) {
+    q = { pending: [], running: false };
+    workspaceQueues.set(workspaceId, q);
+  }
+  q.pending.push(runId);
+  if (!q.running) {
+    q.running = true;
+    void drainWorkspaceQueue(workspaceId).catch((err) =>
+      console.error(`[cron-queue] drain failed for workspace ${workspaceId}`, err),
+    );
+  }
+}
+
+async function drainWorkspaceQueue(workspaceId: string): Promise<void> {
+  const q = workspaceQueues.get(workspaceId);
+  if (!q) return;
+  while (q.pending.length > 0) {
+    const runId = q.pending.shift();
+    if (!runId) break;
+    try {
+      await dispatchRun(runId);
+    } catch (err) {
+      console.error(`[cron-queue] dispatch failed for ${runId}`, err);
+    }
+    if (q.pending.length > 0) {
+      await new Promise((r) => setTimeout(r, QUEUE_INTER_RUN_DELAY_MS));
+    }
+  }
+  q.running = false;
+}
+
 export function startCronScheduler(): void {
   // Idempotent — instrumentation.ts may run twice in dev.
   if (started) return;
@@ -61,16 +111,18 @@ export function startCronScheduler(): void {
   console.log("[cron-scheduler] started — scanning every minute");
 }
 
-/** Mark runs stuck in "running" for > 30 min as failed.
- *  Called once at startup to recover from crashes/restarts. */
+/** Mark runs stuck in "running" for > 15 min as failed. The provider-level
+ *  stall watchdog (90s) and the dispatchRun timeout (30 min default) should
+ *  catch most cases first; this is the backstop for runaway promises that
+ *  ignore the timeout. */
 async function cleanupZombieRuns(): Promise<void> {
   const admin = getServiceRoleSupabase();
-  const cutoff = new Date(Date.now() - 30 * 60_000).toISOString();
-  const { error, count } = await admin
+  const cutoff = new Date(Date.now() - 15 * 60_000).toISOString();
+  const { error } = await admin
     .from("runs")
     .update({
       status: "failed",
-      error_text: "Run abandoned — process restarted mid-flight",
+      error_text: "Run abandoned — exceeded 15 min wallclock (zombie cleanup)",
       ended_at: new Date().toISOString(),
     })
     .eq("status", "running")
@@ -79,6 +131,61 @@ async function cleanupZombieRuns(): Promise<void> {
     console.error("[cron-scheduler] zombie cleanup error", error);
   } else {
     console.log("[cron-scheduler] zombie run cleanup done");
+  }
+}
+
+/** Pick up failed runs whose `next_retry_at` has passed and re-dispatch
+ *  them as a NEW run row with attempt = previous + 1. Mirrors the HTTP
+ *  retry-sweep endpoint but runs in-process so we don't need an external
+ *  cron daemon. */
+async function runRetrySweep(): Promise<void> {
+  const admin = getServiceRoleSupabase();
+  // Cap dispatches per tick: bursting 20 retries at once will trip
+  // MiniMax's per-key rate limiter (Token Plan = ~5 concurrent).
+  // 2/min = 120/hour throughput which is ample for normal failure rates,
+  // and gives MiniMax breathing room between simultaneous calls.
+  const RETRIES_PER_TICK = Number(process.env.RETRY_SWEEP_PER_TICK ?? "2");
+  const { data: due } = await admin
+    .from("runs_due_for_retry")
+    .select("id, workspace_id, agent_id, business_id, attempt, max_attempts")
+    .limit(RETRIES_PER_TICK);
+  if (!due || due.length === 0) return;
+
+  for (const r of due) {
+    const { data: original } = await admin
+      .from("runs")
+      .select("input")
+      .eq("id", r.id as string)
+      .maybeSingle();
+
+    const { data: newRun } = await admin
+      .from("runs")
+      .insert({
+        workspace_id: r.workspace_id,
+        agent_id: r.agent_id,
+        business_id: r.business_id,
+        triggered_by: "retry",
+        status: "queued",
+        input: original?.input ?? null,
+        attempt: ((r.attempt as number) ?? 1) + 1,
+        max_attempts: r.max_attempts,
+      })
+      .select("id")
+      .single();
+    if (!newRun) continue;
+
+    await admin
+      .from("runs")
+      .update({ next_retry_at: null })
+      .eq("id", r.id as string);
+
+    // Route retries through the same workspace queue so they don't burst
+    // either. With RETRIES_PER_TICK=2 + queue serialization, a retry
+    // pile-up turns into a steady drip instead of a stampede.
+    enqueueDispatch(r.workspace_id as string, newRun.id as string);
+    console.log(
+      `[cron-scheduler] retried ${r.id} → ${newRun.id} (attempt ${(r.attempt as number) + 1}/${r.max_attempts})`,
+    );
   }
 }
 
@@ -94,10 +201,13 @@ export function stopCronScheduler(): void {
 async function tick(): Promise<void> {
   const admin = getServiceRoleSupabase();
 
-  // Periodically clean up zombie runs (>30 min in "running" state).
-  // Running on every tick is cheap — the UPDATE only touches rows that
-  // match, so it's a no-op most of the time.
+  // Periodically clean up zombie runs (>15 min in "running" state) and
+  // pick up failed runs that are due for retry. Both are no-ops when
+  // there's nothing to do, so running every tick is cheap.
   void cleanupZombieRuns().catch(() => {});
+  void runRetrySweep().catch((err) =>
+    console.error("[cron-scheduler] retry sweep failed", err),
+  );
 
   // Query enabled cron schedules joined with their agents so we can
   // skip subscription-Claude (those run on Claude's own cron via
@@ -206,11 +316,12 @@ async function tick(): Promise<void> {
         console.error("[cron-scheduler] run insert failed", runErr);
         continue;
       }
-      // Dispatch async — we don't want one slow agent to block other
-      // schedules in the same tick.
-      void dispatchRun(run.id).catch((err) => {
-        console.error(`[cron-scheduler] dispatch failed for ${run.id}`, err);
-      });
+      // Enqueue for sequential dispatch within this workspace. Different
+      // workspaces run in parallel; same-workspace schedules wait their
+      // turn so we never burst MiniMax/etc. with N concurrent calls per
+      // key. The queue runs on a separate microtask so the tick returns
+      // quickly even if the queue is long.
+      enqueueDispatch(sched.workspace_id, run.id as string);
     } catch (err) {
       console.error("[cron-scheduler] schedule fire failed", err);
     }

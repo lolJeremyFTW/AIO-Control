@@ -64,6 +64,8 @@ export async function updateSession(request: NextRequest) {
     path.startsWith("/api/triggers/") ||
     // Public marketplace share pages — no session needed.
     path.startsWith("/share/") ||
+    // Public freebie reports — token in URL is the only auth needed.
+    path.startsWith("/r/") ||
     // Telegram webhook authenticates via the secret in the URL.
     path.startsWith("/api/integrations/telegram/webhook") ||
     // Internal automation APIs authenticate via AGENT_SECRET_KEY Bearer token.

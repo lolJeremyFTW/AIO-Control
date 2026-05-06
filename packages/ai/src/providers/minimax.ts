@@ -29,6 +29,110 @@ function getHopsMax(config: { maxHops?: number }): number {
   return config.maxHops && config.maxHops > 0 ? config.maxHops : ENV_HOPS_MAX;
 }
 
+/** Classify a MiniMax stream error for retry decisions.
+ *  Returns:
+ *   - "fatal"     : 4xx invalid request, context overflow — retry won't help
+ *   - "rate_limit": 429 — needs LONG backoff (Token Plan = ~5 concurrent)
+ *   - "transient" : 5xx / network / stall — short backoff is fine
+ *   - "unknown"   : retry once with short backoff
+ */
+type MinimaxErrorClass = "fatal" | "rate_limit" | "transient" | "unknown";
+function classifyMinimaxError(err: unknown): MinimaxErrorClass {
+  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  if (msg.includes("429") || msg.includes("rate_limit") || msg.includes("rate limit") || msg.includes("too many requests")) {
+    return "rate_limit";
+  }
+  // Context window / invalid request bugs won't fix themselves on retry.
+  if (msg.includes("context window") || msg.includes("invalid_request_error") || msg.includes("invalid params")) {
+    return "fatal";
+  }
+  if (msg.includes("stalled")) return "transient";
+  if (msg.includes("premature close")) return "transient";
+  if (msg.includes("econnreset") || msg.includes("etimedout") || msg.includes("socket hang up")) return "transient";
+  if (msg.includes("network") || msg.includes("fetch failed")) return "transient";
+  if (msg.includes("overloaded")) return "transient";
+  if (/\b5\d\d\b/.test(msg)) return "transient";
+  if (/\b4\d\d\b/.test(msg)) return "fatal";
+  return "unknown";
+}
+
+/** Compute backoff before next MiniMax retry. Rate limit = long sleep so
+ *  the per-key bucket refills. Transient = quick ramp. */
+function backoffMs(klass: MinimaxErrorClass, attempt: number): number {
+  if (klass === "rate_limit") {
+    // 30s, 60s, 120s — Token Plan refill window is ~30s.
+    return Math.min(30_000 * Math.pow(2, attempt), 120_000);
+  }
+  // 1s, 2s, 4s for transient.
+  return Math.min(1000 * Math.pow(2, attempt), 4_000);
+}
+
+/** Per-API-key concurrency guard. Token/Coder Plan allows ~5 concurrent
+ *  connections per key; we cap at 3 by default to leave headroom for
+ *  interactive chat. Each MiniMax key gets its own slot pool so workspace
+ *  A's cron run never blocks workspace B's interactive chat. */
+const MINIMAX_MAX_CONCURRENT = Number(process.env.MINIMAX_MAX_CONCURRENT ?? "3");
+
+type KeyState = {
+  inFlight: number;
+  waiters: Array<() => void>;
+  /** When set, no new acquires allowed until this timestamp (ms) — used
+   *  by the 429 cooldown. */
+  cooldownUntil: number;
+};
+const minimaxKeyState = new Map<string, KeyState>();
+
+function getKeyState(apiKey: string): KeyState {
+  let s = minimaxKeyState.get(apiKey);
+  if (!s) {
+    s = { inFlight: 0, waiters: [], cooldownUntil: 0 };
+    minimaxKeyState.set(apiKey, s);
+  }
+  return s;
+}
+
+async function acquireMinimaxSlot(apiKey: string): Promise<void> {
+  const s = getKeyState(apiKey);
+  // Honor cooldown — if we got rate-limited recently, wait it out before
+  // even attempting the next request. Logged so the user can see it in
+  // the run drawer instead of guessing why their cron is slow.
+  const now = Date.now();
+  if (s.cooldownUntil > now) {
+    const wait = s.cooldownUntil - now;
+    console.log(`[minimax] cooldown active — sleeping ${(wait / 1000).toFixed(1)}s before next request`);
+    await new Promise((r) => setTimeout(r, wait));
+  }
+  if (s.inFlight < MINIMAX_MAX_CONCURRENT) {
+    s.inFlight++;
+    return;
+  }
+  await new Promise<void>((resolve) => s.waiters.push(resolve));
+  s.inFlight++;
+}
+
+function releaseMinimaxSlot(apiKey: string): void {
+  const s = getKeyState(apiKey);
+  s.inFlight = Math.max(0, s.inFlight - 1);
+  const next = s.waiters.shift();
+  if (next) next();
+}
+
+/** Trigger a 429 cooldown for this key. Subsequent acquireMinimaxSlot()
+ *  calls will sleep until the cooldown elapses. Cooldown duration scales
+ *  with consecutive 429s to back off harder when the bucket is hot. */
+function triggerCooldown(apiKey: string, attempt: number): void {
+  const s = getKeyState(apiKey);
+  // 30s, 60s, 120s — Token Plan refill window starts at ~30s. We add a
+  // small jitter so multiple workers don't all wake at the exact same
+  // moment and immediately cause another 429.
+  const base = Math.min(30_000 * Math.pow(2, attempt), 120_000);
+  const jitter = Math.floor(Math.random() * 5_000);
+  s.cooldownUntil = Math.max(s.cooldownUntil, Date.now() + base + jitter);
+  console.log(
+    `[minimax] 429 — cooldown set to ${((base + jitter) / 1000).toFixed(1)}s for this key`,
+  );
+}
+
 export async function* streamMinimax(
   opts: StreamChatOptions,
 ): AsyncIterable<AGUIEvent> {
@@ -202,15 +306,31 @@ async function* streamMinimaxWithToolsAnthropic(
       return;
     }
 
-    const mcpTools = host.tools();
+    let mcpTools = host.tools();
     if (mcpTools.length === 0) {
-      yield {
-        type: "error",
-        code: "mcp_no_tools",
-        message:
-          "MCP host opgestart maar geen tools beschikbaar. Controleer de servers in agent.config.mcpServers.",
-      };
-      return;
+      // First-hop warm-up: when the runtime restarts, MCP servers spawn
+      // via npx and need a moment to expose their tools. Retry the
+      // connect once after a short delay before giving up — eliminates
+      // the "MCP host opgestart maar geen tools beschikbaar" failures
+      // that hit any cron firing within ~10s of a service restart.
+      for (let warmup = 0; warmup < 2 && mcpTools.length === 0; warmup++) {
+        await new Promise((r) => setTimeout(r, 2000));
+        try {
+          await host.connect(serverIds, { MINIMAX_API_KEY: apiKey }, {});
+        } catch {
+          // ignore — final tools() check below decides
+        }
+        mcpTools = host.tools();
+      }
+      if (mcpTools.length === 0) {
+        yield {
+          type: "error",
+          code: "mcp_no_tools",
+          message:
+            "MCP host opgestart maar geen tools beschikbaar. Controleer de servers in agent.config.mcpServers.",
+        };
+        return;
+      }
     }
 
     // Convert MCP tool definitions to Anthropic format.
@@ -240,40 +360,120 @@ async function* streamMinimaxWithToolsAnthropic(
     let totalOutputTokens = 0;
     let assistantTextSoFar = "";
 
+    // Per-stream stall watchdog — if no SSE event arrives for this many ms,
+    // abort the request. MiniMax's Anthropic endpoint sometimes stops
+    // emitting deltas without closing the stream, leaving the run hung.
+    // 90s is generous: a slow model still emits tokens every few seconds.
+    const STREAM_STALL_MS = Number(
+      process.env.MINIMAX_STREAM_STALL_MS ?? "90000",
+    );
+
     for (let hop = 0; hop < getHopsMax(opts.config); hop++) {
       let turnText = "";
 
-      // Stream one turn from MiniMax via the Anthropic endpoint.
-      const stream = client.messages.stream({
-        model,
-        max_tokens: opts.config.maxTokens ?? 4096,
-        ...(opts.config.systemPrompt
-          ? { system: opts.config.systemPrompt }
-          : {}),
-        tools: anthropicTools,
-        tool_choice: { type: "auto" },
-        messages: trimMessages(messages),
-        ...(opts.config.temperature != null
-          ? { temperature: opts.config.temperature }
-          : {}),
-      });
+      const abortController = new AbortController();
+      let stallTimer: NodeJS.Timeout | null = null;
+      const resetStallTimer = () => {
+        if (stallTimer) clearTimeout(stallTimer);
+        stallTimer = setTimeout(() => {
+          abortController.abort(
+            new Error(
+              `MiniMax stream stalled — geen events binnen ${STREAM_STALL_MS / 1000}s`,
+            ),
+          );
+        }, STREAM_STALL_MS);
+      };
+      resetStallTimer();
 
-      // Forward token deltas live so the run drawer streams in real time.
-      try {
-        for await (const event of stream) {
-          if (
-            event.type === "content_block_delta" &&
-            event.delta.type === "text_delta"
-          ) {
-            turnText += event.delta.text;
-            yield { type: "token", message_id: messageId, delta: event.delta.text };
+      // Per-hop retry — backoff scales by error class (rate_limit gets
+      // 30-120s sleep so the per-key bucket can refill). 4xx fatal errors
+      // fail fast; transient gets a short ramp.
+      let stream: ReturnType<typeof client.messages.stream> | null = null;
+      let streamErr: unknown = null;
+      const MAX_RETRIES = 3;
+      let lastClass: MinimaxErrorClass = "unknown";
+      retryLoop: for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        if (attempt > 0) {
+          await new Promise((r) =>
+            setTimeout(r, backoffMs(lastClass, attempt - 1)),
+          );
+        }
+        // Concurrency guard — per-key, so workspaces with separate keys
+        // don't block each other. Also honors any active 429 cooldown.
+        await acquireMinimaxSlot(apiKey);
+        stream = client.messages.stream(
+          {
+            model,
+            max_tokens: opts.config.maxTokens ?? 4096,
+            ...(opts.config.systemPrompt
+              ? { system: opts.config.systemPrompt }
+              : {}),
+            tools: anthropicTools,
+            tool_choice: { type: "auto" },
+            // trimMessages prevents the "context window exceeds limit" 400
+            // class of errors when long-running runs accumulate hops of
+            // tool input/output that bust MiniMax's input cap.
+            messages: trimMessages(messages),
+            ...(opts.config.temperature != null
+              ? { temperature: opts.config.temperature }
+              : {}),
+          },
+          { signal: abortController.signal },
+        );
+
+        turnText = "";
+        try {
+          for await (const event of stream) {
+            // Reset the stall timer on every event — including non-text ones
+            // like content_block_start/stop, so a long tool-arg stream doesn't
+            // trip the watchdog.
+            resetStallTimer();
+            if (
+              event.type === "content_block_delta" &&
+              event.delta.type === "text_delta"
+            ) {
+              turnText += event.delta.text;
+              yield {
+                type: "token",
+                message_id: messageId,
+                delta: event.delta.text,
+              };
+            }
+          }
+          releaseMinimaxSlot(apiKey);
+          streamErr = null;
+          break retryLoop;
+        } catch (err) {
+          releaseMinimaxSlot(apiKey);
+          streamErr = err;
+          lastClass = classifyMinimaxError(err);
+          // 429 → trigger global cooldown for this key so subsequent
+          // acquires sleep instead of hammering the same bucket again.
+          if (lastClass === "rate_limit") {
+            triggerCooldown(apiKey, attempt);
+          }
+          // Reset the stall watchdog so the next attempt gets a fresh timer.
+          if (stallTimer) clearTimeout(stallTimer);
+          resetStallTimer();
+          if (lastClass === "fatal" || attempt === MAX_RETRIES) {
+            break retryLoop;
           }
         }
-      } catch (err) {
+      }
+      if (stallTimer) clearTimeout(stallTimer);
+      if (streamErr) {
         yield {
           type: "error",
           code: "minimax_anthropic_stream",
-          message: `MiniMax stream fout: ${err instanceof Error ? err.message : String(err)}`,
+          message: `MiniMax stream fout: ${streamErr instanceof Error ? streamErr.message : String(streamErr)}`,
+        };
+        return;
+      }
+      if (!stream) {
+        yield {
+          type: "error",
+          code: "minimax_anthropic_stream",
+          message: "MiniMax stream niet geinitialiseerd",
         };
         return;
       }
@@ -426,15 +626,31 @@ async function* streamMinimaxWithTools(
       };
       return;
     }
-    const mcpTools = host.tools();
+    let mcpTools = host.tools();
     if (mcpTools.length === 0) {
-      yield {
-        type: "error",
-        code: "mcp_no_tools",
-        message:
-          "MCP host opgestart maar geen tools beschikbaar. Controleer de servers in agent.config.mcpServers.",
-      };
-      return;
+      // First-hop warm-up: when the runtime restarts, MCP servers spawn
+      // via npx and need a moment to expose their tools. Retry the
+      // connect once after a short delay before giving up — eliminates
+      // the "MCP host opgestart maar geen tools beschikbaar" failures
+      // that hit any cron firing within ~10s of a service restart.
+      for (let warmup = 0; warmup < 2 && mcpTools.length === 0; warmup++) {
+        await new Promise((r) => setTimeout(r, 2000));
+        try {
+          await host.connect(serverIds, { MINIMAX_API_KEY: apiKey }, {});
+        } catch {
+          // ignore — final tools() check below decides
+        }
+        mcpTools = host.tools();
+      }
+      if (mcpTools.length === 0) {
+        yield {
+          type: "error",
+          code: "mcp_no_tools",
+          message:
+            "MCP host opgestart maar geen tools beschikbaar. Controleer de servers in agent.config.mcpServers.",
+        };
+        return;
+      }
     }
 
     const oaiTools = mcpTools.map((t) => ({
