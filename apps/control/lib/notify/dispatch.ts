@@ -195,7 +195,6 @@ async function fireTelegram(
     business_id: run.business_id,
     target,
     text,
-    parse_mode: "Markdown",
     buttons: buttons.length > 0 ? buttons : undefined,
   });
   if (!res.ok) {
@@ -343,8 +342,8 @@ function formatRunMessage(
 ): string {
   const head = event === "done" ? "✅ Run done" : "❌ Run failed";
   const lines: string[] = [
-    `*${head}* — ${agent?.name ?? "(agent)"}`,
-    `Status: \`${run.status}\``,
+    `${head} — ${agent?.name ?? "(agent)"}`,
+    `Status: ${run.status}`,
   ];
   if (run.cost_cents != null && run.cost_cents > 0) {
     lines.push(`Cost: €${(run.cost_cents / 100).toFixed(4)}`);
