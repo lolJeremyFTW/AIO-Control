@@ -131,9 +131,17 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
   // Microsoft Playwright MCP — full Chromium browser with JS rendering.
   // Models are natively trained on Playwright tool signatures. Headless
   // mode so it works on a headless VPS without a display server.
+  // PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH points to the already-installed
+  // playwright chromium bundle so the MCP server doesn't need to download
+  // chrome-for-testing (a separate 175 MB download).
   playwright: {
     command: "npx",
     args: ["-y", "@playwright/mcp", "--headless", "--browser", "chromium"],
+    env: () => ({
+      PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH:
+        process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ??
+        `${process.env.HOME ?? "/home/jeremy"}/.cache/ms-playwright/chromium-1217/chrome-linux64/chrome`,
+    }),
   },
   // Brave Search MCP — high-quality web + news search backed by the
   // Brave Search API. Needs BRAVE_API_KEY set in workspace secrets.
