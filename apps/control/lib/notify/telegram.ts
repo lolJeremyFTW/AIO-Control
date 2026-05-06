@@ -60,7 +60,7 @@ export async function sendTelegram(opts: {
   const body: Record<string, unknown> = {
     chat_id: opts.target.chat_id,
     text: opts.text,
-    parse_mode: opts.parse_mode ?? "Markdown",
+    ...(opts.parse_mode ? { parse_mode: opts.parse_mode } : {}),
     disable_web_page_preview: true,
   };
   if (opts.target.topic_id != null) {
