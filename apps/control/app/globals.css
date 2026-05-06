@@ -321,7 +321,7 @@ body[data-theme="light"] .node.outline {
 .node.lime {
   background: #84cc16;
   border-color: #5f9510;
-  color: #1a1c1a;
+  color: #fff;
 }
 .node.magenta {
   background: #d946ef;
@@ -331,7 +331,7 @@ body[data-theme="light"] .node.outline {
 .node.sky {
   background: #38bdf8;
   border-color: #0c8bcf;
-  color: #1a1c1a;
+  color: #fff;
 }
 .node.coral {
   background: #fb7185;

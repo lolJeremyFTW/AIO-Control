@@ -140,5 +140,5 @@ function readableTextColor(hex: string): string {
   if ([r, g, b].some((n) => Number.isNaN(n))) return "#fff";
   // YIQ luminance — a rough perceived-brightness shortcut.
   const yiq = (r * 299 + g * 587 + b * 114) / 1000;
-  return yiq >= 150 ? "#1a1c1a" : "#fff";
+  return yiq >= 180 ? "#1a1c1a" : "#fff";
 }
