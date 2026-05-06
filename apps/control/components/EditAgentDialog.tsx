@@ -190,17 +190,9 @@ export function EditAgentDialog({
         allowed_tools: useToolsDefault ? null : allowedTools,
         allowed_skills: allowedSkills,
         nav_node_id: navNodeId || null,
-        // MCP servers are only wired through the minimax provider for
-        // now (claude / openrouter come in a later phase). For other
-        // providers we send an empty array which the action strips
-        // out of config.
-        mcpServers: provider === "minimax" ? mcpServers : [],
-        mcpPermissions:
-          provider === "minimax" ? mcpPermissions : null,
-        maxHops:
-          provider === "minimax"
-            ? (Number(maxHops) > 0 ? Number(maxHops) : null)
-            : null,
+        mcpServers,
+        mcpPermissions,
+        maxHops: Number(maxHops) > 0 ? Number(maxHops) : null,
       },
     });
     setPending(false);
@@ -344,27 +336,23 @@ export function EditAgentDialog({
           />
         </Field>
 
-        {provider === "minimax" && (
-          <>
-            <McpServersField
-              value={mcpServers}
-              onToggle={toggleMcp}
-              permissions={mcpPermissions}
-              onPermissionsChange={setMcpPermissions}
-            />
-            <Field label="Max. tool-stappen">
-              <input
-                type="number"
-                min={1}
-                max={500}
-                value={maxHops}
-                onChange={(e) => setMaxHops(e.target.value)}
-                placeholder="150 (standaard)"
-                style={inp}
-              />
-            </Field>
-          </>
-        )}
+        <McpServersField
+          value={mcpServers}
+          onToggle={toggleMcp}
+          permissions={mcpPermissions}
+          onPermissionsChange={setMcpPermissions}
+        />
+        <Field label="Max. tool-stappen">
+          <input
+            type="number"
+            min={1}
+            max={500}
+            value={maxHops}
+            onChange={(e) => setMaxHops(e.target.value)}
+            placeholder="150 (standaard)"
+            style={inp}
+          />
+        </Field>
 
         <SkillsPickerField
           options={availableSkills}

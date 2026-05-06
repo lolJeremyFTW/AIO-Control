@@ -140,14 +140,8 @@ export function NewAgentDialog({
       custom_integration_id: customIntegrationId || null,
       key_source: keySource,
       nav_node_id: navNodeId || null,
-      mcpServers:
-        provider === "minimax" && mcpServers.length > 0
-          ? mcpServers
-          : undefined,
-      mcpPermissions:
-        provider === "minimax" && Object.keys(mcpPermissions).length > 0
-          ? mcpPermissions
-          : undefined,
+      mcpServers: mcpServers.length > 0 ? mcpServers : undefined,
+      mcpPermissions: Object.keys(mcpPermissions).length > 0 ? mcpPermissions : undefined,
     });
     setPending(false);
     if (!res.ok) {
@@ -359,14 +353,12 @@ export function NewAgentDialog({
           />
         </Field>
 
-        {provider === "minimax" && (
-          <McpServersField
-            value={mcpServers}
-            onToggle={toggleMcp}
-            permissions={mcpPermissions}
-            onPermissionsChange={setMcpPermissions}
-          />
-        )}
+        <McpServersField
+          value={mcpServers}
+          onToggle={toggleMcp}
+          permissions={mcpPermissions}
+          onPermissionsChange={setMcpPermissions}
+        />
 
         {navOptions.length > 0 && (
           <Field label={t("agent.field.topic")}>
