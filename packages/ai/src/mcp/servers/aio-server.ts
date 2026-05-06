@@ -23,6 +23,7 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const WORKSPACE_ID = process.env.AIO_WORKSPACE_ID ?? "default";
 const ALLOW_READ_SECRET = process.env.AIO_MCP_ALLOW_READ_SECRET === "true";
 const AGENT_SECRET_KEY = process.env.AGENT_SECRET_KEY ?? "";
+const APP_ORIGIN = process.env.NEXT_PUBLIC_TRIGGER_ORIGIN ?? "https://aio.tromptech.life";
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   // Write to stderr so it doesn't corrupt the JSON-RPC stream
@@ -61,6 +62,23 @@ const ListRunsSchema = z.object({
   status: z
     .enum(["queued", "running", "done", "failed", "review"])
     .optional(),
+});
+
+const PublishDashboardSchema = z.object({
+  business_id: z.string().uuid(),
+  label: z.string().min(1).max(80),
+  html_content: z.string().min(10),
+});
+
+const UpsertCustomTabSchema = z.object({
+  business_id: z.string().uuid(),
+  label: z.string().min(1).max(80),
+  url: z.string().url(),
+  sort_order: z.coerce.number().int().optional().default(0),
+});
+
+const ListCustomTabsSchema = z.object({
+  business_id: z.string().uuid(),
 });
 
 const SendTelegramSchema = z.object({
@@ -176,6 +194,120 @@ async function listRuns(args: unknown): Promise<string> {
     return JSON.stringify({ error: "db_error", message: error.message });
   }
   return JSON.stringify({ runs: data ?? [] });
+}
+
+function randomSlug(len = 16): string {
+  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+  let s = "";
+  for (let i = 0; i < len; i++) s += chars[Math.floor(Math.random() * chars.length)];
+  return s;
+}
+
+async function publishDashboard(args: unknown): Promise<string> {
+  const parsed = PublishDashboardSchema.safeParse(args);
+  if (!parsed.success) {
+    return JSON.stringify({ error: "validation_failed", details: parsed.error.flatten() });
+  }
+  const { business_id, label, html_content } = parsed.data;
+
+  // Check if a dashboard with this label already exists for the business
+  // so we can keep the same slug (stable URL on re-publish).
+  const { data: existing } = await supabaseAio
+    .from("agent_dashboards")
+    .select("id, slug")
+    .eq("workspace_id", WORKSPACE_ID)
+    .eq("business_id", business_id)
+    .eq("label", label)
+    .maybeSingle();
+
+  let slug: string;
+  if (existing) {
+    slug = existing.slug as string;
+    const { error } = await supabaseAio
+      .from("agent_dashboards")
+      .update({ html_content, updated_at: new Date().toISOString() })
+      .eq("id", existing.id);
+    if (error) return JSON.stringify({ error: "db_error", message: error.message });
+  } else {
+    slug = randomSlug();
+    const { error } = await supabaseAio.from("agent_dashboards").insert({
+      workspace_id: WORKSPACE_ID,
+      business_id,
+      label,
+      html_content,
+      slug,
+    });
+    if (error) return JSON.stringify({ error: "db_error", message: error.message });
+  }
+
+  const url = `${APP_ORIGIN}/d/${slug}`;
+
+  // Upsert the custom_tabs row so the dashboard appears as a nav tab.
+  const tabResult = await upsertCustomTabInner(business_id, label, url, 0);
+  if (tabResult.error) {
+    return JSON.stringify({ error: "tab_upsert_failed", message: tabResult.error, url });
+  }
+
+  return JSON.stringify({ ok: true, url, tab_id: tabResult.tab_id, slug });
+}
+
+async function upsertCustomTabInner(
+  business_id: string,
+  label: string,
+  url: string,
+  sort_order: number,
+): Promise<{ tab_id?: string; error?: string }> {
+  const { data: existing } = await supabaseAio
+    .from("custom_tabs")
+    .select("id")
+    .eq("workspace_id", WORKSPACE_ID)
+    .eq("business_id", business_id)
+    .eq("label", label)
+    .maybeSingle();
+
+  if (existing) {
+    const { error } = await supabaseAio
+      .from("custom_tabs")
+      .update({ url, sort_order })
+      .eq("id", existing.id);
+    if (error) return { error: error.message };
+    return { tab_id: existing.id as string };
+  }
+
+  const { data, error } = await supabaseAio
+    .from("custom_tabs")
+    .insert({ workspace_id: WORKSPACE_ID, business_id, label, url, sort_order })
+    .select("id")
+    .single();
+  if (error) return { error: error.message };
+  return { tab_id: (data as { id: string }).id };
+}
+
+async function upsertCustomTab(args: unknown): Promise<string> {
+  const parsed = UpsertCustomTabSchema.safeParse(args);
+  if (!parsed.success) {
+    return JSON.stringify({ error: "validation_failed", details: parsed.error.flatten() });
+  }
+  const { business_id, label, url, sort_order } = parsed.data;
+  const result = await upsertCustomTabInner(business_id, label, url, sort_order);
+  if (result.error) return JSON.stringify({ error: "db_error", message: result.error });
+  return JSON.stringify({ ok: true, tab_id: result.tab_id });
+}
+
+async function listCustomTabs(args: unknown): Promise<string> {
+  const parsed = ListCustomTabsSchema.safeParse(args);
+  if (!parsed.success) {
+    return JSON.stringify({ error: "validation_failed", details: parsed.error.flatten() });
+  }
+  const { business_id } = parsed.data;
+  const { data, error } = await supabaseAio
+    .from("custom_tabs")
+    .select("id, label, url, sort_order, created_at")
+    .eq("workspace_id", WORKSPACE_ID)
+    .eq("business_id", business_id)
+    .order("sort_order", { ascending: true });
+  if (error) return JSON.stringify({ error: "db_error", message: error.message });
+  return JSON.stringify({ tabs: data ?? [] });
 }
 
 async function sendTelegramMessage(args: unknown): Promise<string> {
@@ -385,6 +517,86 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "publish_dashboard",
+      description:
+        "Sla een HTML-dashboard op en pin het als tab in de BusinessTabs-nav van de business. " +
+        "Geeft {url, tab_id, slug} terug. Zelfde label = update HTML in-place (stabiele URL). " +
+        "Gebruik voor rijke visuele samenvattingen, statistieken, KPI-overzichten.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          business_id: {
+            type: "string",
+            format: "uuid",
+            description: "UUID van de business waarvoor het dashboard gemaakt wordt.",
+          },
+          label: {
+            type: "string",
+            maxLength: 80,
+            description: "Tab-label dat in de nav verschijnt, bijv. 'YouTube stats' of 'Weekoverzicht'.",
+          },
+          html_content: {
+            type: "string",
+            description:
+              "Volledige HTML-pagina (incl. <html>, <head>, <body>). " +
+              "Mag inline CSS en vanilla JS bevatten. Geen externe iframes.",
+          },
+        },
+        required: ["business_id", "label", "html_content"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "upsert_custom_tab",
+      description:
+        "Pin een externe URL als iframe-tab in de BusinessTabs-nav van een business. " +
+        "Gebruik dit wanneer je al een URL hebt (bijv. een externe dashboard-tool of rapport). " +
+        "Voor HTML gegenereerd door de agent: gebruik publish_dashboard.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          business_id: {
+            type: "string",
+            format: "uuid",
+            description: "UUID van de business.",
+          },
+          label: {
+            type: "string",
+            maxLength: 80,
+            description: "Tab-label in de nav.",
+          },
+          url: {
+            type: "string",
+            format: "uri",
+            description: "URL om in te embedden als iframe.",
+          },
+          sort_order: {
+            type: "number",
+            default: 0,
+            description: "Volgorde t.o.v. andere custom tabs (laag = eerder).",
+          },
+        },
+        required: ["business_id", "label", "url"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "list_custom_tabs",
+      description: "Geeft de bestaande custom (iframe) tabs van een business terug.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          business_id: {
+            type: "string",
+            format: "uuid",
+            description: "UUID van de business.",
+          },
+        },
+        required: ["business_id"],
+        additionalProperties: false,
+      },
+    },
+    {
       name: "list_runs",
       description:
         "Recent agent runs. Useful for diagnosing failures or summarising activity.",
@@ -443,6 +655,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       break;
     case "list_runs":
       result = await listRuns(args);
+      break;
+    case "publish_dashboard":
+      result = await publishDashboard(args);
+      break;
+    case "upsert_custom_tab":
+      result = await upsertCustomTab(args);
+      break;
+    case "list_custom_tabs":
+      result = await listCustomTabs(args);
       break;
     case "send_telegram_message":
       result = await sendTelegramMessage(args);

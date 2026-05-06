@@ -109,6 +109,7 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
       // send_telegram_message tool to resolve the Telegram bot token
       // through the resolve_api_key RPC.
       AGENT_SECRET_KEY: process.env.AGENT_SECRET_KEY ?? "",
+      NEXT_PUBLIC_TRIGGER_ORIGIN: process.env.NEXT_PUBLIC_TRIGGER_ORIGIN ?? "",
       ...(process.env.AIO_MCP_ALLOW_READ_SECRET
         ? { AIO_MCP_ALLOW_READ_SECRET: process.env.AIO_MCP_ALLOW_READ_SECRET }
         : {}),

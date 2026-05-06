@@ -27,8 +27,16 @@ const MCP_TOOL_CATALOGUE: Record<string, { description: string; tools: string[] 
     tools: ["execute_code", "cli_tool", "bash"],
   },
   aio: {
-    description: "AIO Control platform — agents, businesses, runs, Telegram notificaties",
-    tools: ["list_businesses", "list_agents", "list_runs", "send_telegram_message"],
+    description: "AIO Control platform — agents, businesses, runs, Telegram notificaties, dashboards/tabs aanmaken",
+    tools: [
+      "list_businesses",
+      "list_agents",
+      "list_runs",
+      "send_telegram_message",
+      "publish_dashboard",
+      "upsert_custom_tab",
+      "list_custom_tabs",
+    ],
   },
   fetch: {
     description: "HTTP fetch — willekeurige URLs ophalen, HTML wordt automatisch gestript naar plain text",
