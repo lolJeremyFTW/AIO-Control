@@ -24,6 +24,7 @@ export type ScheduleRow = {
   timezone: string | null;
   telegram_target_id: string | null;
   custom_integration_id: string | null;
+  nav_node_id: string | null;
 };
 
 export async function listSchedulesForBusiness(
@@ -33,7 +34,7 @@ export async function listSchedulesForBusiness(
   const { data, error } = await supabase
     .from("schedules_safe")
     .select(
-      "id, workspace_id, agent_id, business_id, kind, cron_expr, provider_routine_id, enabled, last_fired_at, created_at, title, description, instructions, timezone, telegram_target_id, custom_integration_id",
+      "id, workspace_id, agent_id, business_id, kind, cron_expr, provider_routine_id, enabled, last_fired_at, created_at, title, description, instructions, timezone, telegram_target_id, custom_integration_id, nav_node_id",
     )
     .eq("business_id", businessId)
     .order("created_at", { ascending: false });
@@ -93,7 +94,7 @@ export async function listSchedulesForWorkspace(
   const { data, error } = await supabase
     .from("schedules_safe")
     .select(
-      "id, workspace_id, agent_id, business_id, kind, cron_expr, provider_routine_id, enabled, last_fired_at, created_at, title, description, instructions, timezone, telegram_target_id, custom_integration_id",
+      "id, workspace_id, agent_id, business_id, kind, cron_expr, provider_routine_id, enabled, last_fired_at, created_at, title, description, instructions, timezone, telegram_target_id, custom_integration_id, nav_node_id",
     )
     .eq("workspace_id", workspaceId)
     .order("created_at", { ascending: false });

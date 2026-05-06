@@ -343,6 +343,7 @@ export async function updateSchedule(input: {
     timezone?: string;
     telegram_target_id?: string | null;
     custom_integration_id?: string | null;
+    nav_node_id?: string | null;
     enabled?: boolean;
   };
 }): Promise<ActionResult<null>> {
@@ -359,6 +360,7 @@ export async function updateSchedule(input: {
     patch.telegram_target_id = input.patch.telegram_target_id;
   if (input.patch.custom_integration_id !== undefined)
     patch.custom_integration_id = input.patch.custom_integration_id;
+  if (input.patch.nav_node_id !== undefined) patch.nav_node_id = input.patch.nav_node_id;
   if (input.patch.enabled !== undefined) patch.enabled = input.patch.enabled;
 
   if (Object.keys(patch).length === 0) return { ok: true, data: null };
