@@ -29,16 +29,18 @@ import { getServiceRoleSupabase } from "../supabase/service";
 let started = false;
 let task: cron.ScheduledTask | null = null;
 
-// Per-workspace dispatch queue. When the tick finds 5 due schedules
-// in workspace W they go into W's queue and run *sequentially* — never
-// in parallel — with a small inter-run delay. This keeps the per-key
-// API rate (MiniMax/OpenAI/etc.) at one in-flight call per workspace,
-// which is exactly how OpenClaw and Hermes-Agent run cron-driven agents
-// without tripping rate limits. Different workspaces run independently
-// in parallel, so workspace A's busy queue never blocks workspace B.
+// Per-workspace dispatch queue. Runs up to WORKSPACE_CONCURRENCY jobs
+// in parallel per workspace (default 2). This lets different agent types
+// run side-by-side (e.g. Outreach + self-improving-agent) without all
+// schedules firing simultaneously and saturating the shared API key.
+// Different workspaces always run fully in parallel.
+const WORKSPACE_CONCURRENCY = Number(
+  process.env.WORKSPACE_CONCURRENCY ?? "2",
+);
+
 type WorkspaceQueue = {
   pending: string[];
-  running: boolean;
+  runningCount: number;
 };
 const workspaceQueues = new Map<string, WorkspaceQueue>();
 
@@ -49,12 +51,13 @@ const QUEUE_INTER_RUN_DELAY_MS = Number(
 function enqueueDispatch(workspaceId: string, runId: string): void {
   let q = workspaceQueues.get(workspaceId);
   if (!q) {
-    q = { pending: [], running: false };
+    q = { pending: [], runningCount: 0 };
     workspaceQueues.set(workspaceId, q);
   }
   q.pending.push(runId);
-  if (!q.running) {
-    q.running = true;
+  // Spin up a new worker slot if we're below the concurrency cap.
+  if (q.runningCount < WORKSPACE_CONCURRENCY) {
+    q.runningCount++;
     void drainWorkspaceQueue(workspaceId).catch((err) =>
       console.error(`[cron-queue] drain failed for workspace ${workspaceId}`, err),
     );
@@ -76,7 +79,7 @@ async function drainWorkspaceQueue(workspaceId: string): Promise<void> {
       await new Promise((r) => setTimeout(r, QUEUE_INTER_RUN_DELAY_MS));
     }
   }
-  q.running = false;
+  q.runningCount--;
 }
 
 export function startCronScheduler(): void {
