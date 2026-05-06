@@ -114,6 +114,30 @@ async function* streamMinimaxPlain(
 // accumulation, no "invalid function arguments json string" errors.
 // This is what Hermes Agent and OpenClaw use when routing MiniMax + tools.
 
+// Keep the first user message (the task) plus the most recent messages that
+// fit within ~80 KB of serialized content (≈20K tokens). Prevents the
+// accumulated multi-hop history from blowing past MiniMax's context limit.
+function trimMessages(
+  messages: Anthropic.MessageParam[],
+  maxChars = 80_000,
+): Anthropic.MessageParam[] {
+  const len = (m: Anthropic.MessageParam) => JSON.stringify(m.content).length;
+  const total = messages.reduce((s, m) => s + len(m), 0);
+  if (total <= maxChars) return messages;
+
+  const first = messages[0];
+  const rest = messages.slice(1);
+  let chars = len(first);
+  const kept: Anthropic.MessageParam[] = [];
+  for (let i = rest.length - 1; i >= 0; i--) {
+    const l = len(rest[i]);
+    if (chars + l > maxChars) break;
+    kept.unshift(rest[i]);
+    chars += l;
+  }
+  return [first, ...kept];
+}
+
 async function* streamMinimaxWithToolsAnthropic(
   opts: StreamChatOptions,
   serverIds: string[],
@@ -222,13 +246,13 @@ async function* streamMinimaxWithToolsAnthropic(
       // Stream one turn from MiniMax via the Anthropic endpoint.
       const stream = client.messages.stream({
         model,
-        max_tokens: opts.config.maxTokens ?? 8192,
+        max_tokens: opts.config.maxTokens ?? 4096,
         ...(opts.config.systemPrompt
           ? { system: opts.config.systemPrompt }
           : {}),
         tools: anthropicTools,
         tool_choice: { type: "auto" },
-        messages,
+        messages: trimMessages(messages),
         ...(opts.config.temperature != null
           ? { temperature: opts.config.temperature }
           : {}),
