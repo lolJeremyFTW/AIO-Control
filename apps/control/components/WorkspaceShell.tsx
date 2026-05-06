@@ -53,7 +53,6 @@ import {
 } from "../app/actions/nav-nodes";
 import { setLocale } from "../app/actions/locale";
 import { AppContextMenu } from "./AppContextMenu";
-import { ContextBar } from "./ContextBar";
 import { ThemeToggle } from "./ThemeToggle";
 import { type EditTarget } from "./EditNodeDialog";
 import { NotificationsBell } from "./NotificationsBell";
@@ -1015,24 +1014,6 @@ export function WorkspaceShell({
             </>
           }
         >
-          {drilledBiz && (
-            <ContextBar
-              workspaceSlug={workspace.slug}
-              biz={{
-                id: drilledBiz.biz.id,
-                status: drilledBiz.biz.status as "running" | "paused",
-                primary_action: drilledBiz.biz.primary_action ?? null,
-                daily_spend_limit_cents:
-                  drilledBiz.biz.daily_spend_limit_cents ?? null,
-              }}
-              navNodeId={
-                navContext?.chain.length
-                  ? navContext.chain[navContext.chain.length - 1]?.id
-                  : undefined
-              }
-              navBreadcrumb={navContext?.chain.map((n) => n.name)}
-            />
-          )}
         </Header>
 
         {workspaces.length > 1 && (
