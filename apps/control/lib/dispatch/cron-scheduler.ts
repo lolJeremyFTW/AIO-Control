@@ -29,15 +29,20 @@ import { getServiceRoleSupabase } from "../supabase/service";
 let started = false;
 let task: cron.ScheduledTask | null = null;
 
-// Per-workspace dispatch queue. When the tick finds 5 due schedules
-// in workspace W they go into W's queue and run *sequentially* — never
-// in parallel — with a small inter-run delay. This keeps the per-key
-// API rate (MiniMax/OpenAI/etc.) at one in-flight call per workspace,
-// which is exactly how OpenClaw and Hermes-Agent run cron-driven agents
-// without tripping rate limits. Different workspaces run independently
-// in parallel, so workspace A's busy queue never blocks workspace B.
+// Per-workspace dispatch queue. Schedules within a single workspace run
+// SEQUENTIALLY (5s gap between) so we never burst the per-key MiniMax
+// bucket. Different workspaces stay parallel — workspace A's busy queue
+// never blocks workspace B's interactive chat or cron.
+//
+// Each queue entry carries an enqueue timestamp so we can drop stale
+// retries that piled up while the workspace was unhealthy: better to
+// run TODAY's find-leads than yesterday's failed retry.
+type QueueEntry = {
+  runId: string;
+  enqueuedAt: number;
+};
 type WorkspaceQueue = {
-  pending: string[];
+  pending: QueueEntry[];
   running: boolean;
 };
 const workspaceQueues = new Map<string, WorkspaceQueue>();
@@ -45,6 +50,31 @@ const workspaceQueues = new Map<string, WorkspaceQueue>();
 const QUEUE_INTER_RUN_DELAY_MS = Number(
   process.env.CRON_QUEUE_INTER_RUN_DELAY_MS ?? "5000",
 );
+// Cap how many runs can pile up per workspace. With 5 cron-firings + N
+// retries from a transient outage, the queue can grow unbounded; cap so
+// new schedule ticks aren't blocked behind an hour of retries.
+const MAX_QUEUE_PER_WORKSPACE = Number(
+  process.env.CRON_QUEUE_MAX_PER_WORKSPACE ?? "5",
+);
+// Drop pending entries older than this from the queue head — they were
+// queued during a long outage and the data they're working against is
+// likely stale.
+const QUEUE_MAX_AGE_MS = Number(
+  process.env.CRON_QUEUE_MAX_AGE_MS ?? String(60 * 60_000),
+);
+
+async function markQueueRejected(runId: string, reason: string): Promise<void> {
+  const admin = getServiceRoleSupabase();
+  await admin
+    .from("runs")
+    .update({
+      status: "failed",
+      error_text: reason,
+      ended_at: new Date().toISOString(),
+    })
+    .eq("id", runId)
+    .eq("status", "queued");
+}
 
 function enqueueDispatch(workspaceId: string, runId: string): void {
   let q = workspaceQueues.get(workspaceId);
@@ -52,7 +82,35 @@ function enqueueDispatch(workspaceId: string, runId: string): void {
     q = { pending: [], running: false };
     workspaceQueues.set(workspaceId, q);
   }
-  q.pending.push(runId);
+
+  // Evict aged-out entries before deciding capacity.
+  const ageCutoff = Date.now() - QUEUE_MAX_AGE_MS;
+  const aged = q.pending.filter((e) => e.enqueuedAt < ageCutoff);
+  if (aged.length > 0) {
+    q.pending = q.pending.filter((e) => e.enqueuedAt >= ageCutoff);
+    for (const e of aged) {
+      void markQueueRejected(
+        e.runId,
+        "Queue entry aged out — pending too long, data is stale",
+      );
+    }
+    console.log(
+      `[cron-queue] dropped ${aged.length} stale entries from workspace ${workspaceId}`,
+    );
+  }
+
+  if (q.pending.length >= MAX_QUEUE_PER_WORKSPACE) {
+    void markQueueRejected(
+      runId,
+      `Queue full for workspace (>${MAX_QUEUE_PER_WORKSPACE} pending) — try again next cycle`,
+    );
+    console.warn(
+      `[cron-queue] workspace ${workspaceId} queue full — rejecting ${runId}`,
+    );
+    return;
+  }
+
+  q.pending.push({ runId, enqueuedAt: Date.now() });
   if (!q.running) {
     q.running = true;
     void drainWorkspaceQueue(workspaceId).catch((err) =>
@@ -65,12 +123,20 @@ async function drainWorkspaceQueue(workspaceId: string): Promise<void> {
   const q = workspaceQueues.get(workspaceId);
   if (!q) return;
   while (q.pending.length > 0) {
-    const runId = q.pending.shift();
-    if (!runId) break;
+    const entry = q.pending.shift();
+    if (!entry) break;
+    // Skip if the entry aged out while waiting in the queue.
+    if (Date.now() - entry.enqueuedAt > QUEUE_MAX_AGE_MS) {
+      void markQueueRejected(
+        entry.runId,
+        "Queue entry aged out before dispatch",
+      );
+      continue;
+    }
     try {
-      await dispatchRun(runId);
+      await dispatchRun(entry.runId);
     } catch (err) {
-      console.error(`[cron-queue] dispatch failed for ${runId}`, err);
+      console.error(`[cron-queue] dispatch failed for ${entry.runId}`, err);
     }
     if (q.pending.length > 0) {
       await new Promise((r) => setTimeout(r, QUEUE_INTER_RUN_DELAY_MS));
