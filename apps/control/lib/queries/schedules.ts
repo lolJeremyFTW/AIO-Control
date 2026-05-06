@@ -78,7 +78,7 @@ export async function listRecentRunsForBusiness(
     console.error("listRecentRunsForBusiness failed", error);
     return [];
   }
-  return (data ?? []) as RunRow[];
+  return (data ?? []) as unknown as RunRow[];
 }
 
 /**
@@ -121,5 +121,5 @@ export async function listRecentRunsForWorkspace(
     console.error("listRecentRunsForWorkspace failed", error);
     return [];
   }
-  return (data ?? []) as RunRow[];
+  return (data ?? []) as unknown as RunRow[];
 }
