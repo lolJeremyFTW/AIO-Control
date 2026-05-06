@@ -327,9 +327,9 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
             title={showTools ? "Verberg tool calls" : "Toon tool calls"}
             style={{
               padding: "6px 10px",
-              border: `1.5px solid ${showTools ? "var(--app-border)" : "var(--tt-green)"}`,
-              background: showTools ? "transparent" : "rgba(57,178,85,0.10)",
-              color: showTools ? "var(--app-fg-3)" : "var(--tt-green)",
+              border: `1.5px solid ${showTools ? "var(--tt-green)" : "var(--app-border)"}`,
+              background: showTools ? "rgba(57,178,85,0.10)" : "transparent",
+              color: showTools ? "var(--tt-green)" : "var(--app-fg-3)",
               borderRadius: 8,
               fontWeight: 700,
               fontSize: 12,
@@ -337,7 +337,7 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
               whiteSpace: "nowrap",
             }}
           >
-            {showTools ? "⚙ Tools" : "⚙ Tools ✓"}
+            {showTools ? "⚙ Tools ✓" : "⚙ Tools"}
           </button>
           <button
             type="button"
