@@ -335,6 +335,12 @@ export async function POST(
             name: string;
             args: unknown;
           }> = [];
+          // Track tool IDs whose results were already emitted by the
+          // provider's internal loop (e.g. MCP tools handled by
+          // streamMinimaxWithToolsAnthropic / streamClaudeWithMcp).
+          // Those must NOT be re-executed here — doing so would send
+          // wrong "unknown tool" errors back to the model.
+          const providerHandledIds = new Set<string>();
 
           for await (const event of streamChat({
             provider: agent.provider as ProviderId,
@@ -368,17 +374,26 @@ export async function POST(
                 args: event.args,
               });
             }
+            if (event.type === "tool_call_result") {
+              providerHandledIds.add(event.tool_call_id);
+            }
             send(event);
           }
 
-          // No tool_use in this turn → conversation is complete.
-          if (toolUses.length === 0) break;
+          // Filter out tool calls already handled by the provider's
+          // internal MCP loop — only AIO tools remain for us to run.
+          const pendingToolUses = toolUses.filter(
+            (t) => !providerHandledIds.has(t.id),
+          );
 
-          // Execute each tool. READ tools return data; META tools
+          // No AIO tool_use in this turn → conversation is complete.
+          if (pendingToolUses.length === 0) break;
+
+          // Execute each AIO tool. READ tools return data; META tools
           // (ask_followup, …) and WRITE tools return defer events
           // we forward to the panel and stop the loop.
           const toolResults: Array<{ id: string; content: string }> = [];
-          for (const tu of toolUses) {
+          for (const tu of pendingToolUses) {
             const res = await executeAioTool(tu.name, tu.args, {
               workspaceId: agent.workspace_id,
               defaultBusinessId: agent.business_id,
@@ -459,7 +474,7 @@ export async function POST(
           messages.push({
             role: "assistant",
             content: JSON.stringify(
-              toolUses.map((t) => ({
+              pendingToolUses.map((t) => ({
                 type: "tool_use",
                 id: t.id,
                 name: t.name,
