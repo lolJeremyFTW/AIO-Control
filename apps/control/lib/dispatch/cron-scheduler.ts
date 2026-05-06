@@ -29,21 +29,26 @@ import { getServiceRoleSupabase } from "../supabase/service";
 let started = false;
 let task: cron.ScheduledTask | null = null;
 
-// Per-workspace dispatch queue. Schedules within a single workspace run
-// SEQUENTIALLY (5s gap between) so we never burst the per-key MiniMax
-// bucket. Different workspaces stay parallel — workspace A's busy queue
-// never blocks workspace B's interactive chat or cron.
+// Per-workspace dispatch queue. Up to WORKSPACE_CONCURRENCY (default 2)
+// runs execute in parallel per workspace, so different agent types can
+// run side-by-side (e.g. Outreach + self-improving) without blocking
+// each other while still sharing a single API key safely. Different
+// workspaces always run fully in parallel.
 //
 // Each queue entry carries an enqueue timestamp so we can drop stale
 // retries that piled up while the workspace was unhealthy: better to
 // run TODAY's find-leads than yesterday's failed retry.
+const WORKSPACE_CONCURRENCY = Number(
+  process.env.WORKSPACE_CONCURRENCY ?? "2",
+);
+
 type QueueEntry = {
   runId: string;
   enqueuedAt: number;
 };
 type WorkspaceQueue = {
   pending: QueueEntry[];
-  running: boolean;
+  runningCount: number;
 };
 const workspaceQueues = new Map<string, WorkspaceQueue>();
 
@@ -79,7 +84,7 @@ async function markQueueRejected(runId: string, reason: string): Promise<void> {
 function enqueueDispatch(workspaceId: string, runId: string): void {
   let q = workspaceQueues.get(workspaceId);
   if (!q) {
-    q = { pending: [], running: false };
+    q = { pending: [], runningCount: 0 };
     workspaceQueues.set(workspaceId, q);
   }
 
@@ -111,8 +116,9 @@ function enqueueDispatch(workspaceId: string, runId: string): void {
   }
 
   q.pending.push({ runId, enqueuedAt: Date.now() });
-  if (!q.running) {
-    q.running = true;
+  // Spin up a new worker slot if below the concurrency cap.
+  if (q.runningCount < WORKSPACE_CONCURRENCY) {
+    q.runningCount++;
     void drainWorkspaceQueue(workspaceId).catch((err) =>
       console.error(`[cron-queue] drain failed for workspace ${workspaceId}`, err),
     );
@@ -142,7 +148,7 @@ async function drainWorkspaceQueue(workspaceId: string): Promise<void> {
       await new Promise((r) => setTimeout(r, QUEUE_INTER_RUN_DELAY_MS));
     }
   }
-  q.running = false;
+  q.runningCount--;
 }
 
 export function startCronScheduler(): void {
