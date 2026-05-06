@@ -84,11 +84,12 @@ export function startCronScheduler(): void {
   if (started) return;
   started = true;
 
-  // On boot: mark any run that was left in "running" state by a previous
-  // crash as failed. Runs older than 30 min are definitely orphaned —
-  // normal agent runs complete in seconds to a few minutes.
-  void cleanupZombieRuns().catch((err) =>
-    console.error("[cron-scheduler] zombie cleanup failed", err),
+  // On boot: any "running" run was abandoned by the previous process —
+  // reap them all immediately so retry-sweep picks them up. Without this
+  // they sit in "running" status until the 25-min zombie cleanup window,
+  // and the schedule is locked out by the "already running" guard.
+  void reapStartupOrphans().catch((err) =>
+    console.error("[cron-scheduler] reap failed", err),
   );
 
   // node-cron expression "* * * * *" = every minute on the wall clock.
@@ -111,18 +112,19 @@ export function startCronScheduler(): void {
   console.log("[cron-scheduler] started — scanning every minute");
 }
 
-/** Mark runs stuck in "running" for > 15 min as failed. The provider-level
- *  stall watchdog (90s) and the dispatchRun timeout (30 min default) should
- *  catch most cases first; this is the backstop for runaway promises that
- *  ignore the timeout. */
+/** Mark runs stuck in "running" for > 25 min as failed. Most legit runs
+ *  finish in 5-15 min, so 25 min is a safe backstop without killing
+ *  active work. Earlier defenses kick in first:
+ *    - MiniMax stream stall watchdog: 90s
+ *    - Per-run hard timeout in dispatchRun: 20 min */
 async function cleanupZombieRuns(): Promise<void> {
   const admin = getServiceRoleSupabase();
-  const cutoff = new Date(Date.now() - 15 * 60_000).toISOString();
+  const cutoff = new Date(Date.now() - 25 * 60_000).toISOString();
   const { error } = await admin
     .from("runs")
     .update({
       status: "failed",
-      error_text: "Run abandoned — exceeded 15 min wallclock (zombie cleanup)",
+      error_text: "Run abandoned — exceeded 25 min wallclock (zombie cleanup)",
       ended_at: new Date().toISOString(),
     })
     .eq("status", "running")
@@ -131,6 +133,31 @@ async function cleanupZombieRuns(): Promise<void> {
     console.error("[cron-scheduler] zombie cleanup error", error);
   } else {
     console.log("[cron-scheduler] zombie run cleanup done");
+  }
+}
+
+/** On boot: any run still in "running" status was orphaned by the previous
+ *  process (crash or restart). Mark them failed immediately so the retry
+ *  sweep can pick them up; without this they sit until the 25-min cleanup
+ *  window, blocking new runs of the same schedule via the
+ *  "schedule already has a running run — skipping" guard. */
+async function reapStartupOrphans(): Promise<void> {
+  const admin = getServiceRoleSupabase();
+  const { count, error } = await admin
+    .from("runs")
+    .update(
+      {
+        status: "failed",
+        error_text: "Run orphaned — service restarted while in flight",
+        ended_at: new Date().toISOString(),
+      },
+      { count: "exact" },
+    )
+    .eq("status", "running");
+  if (error) {
+    console.error("[cron-scheduler] startup orphan reap failed", error);
+  } else if (count && count > 0) {
+    console.log(`[cron-scheduler] reaped ${count} orphan runs from previous boot`);
   }
 }
 

@@ -42,8 +42,10 @@ const DEFER_REASONS = {
 
 // Hard cap on how long a single run may take. Protects against agents
 // that hang forever waiting on a network call or infinite tool loop.
-// Override via AGENT_RUN_TIMEOUT_MS env var (milliseconds).
-const MAX_RUN_MS = Number(process.env.AGENT_RUN_TIMEOUT_MS ?? String(30 * 60_000));
+// Override via AGENT_RUN_TIMEOUT_MS env var (milliseconds). Kept below
+// the cron-scheduler's 25-min zombie threshold so a hung run gets the
+// specific "timeout" error_text instead of "abandoned (zombie cleanup)".
+const MAX_RUN_MS = Number(process.env.AGENT_RUN_TIMEOUT_MS ?? String(20 * 60_000));
 
 export async function dispatchRun(runId: string): Promise<DispatchResult> {
   const supabase = getServiceRoleSupabase();

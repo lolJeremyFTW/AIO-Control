@@ -221,6 +221,13 @@ async function* streamMinimaxPlain(
 // Keep the first user message (the task) plus the most recent messages that
 // fit within ~80 KB of serialized content (≈20K tokens). Prevents the
 // accumulated multi-hop history from blowing past MiniMax's context limit.
+//
+// CRITICAL: never split a tool_use/tool_result pair. The Anthropic Messages
+// API (and MiniMax's Anthropic-compatible endpoint) 400's with "tool id
+// (callfunction…) not found" if a user message contains a tool_result
+// whose corresponding assistant tool_use has been trimmed out. We walk
+// backwards and bundle every (assistant-with-tool_use, user-with-tool_result)
+// pair as one indivisible chunk.
 function trimMessages(
   messages: Anthropic.MessageParam[],
   maxChars = 80_000,
@@ -230,15 +237,57 @@ function trimMessages(
   if (total <= maxChars) return messages;
 
   const first = messages[0];
+  if (!first) return messages;
   const rest = messages.slice(1);
+
+  const isToolResultUser = (m: Anthropic.MessageParam): boolean => {
+    if (m.role !== "user" || !Array.isArray(m.content)) return false;
+    return m.content.some(
+      (c) =>
+        typeof c === "object" &&
+        c !== null &&
+        "type" in c &&
+        (c as { type: unknown }).type === "tool_result",
+    );
+  };
+
   let chars = len(first);
   const kept: Anthropic.MessageParam[] = [];
-  for (let i = rest.length - 1; i >= 0; i--) {
-    const l = len(rest[i]);
-    if (chars + l > maxChars) break;
-    kept.unshift(rest[i]);
-    chars += l;
+  let i = rest.length - 1;
+  while (i >= 0) {
+    const cur = rest[i];
+    if (!cur) break;
+
+    let chunk: Anthropic.MessageParam[] = [cur];
+    let chunkLen = len(cur);
+
+    // If `cur` is a user-with-tool_result, glue it to the preceding
+    // assistant turn (which has the matching tool_use blocks). They MUST
+    // travel together.
+    const prev = i > 0 ? rest[i - 1] : undefined;
+    if (isToolResultUser(cur) && prev && prev.role === "assistant") {
+      chunk = [prev, cur];
+      chunkLen += len(prev);
+    }
+
+    if (chars + chunkLen > maxChars) break;
+    kept.unshift(...chunk);
+    chars += chunkLen;
+    i -= chunk.length;
   }
+
+  // Defensive: if the first kept message is a stray user-with-tool_result
+  // (lost its assistant pair somewhere upstream), drop it — sending it
+  // alone guarantees a 400. Keep walking until we land on a clean message.
+  while (kept.length > 0) {
+    const head = kept[0];
+    if (head && isToolResultUser(head)) {
+      kept.shift();
+      continue;
+    }
+    break;
+  }
+
   return [first, ...kept];
 }
 
@@ -308,13 +357,13 @@ async function* streamMinimaxWithToolsAnthropic(
 
     let mcpTools = host.tools();
     if (mcpTools.length === 0) {
-      // First-hop warm-up: when the runtime restarts, MCP servers spawn
-      // via npx and need a moment to expose their tools. Retry the
-      // connect once after a short delay before giving up — eliminates
-      // the "MCP host opgestart maar geen tools beschikbaar" failures
-      // that hit any cron firing within ~10s of a service restart.
-      for (let warmup = 0; warmup < 2 && mcpTools.length === 0; warmup++) {
-        await new Promise((r) => setTimeout(r, 2000));
+      // First-hop warm-up. When several runs spawn at once (retry sweep,
+      // top-of-hour cron burst, post-deploy fanout), each McpHost spawns
+      // its own npx process — system contention can push tool exposure
+      // past 4-5s. Wait up to ~25s with progressively longer pauses so
+      // we don't give up before npx has a chance to install + start.
+      for (let warmup = 0; warmup < 8 && mcpTools.length === 0; warmup++) {
+        await new Promise((r) => setTimeout(r, 1500 + warmup * 500));
         try {
           await host.connect(serverIds, { MINIMAX_API_KEY: apiKey }, {});
         } catch {
@@ -628,13 +677,13 @@ async function* streamMinimaxWithTools(
     }
     let mcpTools = host.tools();
     if (mcpTools.length === 0) {
-      // First-hop warm-up: when the runtime restarts, MCP servers spawn
-      // via npx and need a moment to expose their tools. Retry the
-      // connect once after a short delay before giving up — eliminates
-      // the "MCP host opgestart maar geen tools beschikbaar" failures
-      // that hit any cron firing within ~10s of a service restart.
-      for (let warmup = 0; warmup < 2 && mcpTools.length === 0; warmup++) {
-        await new Promise((r) => setTimeout(r, 2000));
+      // First-hop warm-up. When several runs spawn at once (retry sweep,
+      // top-of-hour cron burst, post-deploy fanout), each McpHost spawns
+      // its own npx process — system contention can push tool exposure
+      // past 4-5s. Wait up to ~25s with progressively longer pauses so
+      // we don't give up before npx has a chance to install + start.
+      for (let warmup = 0; warmup < 8 && mcpTools.length === 0; warmup++) {
+        await new Promise((r) => setTimeout(r, 1500 + warmup * 500));
         try {
           await host.connect(serverIds, { MINIMAX_API_KEY: apiKey }, {});
         } catch {
