@@ -120,12 +120,16 @@ export function startCronScheduler(): void {
 async function cleanupZombieRuns(): Promise<void> {
   const admin = getServiceRoleSupabase();
   const cutoff = new Date(Date.now() - 25 * 60_000).toISOString();
+  const nowIso = new Date().toISOString();
   const { error } = await admin
     .from("runs")
     .update({
       status: "failed",
       error_text: "Run abandoned — exceeded 25 min wallclock (zombie cleanup)",
-      ended_at: new Date().toISOString(),
+      ended_at: nowIso,
+      // Queue for retry too — a zombie may be a single-incident hang;
+      // give it one more shot before giving up. Capped by max_attempts.
+      next_retry_at: nowIso,
     })
     .eq("status", "running")
     .lt("created_at", cutoff);
@@ -137,19 +141,31 @@ async function cleanupZombieRuns(): Promise<void> {
 }
 
 /** On boot: any run still in "running" status was orphaned by the previous
- *  process (crash or restart). Mark them failed immediately so the retry
- *  sweep can pick them up; without this they sit until the 25-min cleanup
- *  window, blocking new runs of the same schedule via the
- *  "schedule already has a running run — skipping" guard. */
+ *  process (crash or restart). Mark them failed AND schedule them for an
+ *  immediate retry so the work resumes within ~1 minute instead of being
+ *  lost. The cron instructions are idempotent (find-leads dedupes against
+ *  existing leads, pitch skips leads that already have a pitch, freebie
+ *  skips leads that already have a freebieFile, etc.) — so a fresh retry
+ *  naturally picks up where the killed run left off, without needing to
+ *  preserve in-memory state across restarts.
+ *
+ *  next_retry_at = now() makes the run eligible immediately. Attempt is
+ *  not bumped here; it's bumped by retry-sweep when it dispatches the
+ *  successor row, capped by max_attempts (default 3). */
 async function reapStartupOrphans(): Promise<void> {
   const admin = getServiceRoleSupabase();
+  const nowIso = new Date().toISOString();
   const { count, error } = await admin
     .from("runs")
     .update(
       {
         status: "failed",
         error_text: "Run orphaned — service restarted while in flight",
-        ended_at: new Date().toISOString(),
+        ended_at: nowIso,
+        // Eligible for retry-sweep on the next minute tick. The view's
+        // freshness guard (6h) keeps us from re-running stale orphans
+        // from days ago — only recent work resumes.
+        next_retry_at: nowIso,
       },
       { count: "exact" },
     )
@@ -157,7 +173,7 @@ async function reapStartupOrphans(): Promise<void> {
   if (error) {
     console.error("[cron-scheduler] startup orphan reap failed", error);
   } else if (count && count > 0) {
-    console.log(`[cron-scheduler] reaped ${count} orphan runs from previous boot`);
+    console.log(`[cron-scheduler] reaped ${count} orphan runs — queued for retry`);
   }
 }
 
