@@ -157,13 +157,19 @@ export function startCronScheduler(): void {
   void reapStartupOrphans().catch((err) =>
     console.error("[cron-scheduler] reap failed", err),
   );
-  // Re-dispatch any run left in "queued" from before a restart. The
-  // cron-tick inserts a run then immediately calls dispatchRun — if the
-  // process dies between those two steps the row is stuck "queued"
-  // forever. Guard with 90 s so we don't race with THIS tick's inserts.
-  void dispatchQueuedOrphans().catch((err) =>
-    console.error("[cron-scheduler] queued-orphan dispatch failed", err),
+  // Re-dispatch any run left in "queued" from before a restart. Delayed
+  // by STARTUP_ORPHAN_DELAY_MS (default 45 s) so the service has time to
+  // settle before we flood MCP servers with concurrent connections. Without
+  // the delay, all orphan runs dispatch simultaneously and overwhelm the
+  // MCP spawn pool within the first minute.
+  const STARTUP_ORPHAN_DELAY_MS = Number(
+    process.env.STARTUP_ORPHAN_DELAY_MS ?? "45000",
   );
+  setTimeout(() => {
+    void dispatchQueuedOrphans().catch((err) =>
+      console.error("[cron-scheduler] queued-orphan dispatch failed", err),
+    );
+  }, STARTUP_ORPHAN_DELAY_MS);
 
   // node-cron expression "* * * * *" = every minute on the wall clock.
   task = cron.schedule(
@@ -321,13 +327,17 @@ export function stopCronScheduler(): void {
  *  restart. The cron-tick inserts a run row and then calls dispatchRun;
  *  if the process dies between those two steps the row is stuck "queued"
  *  forever. We guard with a 90-second age window so we don't race with
- *  runs that were just inserted by THIS tick. */
+ *  runs that were just inserted by THIS tick.
+ *
+ *  Routed through enqueueDispatch() — NOT dispatchRun() — so the orphan
+ *  runs enter the per-workspace sequential queue instead of all launching
+ *  simultaneously on boot and overwhelming the MCP spawn pool. */
 async function dispatchQueuedOrphans(): Promise<void> {
   const admin = getServiceRoleSupabase();
   const cutoff = new Date(Date.now() - 90_000).toISOString();
   const { data, error } = await admin
     .from("runs")
-    .select("id")
+    .select("id, workspace_id")
     .eq("status", "queued")
     .lt("created_at", cutoff);
   if (error) {
@@ -336,11 +346,10 @@ async function dispatchQueuedOrphans(): Promise<void> {
   }
   if (!data || data.length === 0) return;
   for (const run of data) {
-    void dispatchRun(run.id as string).catch((err) =>
-      console.error(`[cron-scheduler] queued-orphan dispatch failed for ${run.id}`, err),
-    );
+    // Enqueue sequentially per workspace — never burst all at once.
+    enqueueDispatch(run.workspace_id as string, run.id as string);
   }
-  console.log(`[cron-scheduler] re-dispatched ${data.length} orphaned queued run(s)`);
+  console.log(`[cron-scheduler] re-queued ${data.length} orphaned queued run(s) via workspace queue`);
 }
 
 /** One scan: find due cron schedules and dispatch a run for each. */
