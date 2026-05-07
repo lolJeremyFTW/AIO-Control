@@ -58,7 +58,7 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
     .select(
       `id, workspace_id, agent_id, business_id, nav_node_id, input, status,
        agents:agent_id ( id, name, provider, model, config, key_source, archived_at, next_agent_on_done, next_agent_on_fail ),
-       businesses:business_id ( id, status )`,
+       businesses:business_id ( id, status, openclaw_agent_name )`,
     )
     .eq("id", runId)
     .maybeSingle();
@@ -81,7 +81,7 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
     next_agent_on_done: string | null;
     next_agent_on_fail: string | null;
   };
-  type BizRow = { id: string; status: string };
+  type BizRow = { id: string; status: string; openclaw_agent_name: string | null };
 
   const agent = run.agents as unknown as AgentRow | null;
   const business = run.businesses as unknown as BizRow | null;
@@ -217,7 +217,9 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
   const hermesAgentName =
     (runtimeRow?.hermes_agent_name as string | null) ?? null;
   const openclawAgentName =
-    (runtimeRow?.openclaw_agent_name as string | null) ?? null;
+    (business?.openclaw_agent_name ||
+      (runtimeRow?.openclaw_agent_name as string | null)) ??
+    null;
 
   // Resolve the provider API key the same way the chat route does —
   // walk navnode → business → workspace → env fallback. Without this,

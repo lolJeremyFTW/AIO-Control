@@ -85,6 +85,10 @@ export const businesses = pgTable("businesses", {
   variant: text("variant").notNull().default("brand"),
   status: text("status").notNull().default("paused"),
   primaryAction: text("primary_action").default("Nieuwe automation"),
+  openclawAgentName: text("openclaw_agent_name"),
+  openclawAgentInitializedAt: timestamp("openclaw_agent_initialized_at", {
+    withTimezone: true,
+  }),
   archivedAt: timestamp("archived_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()

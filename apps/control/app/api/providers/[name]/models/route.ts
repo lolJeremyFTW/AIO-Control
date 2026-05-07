@@ -89,7 +89,11 @@ async function readOpenclawModels(agentName: string): Promise<Model[]> {
   // authed but have an empty `models` block in models.json (e.g.
   // openai-codex when only the OAuth profile is registered). We
   // dedupe by id when merging.
-  const fromCli = authedProviders.size > 0 ? await readCatalog() : [];
+  const providersWithJsonModels = new Set(fromJson.map((m) => m.group));
+  const needsCatalog =
+    authedProviders.size > 0 &&
+    [...authedProviders].some((provider) => !providersWithJsonModels.has(provider));
+  const fromCli = needsCatalog ? await readCatalog() : [];
 
   const seen = new Set<string>();
   const out: Model[] = [];
@@ -180,8 +184,11 @@ async function readModelsJson(
 
 async function readCatalog(): Promise<Model[]> {
   // `openclaw capability model list` outputs JSON-per-line with the
-  // canonical 909-entry catalog. We spawn it with a 6s timeout so a
-  // hung CLI doesn't block the dropdown render.
+  // canonical 909-entry catalog. We cache it because the first call can
+  // take 30s+ on hosts where OpenClaw warms its runtime/tooling.
+  if (catalogCache && Date.now() - catalogCache.at < 10 * 60_000) {
+    return catalogCache.models;
+  }
   return new Promise((resolve) => {
     let stdout = "";
     const child = spawn(
@@ -192,7 +199,7 @@ async function readCatalog(): Promise<Model[]> {
     const timeout = setTimeout(() => {
       child.kill("SIGKILL");
       resolve([]);
-    }, 6_000);
+    }, Number(process.env.OPENCLAW_MODEL_CATALOG_TIMEOUT_MS ?? 45_000));
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", (chunk: string) => {
       stdout += chunk;
@@ -223,10 +230,13 @@ async function readCatalog(): Promise<Model[]> {
           // skip bad line
         }
       }
+      catalogCache = { at: Date.now(), models: out };
       resolve(out);
     });
   });
 }
+
+let catalogCache: { at: number; models: Model[] } | null = null;
 
 async function readHermesModels(): Promise<Model[]> {
   // Hermes maintains a giant models_dev_cache.json with hundreds of

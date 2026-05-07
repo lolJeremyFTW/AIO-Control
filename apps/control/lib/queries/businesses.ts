@@ -37,6 +37,8 @@ export type BusinessRow = {
   mission: string | null;
   targets: BusinessTarget[];
   isolated: boolean;
+  openclaw_agent_name: string | null;
+  openclaw_agent_initialized_at: string | null;
 };
 
 export async function listBusinesses(
@@ -46,7 +48,7 @@ export async function listBusinesses(
   const { data, error } = await supabase
     .from("businesses")
     .select(
-      "id, workspace_id, slug, name, sub, letter, variant, icon, color_hex, logo_url, status, primary_action, created_at, sort_order, daily_spend_limit_cents, monthly_spend_limit_cents, description, mission, targets, isolated",
+      "id, workspace_id, slug, name, sub, letter, variant, icon, color_hex, logo_url, status, primary_action, created_at, sort_order, daily_spend_limit_cents, monthly_spend_limit_cents, description, mission, targets, isolated, openclaw_agent_name, openclaw_agent_initialized_at",
     )
     .eq("workspace_id", workspaceId)
     .is("archived_at", null)
