@@ -1177,7 +1177,11 @@ export function WorkspaceShell({
             firstBusinessId={firstBusinessId}
           />
         )}
-        <RunsToaster workspaceId={workspace.id} />
+        <RunsToaster
+          workspaceId={workspace.id}
+          workspaceSlug={workspace.slug}
+          agents={agents}
+        />
       </div>
     </LocaleProvider>
   );
