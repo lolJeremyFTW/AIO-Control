@@ -14,6 +14,7 @@ import {
   getWorkspaceBySlug,
 } from "../../../../lib/auth/workspace";
 import { listBusinesses, findBusiness } from "../../../../lib/queries/businesses";
+import { listNavNodes } from "../../../../lib/queries/nav-nodes";
 import { createSupabaseServerClient } from "../../../../lib/supabase/server";
 import { getDict } from "../../../../lib/i18n/server";
 import { BusinessTabs } from "../../../../components/BusinessTabs";
@@ -40,7 +41,7 @@ export default async function BusinessLayout({ children, params }: Props) {
   // Both are RLS-gated so we don't have to re-check membership.
   // Use biz.id (UUID) for all queries — bizId param may now be a slug.
   const supabase = await createSupabaseServerClient();
-  const [{ count: routinesCount }, { data: lastRunRow }, { data: customTabRows }, dict] =
+  const [{ count: routinesCount }, { data: lastRunRow }, { data: customTabRows }, rootNavNodes, dict] =
     await Promise.all([
       supabase
         .from("schedules")
@@ -60,6 +61,7 @@ export default async function BusinessLayout({ children, params }: Props) {
         .select("id, label, url")
         .eq("business_id", biz.id)
         .order("sort_order", { ascending: true }),
+      listNavNodes(biz.id, null),
       getDict(),
     ]);
 
@@ -90,6 +92,11 @@ export default async function BusinessLayout({ children, params }: Props) {
     label: tab.label as string,
   }));
 
+  const navNodeTabEntries = rootNavNodes.map((n) => ({
+    slug: n.slug,
+    label: n.name,
+  }));
+
   return (
     <>
       <BusinessTabs
@@ -98,6 +105,7 @@ export default async function BusinessLayout({ children, params }: Props) {
         workspaceId={workspace.id}
         routinesCount={routinesCount ?? 0}
         lastRun={lastRun}
+        navNodeTabs={navNodeTabEntries}
         topicTabs={customTabEntries}
         labels={{
           overview: t("biztabs.overview"),

@@ -76,6 +76,9 @@ type Props = {
     at: string;
     status: "queued" | "running" | "done" | "failed" | "review";
   } | null;
+  /** Root-level nav_nodes for this business. Rendered as tabs between
+   *  the built-ins and custom iframe tabs. Each links to /n/<slug>. */
+  navNodeTabs?: { slug: string; label: string }[];
   /** Optional context-specific tabs that show up when the user is
    *  drilled into a topic. The topic-edit dialog (later) lets the
    *  user add custom dashboard tabs that flow through here. Each
@@ -107,6 +110,7 @@ export function BusinessTabs({
   workspaceId,
   routinesCount,
   lastRun,
+  navNodeTabs,
   topicTabs,
   labels,
 }: Props) {
@@ -245,11 +249,24 @@ export function BusinessTabs({
     },
   ];
 
+  // Root nav_nodes become tabs between the built-ins and any custom
+  // iframe tabs. They link to /n/<slug> and are active for the whole
+  // subtree under that slug.
+  const navNodeTabItems: Tab[] = (navNodeTabs ?? []).map((n) => {
+    const href = `${base}/n/${n.slug}`;
+    return {
+      href,
+      label: n.label,
+      match: (p) => p === href || p.startsWith(`${href}/`),
+    } satisfies Tab;
+  });
+
   // Topic-specific tabs (custom dashboards added by the user). These
-  // come AFTER the built-ins so the standard nav stays anchored on
-  // the left.
+  // come AFTER the nav_node tabs so the standard nav stays anchored
+  // on the left.
   const tabs: Tab[] = [
     ...builtins,
+    ...navNodeTabItems,
     ...localTopicTabs.map((t) => {
       const href = `${base}${t.href}`;
       return {
