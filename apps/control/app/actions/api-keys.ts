@@ -55,6 +55,7 @@ export async function setApiKey(input: {
    *  Custom keys must use UPPERCASE A-Z0-9_ for the provider name so
    *  they read like env-var conventions (AIRTABLE_API_KEY etc.). */
   kind?: ApiKeyKind;
+  credential_type?: "api_key" | "oauth_token";
 }): Promise<ActionResult<{ id: string }>> {
   if (!input.value.trim()) {
     return { ok: false, error: "Key mag niet leeg zijn." };
@@ -84,6 +85,8 @@ export async function setApiKey(input: {
     _value: input.value.trim(),
     _label: input.label ?? null,
     _master_key: masterKey,
+    _credential_type: input.credential_type ?? "api_key",
+    _owner_user_id: null,
   });
   if (error) return { ok: false, error: error.message };
 

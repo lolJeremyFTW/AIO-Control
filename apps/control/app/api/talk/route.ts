@@ -13,6 +13,7 @@ import type { ChatMessage } from "@aio/ai/ag-ui";
 import { AIO_TOOLS, defaultToolsForKind } from "@aio/ai/aio-tools";
 import { executeAioTool } from "../../../lib/agents/tool-execution";
 import { resolveApiKey } from "../../../lib/api-keys/resolve";
+import { resolveCodexCredential } from "../../../lib/openai-codex/oauth";
 import { resolveOllamaEndpoint } from "../../../lib/ollama/endpoint";
 import { getAgentById } from "../../../lib/queries/agents";
 import { buildAgentSystemPrompt, prependPreamble } from "../../../lib/agents/business-context";
@@ -105,8 +106,18 @@ export async function POST(req: Request) {
   // Falls back to ElevenLabs when Whisper is selected but no OpenAI key.
 
   const [openAiKey, elevenlabsKeyForStt] = await Promise.all([
-    resolveApiKey("openai", { workspaceId: workspace_id, businessId: agent.business_id }),
-    resolveApiKey("elevenlabs", { workspaceId: workspace_id, businessId: agent.business_id }),
+    resolveApiKey("openai", {
+      workspaceId: workspace_id,
+      businessId: agent.business_id,
+      navNodeId: agent.nav_node_id,
+      credentialOwnerUserId: user.id,
+    }),
+    resolveApiKey("elevenlabs", {
+      workspaceId: workspace_id,
+      businessId: agent.business_id,
+      navNodeId: agent.nav_node_id,
+      credentialOwnerUserId: user.id,
+    }),
   ]);
 
   // Decide effective STT provider based on available keys.
@@ -208,17 +219,29 @@ export async function POST(req: Request) {
     : [agent.provider, agent.model ?? ""];
 
   const llmKeyName =
-    resolvedProvider === "ollama"
-      ? "ollama"
-      : resolvedProvider === "claude" || resolvedProvider === "claude_cli"
-        ? "anthropic"
-        : resolvedProvider === "minimax"
-          ? "minimax"
-          : "openrouter";
-  const apiKey = await resolveApiKey(llmKeyName, {
-    workspaceId: workspace_id,
-    businessId: agent.business_id,
-  });
+    resolvedProvider === "openai_codex"
+      ? "openai_codex"
+      : resolvedProvider === "ollama"
+        ? "ollama"
+        : resolvedProvider === "claude" || resolvedProvider === "claude_cli"
+          ? "anthropic"
+          : resolvedProvider === "minimax"
+            ? "minimax"
+            : "openrouter";
+  const apiKey =
+    resolvedProvider === "openai_codex"
+      ? (
+          await resolveCodexCredential({
+            workspaceId: workspace_id,
+            ownerUserId: user.id,
+          })
+        )?.accessToken ?? null
+      : await resolveApiKey(llmKeyName, {
+          workspaceId: workspace_id,
+          businessId: agent.business_id,
+          navNodeId: agent.nav_node_id,
+          credentialOwnerUserId: user.id,
+        });
 
   const ollamaEndpoint = await resolveOllamaEndpoint(workspace_id);
 
@@ -233,18 +256,22 @@ export async function POST(req: Request) {
 
   const talkMcpServers: string[] =
     ((agent as { config?: { mcpServers?: string[] } }).config?.mcpServers) ?? [];
-  const MCP_TOOL_KEY_MAP: Record<string, string> = {
-    brave: "BRAVE_API_KEY",
-    firecrawl: "FIRECRAWL_API_KEY",
+  const MCP_TOOL_KEY_MAP: Record<string, { envVar: string; provider: string }> = {
+    brave: { envVar: "BRAVE_API_KEY", provider: "brave" },
+    firecrawl: { envVar: "FIRECRAWL_API_KEY", provider: "firecrawl" },
+    "firecrawl-pc": { envVar: "FIRECRAWL_API_KEY", provider: "firecrawl" },
+    "openai-images": { envVar: "OPENAI_API_KEY", provider: "openai" },
   };
   const mcpToolKeys: Record<string, string> = {};
-  for (const [server, envVar] of Object.entries(MCP_TOOL_KEY_MAP)) {
+  for (const [server, spec] of Object.entries(MCP_TOOL_KEY_MAP)) {
     if (talkMcpServers.includes(server)) {
-      const key = await resolveApiKey(server, {
+      const key = await resolveApiKey(spec.provider, {
         workspaceId: workspace_id,
         businessId: agent.business_id,
+        navNodeId: agent.nav_node_id,
+        credentialOwnerUserId: user.id,
       });
-      if (key) mcpToolKeys[envVar] = key;
+      if (key) mcpToolKeys[spec.envVar] = key;
       else {
         console.warn(
           `[talk] MCP degraded - server=${server} key_missing=true ws=${workspaceSlug} agent=${agentId}`,
@@ -328,6 +355,7 @@ export async function POST(req: Request) {
         tenant: {
           workspaceId: workspace_id,
           businessId: agent.business_id,
+          navNodeId: (agent as { nav_node_id?: string | null }).nav_node_id ?? null,
           ollamaEndpoint: ollamaEndpoint ?? undefined,
           hermesAgentName,
           openclawAgentName,
@@ -462,6 +490,8 @@ export async function POST(req: Request) {
   const elevenlabsKey = elevenlabsKeyForStt ?? await resolveApiKey("elevenlabs", {
     workspaceId: workspace_id,
     businessId: agent.business_id,
+    navNodeId: agent.nav_node_id,
+    credentialOwnerUserId: user.id,
   });
 
   if (!elevenlabsKey) {
@@ -603,6 +633,9 @@ function resolveLlmProviderModel(
     return ["claude", llm];
   }
   if (llm.includes("gpt") || llm.includes("openai")) {
+    if (llm.startsWith("openai_codex/") || llm.startsWith("openai-codex/")) {
+      return ["openai_codex", llm];
+    }
     return ["openrouter", llm];
   }
   if (llm.includes("gemini")) {

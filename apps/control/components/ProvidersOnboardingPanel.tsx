@@ -7,7 +7,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 
 import { OpenIcon } from "@aio/ui/icon";
 
@@ -79,6 +79,7 @@ export function ProvidersOnboardingPanel({
 
   return (
     <div style={{ display: "grid", gap: 18 }} key={refreshKey}>
+      <CodexOAuthCard workspaceId={workspaceId} workspaceSlug={workspaceSlug} />
       {/* ── Cloud / API providers ─────────────────────────────────── */}
       {!addFlowOpen ? (
         hasCloudProviders ? (
@@ -129,6 +130,104 @@ export function ProvidersOnboardingPanel({
 }
 
 // ─── Cloud provider spec ─────────────────────────────────────────────
+
+function CodexOAuthCard({
+  workspaceId,
+  workspaceSlug,
+}: {
+  workspaceId: string;
+  workspaceSlug: string;
+}) {
+  const [status, setStatus] = useState<{
+    connected: boolean;
+    account_id?: string;
+  } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+  const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+  const next = `/${workspaceSlug}/settings/providers`;
+  const loginHref = `${base}/api/providers/openai-codex/login?workspace_id=${encodeURIComponent(workspaceId)}&next=${encodeURIComponent(next)}`;
+
+  const refresh = () => {
+    setError(null);
+    fetch(`${base}/api/providers/openai-codex/status?workspace_id=${encodeURIComponent(workspaceId)}`)
+      .then(async (res) => {
+        if (!res.ok) throw new Error(await res.text());
+        return res.json() as Promise<{ connected: boolean; account_id?: string }>;
+      })
+      .then(setStatus)
+      .catch((err) => {
+        setStatus({ connected: false });
+        setError(err instanceof Error ? err.message : "Kon Codex status niet laden.");
+      });
+  };
+
+  useEffect(() => {
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceId]);
+
+  const disconnect = async () => {
+    setPending(true);
+    setError(null);
+    try {
+      const res = await fetch(`${base}/api/providers/openai-codex/disconnect`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ workspace_id: workspaceId }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setStatus({ connected: false });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Disconnect mislukt.");
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return (
+    <div style={{ border: "1.5px solid var(--app-border-2)", borderRadius: 14, padding: "18px 20px", background: "var(--app-card-2)", display: "grid", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12 }}>
+        <div>
+          <h4 style={{ fontFamily: "var(--hand)", fontWeight: 700, fontSize: 19, margin: "0 0 4px" }}>
+            OpenAI Codex (ChatGPT login)
+          </h4>
+          <p style={{ fontSize: 13, color: "var(--app-fg-3)", margin: 0 }}>
+            Login via ChatGPT/Codex OAuth. AIO bewaart alleen encrypted OAuth
+            tokens owner-scoped per workspace; tools blijven de AIO MCP tools.
+          </p>
+        </div>
+        <StatusPill
+          status={
+            status?.connected
+              ? { kind: "ready", label: "Verbonden" }
+              : { kind: "missing", label: "Niet verbonden" }
+          }
+        />
+      </div>
+      {status?.account_id && (
+        <p style={{ fontSize: 11.5, color: "var(--app-fg-3)", margin: 0 }}>
+          Account: <code>{status.account_id}</code>
+        </p>
+      )}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <a href={loginHref} style={ctaStyle("primary")}>
+          {status?.connected ? "Opnieuw verbinden" : "Connect ChatGPT"}
+        </a>
+        {status?.connected && (
+          <button type="button" onClick={disconnect} disabled={pending} style={ctaStyle("ghost")}>
+            {pending ? "Bezig..." : "Disconnect"}
+          </button>
+        )}
+      </div>
+      <p style={{ fontSize: 11, color: "var(--app-fg-3)", margin: 0 }}>
+        Background runs gebruiken de workspace-owner login. Als Codex image
+        generation niet toestaat, gebruikt AIO de owner-scoped OpenAI API-key fallback.
+      </p>
+      {error && <p style={{ fontSize: 11, color: "var(--rose)", margin: 0 }}>{error}</p>}
+    </div>
+  );
+}
 
 type CloudProviderSpec = {
   provider: string;

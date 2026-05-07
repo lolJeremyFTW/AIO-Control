@@ -129,6 +129,7 @@ export function ApiKeysPanel({
         {
           id: res.data.id,
           workspace_id: workspaceId,
+          owner_user_id: "",
           scope,
           scope_id: scope === "workspace" ? workspaceId : scopeId,
           provider: effectiveProvider,
@@ -137,6 +138,7 @@ export function ApiKeysPanel({
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
           kind,
+          credential_type: "api_key",
         },
       ]);
       setAdding(false);

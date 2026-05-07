@@ -67,7 +67,7 @@ export default async function NavNodePage({ params, searchParams }: Props) {
   if (!biz) notFound();
 
   // Detect reserved sub-route at the end of the path.
-  const lastSeg = path[path.length - 1];
+  const lastSeg = path[path.length - 1] ?? "";
   const subRoute: TopicSubroute | null = (
     TOPIC_SUBROUTES as readonly string[]
   ).includes(lastSeg)
@@ -82,6 +82,7 @@ export default async function NavNodePage({ params, searchParams }: Props) {
   const chain = await resolveNavPathBySlugs(biz.id, navPath);
   if (chain.length !== navPath.length) notFound();
   const current = chain[chain.length - 1];
+  if (!current) notFound();
 
   const baseHref = `/${workspace.slug}/business/${biz.slug}`;
   const topicBaseHref = `${baseHref}/n/${navPath.join("/")}`;
@@ -119,6 +120,7 @@ export default async function NavNodePage({ params, searchParams }: Props) {
         const k = await resolveApiKey(p, {
           workspaceId: workspace.id,
           businessId: biz.id,
+          navNodeId: current.id,
         });
         providerKeyStatus[p] = !!k;
       }),

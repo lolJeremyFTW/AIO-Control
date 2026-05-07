@@ -24,6 +24,7 @@ import {
 import { checkSpendLimit } from "./spend-limit";
 import { getServiceRoleSupabase } from "../supabase/service";
 import { resolveApiKey } from "../api-keys/resolve";
+import { resolveCodexCredential } from "../openai-codex/oauth";
 import type { RunStep } from "../runs/message-history";
 import { dispatchRunEvent } from "../notify/dispatch";
 
@@ -55,7 +56,7 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
   const { data: run, error: runErr } = await supabase
     .from("runs")
     .select(
-      `id, workspace_id, agent_id, business_id, input, status,
+      `id, workspace_id, agent_id, business_id, nav_node_id, input, status,
        agents:agent_id ( id, name, provider, model, config, key_source, archived_at, next_agent_on_done, next_agent_on_fail ),
        businesses:business_id ( id, status )`,
     )
@@ -206,9 +207,13 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
   // worker isn't authed as a user.
   const { data: runtimeRow } = await supabase
     .from("workspaces")
-    .select("hermes_agent_name, openclaw_agent_name")
+    .select("owner_id, hermes_agent_name, openclaw_agent_name")
     .eq("id", run.workspace_id)
     .maybeSingle();
+  const workspaceOwnerId = (runtimeRow?.owner_id as string | null) ?? null;
+  if (!workspaceOwnerId) {
+    return await markFailed(runId, "Workspace owner missing; cannot resolve owner-scoped credentials.");
+  }
   const hermesAgentName =
     (runtimeRow?.hermes_agent_name as string | null) ?? null;
   const openclawAgentName =
@@ -217,26 +222,40 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
   // Resolve the provider API key the same way the chat route does —
   // walk navnode → business → workspace → env fallback. Without this,
   // keys stored in Settings → API Keys are ignored for cron/webhook runs.
-  const apiKey = await resolveApiKey(agent.provider, {
-    workspaceId: run.workspace_id,
-    businessId: run.business_id,
-  });
+  const apiKey =
+    agent.provider === "openai_codex"
+      ? (
+          await resolveCodexCredential({
+            workspaceId: run.workspace_id,
+            ownerUserId: workspaceOwnerId,
+          })
+        )?.accessToken ?? null
+      : await resolveApiKey(agent.provider, {
+          workspaceId: run.workspace_id,
+          businessId: run.business_id,
+          navNodeId: run.nav_node_id,
+          credentialOwnerUserId: workspaceOwnerId,
+        });
 
   // Resolve MCP tool keys (brave, firecrawl) so agents can use these
   // servers in cron/webhook runs without them being in process.env.
   const mcpServers: string[] = (config as { mcpServers?: string[] }).mcpServers ?? [];
-  const mcpToolKeyMap: Record<string, string> = {
-    brave: "BRAVE_API_KEY",
-    firecrawl: "FIRECRAWL_API_KEY",
+  const mcpToolKeyMap: Record<string, { envVar: string; provider: string }> = {
+    brave: { envVar: "BRAVE_API_KEY", provider: "brave" },
+    firecrawl: { envVar: "FIRECRAWL_API_KEY", provider: "firecrawl" },
+    "firecrawl-pc": { envVar: "FIRECRAWL_API_KEY", provider: "firecrawl" },
+    "openai-images": { envVar: "OPENAI_API_KEY", provider: "openai" },
   };
   const mcpToolKeys: Record<string, string> = {};
-  for (const [server, envVar] of Object.entries(mcpToolKeyMap)) {
+  for (const [server, spec] of Object.entries(mcpToolKeyMap)) {
     if (mcpServers.includes(server)) {
-      const k = await resolveApiKey(server, {
+      const k = await resolveApiKey(spec.provider, {
         workspaceId: run.workspace_id,
         businessId: run.business_id,
+        navNodeId: run.nav_node_id,
+        credentialOwnerUserId: workspaceOwnerId,
       });
-      if (k) mcpToolKeys[envVar] = k;
+      if (k) mcpToolKeys[spec.envVar] = k;
     }
   }
 
@@ -288,6 +307,7 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
       tenant: {
         workspaceId: run.workspace_id,
         businessId: run.business_id,
+        navNodeId: run.nav_node_id,
         ollamaEndpoint,
         hermesAgentName,
         openclawAgentName,

@@ -58,6 +58,15 @@ export async function GET(
   if (name === "hermes") {
     return NextResponse.json({ models: await readHermesModels() });
   }
+  if (name === "openai_codex") {
+    return NextResponse.json({
+      models: [
+        { id: "openai_codex/gpt-5.5", label: "GPT-5.5", group: "OpenAI Codex" },
+        { id: "openai_codex/gpt-5.4", label: "GPT-5.4", group: "OpenAI Codex" },
+        { id: "openai_codex/gpt-5", label: "GPT-5", group: "OpenAI Codex" },
+      ],
+    });
+  }
   return NextResponse.json({ models: [] });
 }
 

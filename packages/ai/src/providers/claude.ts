@@ -200,6 +200,9 @@ async function* streamClaudeWithMcp(
       if (opts.tenant?.workspaceId) {
         envOverrides.AIO_WORKSPACE_ID = opts.tenant.workspaceId;
       }
+      if (opts.tenant?.navNodeId) {
+        envOverrides.AIO_NAV_NODE_ID = opts.tenant.navNodeId;
+      }
       if (opts.tenant?.mcpToolKeys) {
         Object.assign(envOverrides, opts.tenant.mcpToolKeys);
       }

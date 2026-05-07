@@ -12,6 +12,7 @@ import { streamMinimax } from "./providers/minimax";
 // currently routed since openclaw + hermes moved to subprocess.
 import { streamHermes } from "./providers/hermes";
 import { streamOpenclaw } from "./providers/openclaw";
+import { streamOpenAICodex } from "./providers/openai-codex";
 import { streamNotConfigured } from "./providers/stub";
 
 export type ProviderId =
@@ -22,6 +23,7 @@ export type ProviderId =
   | "ollama"
   | "openclaw"
   | "hermes"
+  | "openai_codex"
   | "codex";
 
 export interface AgentConfig {
@@ -200,6 +202,9 @@ export async function* streamChat(
       // CLI subprocess — runs `hermes chat --json --message …`
       // Set HERMES_BIN in env to the absolute path on the VPS.
       yield* streamHermes(opts);
+      return;
+    case "openai_codex":
+      yield* streamOpenAICodex(opts);
       return;
     case "minimax":
       // streamMinimax decides internally: plain HTTP when no MCP

@@ -51,6 +51,8 @@ export type BusinessTabsTopicEntry = {
   label: string;
   /** Custom tab ID — present for user-added iframe tabs, absent for built-in topic entries. */
   id?: string;
+  /** Original saved URL. Internal AIO URLs are opened directly; external URLs keep iframe tab routing. */
+  url?: string;
   /** Optional icon name from the AppIcon registry. */
   icon?:
     | "video"
@@ -99,6 +101,32 @@ type Props = {
     relDay?: string;
   };
 };
+
+function customTabEntry(
+  tab: { id: string; label: string; url: string },
+  workspaceSlug: string,
+): BusinessTabsTopicEntry {
+  const internalPath = internalAioPath(tab.url, workspaceSlug);
+  return {
+    id: tab.id,
+    href: internalPath ?? `/tab/${tab.id}`,
+    label: tab.label,
+    url: tab.url,
+  };
+}
+
+function internalAioPath(url: string, workspaceSlug: string): string | null {
+  if (url.startsWith(`/${workspaceSlug}/`)) return url;
+  try {
+    const parsed = new URL(url);
+    if (parsed.pathname.startsWith(`/${workspaceSlug}/`)) {
+      return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
 
 export function BusinessTabs({
   workspaceSlug,
@@ -159,16 +187,12 @@ export function BusinessTabs({
         tabs: Array<{ id: string; label: string; url: string }>;
       };
       setLocalTopicTabs(
-        tabs.map((tab) => ({
-          id: tab.id,
-          href: `/tab/${tab.id}`,
-          label: tab.label,
-        })),
+        tabs.map((tab) => customTabEntry(tab, workspaceSlug)),
       );
     } catch {
       // Silently fail — existing UI stays intact.
     }
-  }, [businessId]);
+  }, [businessId, workspaceSlug]);
 
   // Refresh when the user returns to this browser tab so agent-created tabs
   // appear automatically without a manual reload.
@@ -275,7 +299,7 @@ export function BusinessTabs({
       return {
         href,
         label: t.label,
-        hardNav: !!t.id,
+        hardNav: !!t.id && t.href.includes("/tab/"),
         match: (p) => p === href || p.startsWith(`${href}/`),
       } satisfies Tab;
     }),

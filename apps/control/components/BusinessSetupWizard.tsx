@@ -77,6 +77,7 @@ const PROVIDERS: { id: Provider; label: string; defaultModel?: string }[] = [
   { id: "openrouter", label: "OpenRouter", defaultModel: "openrouter/auto" },
   { id: "minimax", label: "MiniMax (Coder Plan)", defaultModel: "MiniMax-M2.7-Highspeed" },
   { id: "ollama", label: "Ollama (lokaal/VPS)", defaultModel: "llama3" },
+  { id: "openai_codex", label: "OpenAI Codex (ChatGPT login)", defaultModel: "openai_codex/gpt-5.5" },
   { id: "openclaw", label: "OpenClaw (CLI)" },
   { id: "hermes", label: "Hermes (CLI)" },
   { id: "codex", label: "Codex / OpenAI" },

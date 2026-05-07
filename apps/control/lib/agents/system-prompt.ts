@@ -81,6 +81,7 @@ type AgentLike = {
   id: string;
   workspace_id: string;
   business_id: string | null;
+  nav_node_id?: string | null;
   name: string;
   kind: string;
   provider: string;
@@ -115,7 +116,7 @@ export async function buildAgentSystemPrompt(
   const configuredMcpServers = (agentConfig.mcpServers as string[] | null) ?? [];
 
   // Fan out the lookups in parallel — single round-trip total.
-  const [bizRes, wsRes, integrations, siblings, spend, skillsRes] =
+  const [bizRes, wsRes, integrations, siblings, spend, skillsRes, navNodeRes] =
     await Promise.all([
       agent.business_id
         ? admin
@@ -150,6 +151,13 @@ export async function buildAgentSystemPrompt(
             .in("id", allowedSkillIds)
             .is("archived_at", null)
         : Promise.resolve({ data: [] }),
+      agent.nav_node_id
+        ? admin
+            .from("nav_nodes")
+            .select("id, name, slug, sub")
+            .eq("id", agent.nav_node_id)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
     ]);
 
   const lines: string[] = [];
@@ -451,6 +459,20 @@ export async function buildAgentSystemPrompt(
         lines.push(`- ${t.name ?? ""} ${t.target ? `(${t.target})` : ""}`);
       }
     }
+  }
+
+  const navNode = navNodeRes.data as
+    | { id: string; name: string; slug: string; sub?: string | null }
+    | null;
+  if (navNode) {
+    lines.push("");
+    lines.push("## Actief topic");
+    lines.push(`- Topic: ${navNode.name} (${navNode.slug})`);
+    lines.push(`- nav_node_id: ${navNode.id}`);
+    if (navNode.sub) lines.push(`- Context: ${navNode.sub}`);
+    lines.push(
+      "- Als de gebruiker vraagt om een dashboard, routine of agent voor dit topic, koppel/publiceer die aan deze nav_node_id zodat het in de topicpagina en banner terechtkomt.",
+    );
   }
 
   // ── Workspace-wide rules ───────────────────────────────────────────

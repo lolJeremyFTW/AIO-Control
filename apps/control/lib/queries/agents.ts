@@ -19,6 +19,7 @@ export type AgentRow = {
     | "ollama"
     | "openclaw"
     | "hermes"
+    | "openai_codex"
     | "codex";
   model: string | null;
   config: Record<string, unknown>;

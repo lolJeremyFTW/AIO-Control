@@ -69,6 +69,7 @@ const PROVIDERS: { id: Provider; label: string; defaultModel?: string }[] = [
   { id: "openrouter", label: "OpenRouter", defaultModel: "openrouter/auto" },
   { id: "minimax", label: "MiniMax (Coder Plan)", defaultModel: "MiniMax-M2.7-Highspeed" },
   { id: "ollama", label: "Ollama (lokaal/VPS)", defaultModel: "llama3" },
+  { id: "openai_codex", label: "OpenAI Codex (ChatGPT login)", defaultModel: "openai_codex/gpt-5.5" },
   { id: "openclaw", label: "OpenClaw (CLI subprocess op VPS)" },
   { id: "hermes", label: "Hermes-agent (CLI subprocess op VPS)" },
   { id: "codex", label: "Codex / OpenAI" },
@@ -299,7 +300,7 @@ export function EditAgentDialog({
               : t("agent.field.model")
           }
         >
-          {provider === "openclaw" || provider === "hermes" ? (
+          {provider === "openclaw" || provider === "hermes" || provider === "openai_codex" ? (
             <ProviderModelPicker
               provider={provider}
               value={model}

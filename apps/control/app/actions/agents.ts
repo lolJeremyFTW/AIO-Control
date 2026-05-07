@@ -26,6 +26,7 @@ export type AgentInput = {
     | "ollama"
     | "openclaw"
     | "hermes"
+    | "openai_codex"
     | "codex";
   model?: string;
   systemPrompt?: string;

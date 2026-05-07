@@ -86,8 +86,9 @@ export default async function BusinessLayout({ children, params }: Props) {
 
   const customTabEntries = (customTabRows ?? []).map((tab) => ({
     id: tab.id as string,
-    href: `/tab/${tab.id}`,
+    href: customTabHref(tab.url as string, workspace_slug, tab.id as string),
     label: tab.label as string,
+    url: tab.url as string,
   }));
 
   return (
@@ -114,4 +115,18 @@ export default async function BusinessLayout({ children, params }: Props) {
       {children}
     </>
   );
+}
+
+function customTabHref(url: string, workspaceSlug: string, tabId: string): string {
+  if (url.startsWith(`/${workspaceSlug}/`)) return url;
+  try {
+    const parsed = new URL(url);
+    if (parsed.pathname.startsWith(`/${workspaceSlug}/`)) {
+      return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    }
+  } catch {
+    // Keep malformed legacy rows behind the iframe route, where the
+    // page-level lookup can decide whether to render or 404.
+  }
+  return `/tab/${tabId}`;
 }

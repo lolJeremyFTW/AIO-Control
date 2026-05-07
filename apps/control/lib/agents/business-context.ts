@@ -27,7 +27,7 @@ export async function buildBusinessContextPrefix(
   const admin = getServiceRoleSupabase();
   const { data: agent } = await admin
     .from("agents")
-    .select("id, workspace_id, business_id, name, kind, provider, model")
+    .select("id, workspace_id, business_id, nav_node_id, name, kind, provider, model")
     .eq("business_id", agentOrBusinessId)
     .limit(1)
     .maybeSingle();

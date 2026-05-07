@@ -176,6 +176,7 @@ export const AIO_TOOLS: Record<string, AioToolSpec> = {
             "ollama",
             "openclaw",
             "hermes",
+            "openai_codex",
             "codex",
           ],
         },

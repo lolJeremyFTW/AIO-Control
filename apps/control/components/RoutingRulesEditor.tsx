@@ -15,6 +15,7 @@ type Provider =
   | "ollama"
   | "openclaw"
   | "hermes"
+  | "openai_codex"
   | "codex";
 
 type RuleMatch = {
@@ -42,6 +43,7 @@ const PROVIDERS: Provider[] = [
   "ollama",
   "openclaw",
   "hermes",
+  "openai_codex",
   "codex",
 ];
 

@@ -10,11 +10,14 @@ export const CUSTOM_KEY_NAME_RE = /^[A-Z][A-Z0-9_]*$/;
 
 export type ApiKeyKind = "provider" | "custom";
 
+export type CredentialType = "api_key" | "oauth_token";
+
 export type ApiKeyScope = "workspace" | "business" | "navnode";
 
 export type ApiKeyMetadata = {
   id: string;
   workspace_id: string;
+  owner_user_id: string;
   scope: ApiKeyScope;
   scope_id: string;
   provider: string;
@@ -25,4 +28,5 @@ export type ApiKeyMetadata = {
   /** 'provider' = canonical (anthropic/openai/…), 'custom' = user
    *  secret read by agent tools / modules / integrations. */
   kind: ApiKeyKind;
+  credential_type: CredentialType;
 };

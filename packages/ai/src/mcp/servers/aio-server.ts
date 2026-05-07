@@ -21,6 +21,7 @@ import { createClient } from "@supabase/supabase-js";
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const WORKSPACE_ID = process.env.AIO_WORKSPACE_ID ?? "default";
+const CURRENT_NAV_NODE_ID = process.env.AIO_NAV_NODE_ID ?? "";
 const ALLOW_READ_SECRET = process.env.AIO_MCP_ALLOW_READ_SECRET === "true";
 const AGENT_SECRET_KEY = process.env.AGENT_SECRET_KEY ?? "";
 const APP_ORIGIN = process.env.NEXT_PUBLIC_TRIGGER_ORIGIN ?? "https://aio.tromptech.life";
@@ -65,6 +66,7 @@ const ListRunsSchema = z.object({
 
 const PublishDashboardSchema = z.object({
   business_id: z.string().uuid(),
+  nav_node_id: z.string().uuid().optional(),
   label: z.string().min(1).max(80),
   html_content: z.string().min(10),
 });
@@ -208,6 +210,7 @@ async function publishDashboard(args: unknown): Promise<string> {
     return JSON.stringify({ error: "validation_failed", details: parsed.error.flatten() });
   }
   const { business_id, label, html_content } = parsed.data;
+  const navNodeId = parsed.data.nav_node_id ?? (CURRENT_NAV_NODE_ID || undefined);
 
   // Check if a dashboard with this label already exists for the business
   // so we can keep the same slug (stable URL on re-publish).
@@ -241,6 +244,32 @@ async function publishDashboard(args: unknown): Promise<string> {
 
   const url = `${APP_ORIGIN}/d/${slug}`;
 
+  if (navNodeId) {
+    const topicResult = await publishTopicDashboard({
+      business_id,
+      nav_node_id: navNodeId,
+      label,
+      html_content,
+      public_url: url,
+    });
+    if (topicResult.error) {
+      return JSON.stringify({
+        error: "topic_publish_failed",
+        message: topicResult.error,
+        url,
+        slug,
+      });
+    }
+    return JSON.stringify({
+      ok: true,
+      url: topicResult.topic_url,
+      public_url: url,
+      tab_id: topicResult.tab_id,
+      slug,
+      nav_node_id: navNodeId,
+    });
+  }
+
   // Upsert the custom_tabs row so the dashboard appears as a nav tab.
   const tabResult = await upsertCustomTabInner(business_id, label, url, 0);
   if (tabResult.error) {
@@ -248,6 +277,121 @@ async function publishDashboard(args: unknown): Promise<string> {
   }
 
   return JSON.stringify({ ok: true, url, tab_id: tabResult.tab_id, slug });
+}
+
+async function publishTopicDashboard(input: {
+  business_id: string;
+  nav_node_id: string;
+  label: string;
+  html_content: string;
+  public_url: string;
+}): Promise<{ topic_url?: string; tab_id?: string; error?: string }> {
+  const { data: biz, error: bizError } = await supabaseAio
+    .from("businesses")
+    .select("id, workspace_id, slug")
+    .eq("id", input.business_id)
+    .eq("workspace_id", WORKSPACE_ID)
+    .maybeSingle();
+  if (bizError) return { error: bizError.message };
+  if (!biz) return { error: "Business not found in current workspace." };
+
+  const { data: workspace, error: wsError } = await supabaseAio
+    .from("workspaces")
+    .select("slug")
+    .eq("id", WORKSPACE_ID)
+    .maybeSingle();
+  if (wsError) return { error: wsError.message };
+  if (!workspace?.slug) return { error: "Workspace slug not found." };
+
+  const chain = await navNodeSlugChain(input.nav_node_id, input.business_id);
+  if ("error" in chain) return { error: chain.error };
+
+  const topicPath = `/${workspace.slug}/business/${biz.slug}/n/${chain.slugs.join("/")}`;
+  const topicUrl = `${APP_ORIGIN}${topicPath}`;
+  const content = dashboardContentForTopic(input.label, input.html_content, input.public_url);
+
+  const { error: dashboardError } = await supabaseAio
+    .from("module_dashboards")
+    .upsert(
+      {
+        nav_node_id: input.nav_node_id,
+        workspace_id: WORKSPACE_ID,
+        content,
+        run_id: null,
+        generated_at: new Date().toISOString(),
+      },
+      { onConflict: "nav_node_id" },
+    );
+  if (dashboardError) return { error: dashboardError.message };
+
+  const tabResult = await upsertCustomTabInner(
+    input.business_id,
+    input.label,
+    topicUrl,
+    0,
+  );
+  if (tabResult.error) return { error: tabResult.error };
+  return { topic_url: topicUrl, tab_id: tabResult.tab_id };
+}
+
+async function navNodeSlugChain(
+  nav_node_id: string,
+  business_id: string,
+): Promise<{ slugs: string[] } | { error: string }> {
+  const { data, error } = await supabaseAio
+    .from("nav_nodes")
+    .select("id, parent_id, business_id, slug")
+    .eq("business_id", business_id);
+  if (error) return { error: error.message };
+
+  const nodes = new Map(
+    (data ?? []).map((n) => [
+      n.id as string,
+      {
+        parent_id: n.parent_id as string | null,
+        slug: n.slug as string,
+      },
+    ]),
+  );
+  const slugs: string[] = [];
+  let current: string | null = nav_node_id;
+  const seen = new Set<string>();
+  while (current) {
+    if (seen.has(current)) return { error: "Cycle detected in nav_nodes." };
+    seen.add(current);
+    const node = nodes.get(current);
+    if (!node) return { error: "Nav node not found for this business." };
+    slugs.unshift(node.slug);
+    current = node.parent_id;
+  }
+  return { slugs };
+}
+
+function dashboardContentForTopic(
+  label: string,
+  html: string,
+  publicUrl: string,
+): string {
+  const text = html
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\s+/g, " ")
+    .trim();
+  const preview = text.length > 1200 ? `${text.slice(0, 1200)}...` : text;
+  return [
+    `# ${label}`,
+    "",
+    `[Open interactief dashboard](${publicUrl})`,
+    "",
+    preview,
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 async function upsertCustomTabInner(
@@ -528,6 +672,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             type: "string",
             format: "uuid",
             description: "UUID van de business waarvoor het dashboard gemaakt wordt.",
+          },
+          nav_node_id: {
+            type: "string",
+            format: "uuid",
+            description:
+              "Optioneel topic/nav-node UUID. Gebruik dit wanneer de dashboard-vraag over een topic gaat, zoals Outreach. Als je agent aan een topic hangt, wordt dit automatisch gebruikt.",
           },
           label: {
             type: "string",

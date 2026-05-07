@@ -12,7 +12,7 @@ import { useEffect, useMemo, useState } from "react";
 type Model = { id: string; label: string; group: string };
 
 type Props = {
-  provider: "openclaw" | "hermes";
+  provider: "openclaw" | "hermes" | "openai_codex";
   value: string;
   onChange: (next: string) => void;
   /** Fallback placeholder when no models load (e.g. CLI not on this host). */

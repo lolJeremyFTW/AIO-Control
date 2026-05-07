@@ -192,4 +192,5 @@ export type AgentProvider =
   | "ollama"
   | "openclaw"
   | "hermes"
+  | "openai_codex"
   | "codex";
