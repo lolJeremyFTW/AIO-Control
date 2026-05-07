@@ -99,12 +99,48 @@ const SendTelegramSchema = z.object({
 async function listBusinesses(): Promise<string> {
   const { data, error } = await supabaseAio
     .from("businesses")
-    .select("id, name, sub, icon, variant, status, created_at")
+    .select("id, name, sub, slug, icon, variant, status, created_at")
     .eq("workspace_id", WORKSPACE_ID)
     .order("created_at", { ascending: false });
 
   if (error) {
-    return JSON.stringify({ error: "db_error", message: error.message });
+    // Some older/self-hosted installs have a stale PostgREST schema cache or
+    // miss optional presentation columns. Keep the read tool useful instead of
+    // failing the whole agent health check on a non-essential field.
+    const missingOptionalColumn =
+      error.code === "PGRST204" ||
+      /column .*businesses\.(sub|slug|icon|variant|status).* does not exist/i.test(
+        error.message,
+      ) ||
+      /could not find .* (sub|slug|icon|variant|status) .*businesses/i.test(
+        error.message,
+      );
+    if (!missingOptionalColumn) {
+      return JSON.stringify({ error: "db_error", message: error.message });
+    }
+
+    const fallback = await supabaseAio
+      .from("businesses")
+      .select("id, name, created_at")
+      .eq("workspace_id", WORKSPACE_ID)
+      .order("created_at", { ascending: false });
+    if (fallback.error) {
+      return JSON.stringify({
+        error: "db_error",
+        message: fallback.error.message,
+      });
+    }
+    return JSON.stringify({
+      businesses: (fallback.data ?? []).map((b) => ({
+        ...b,
+        sub: null,
+        slug: null,
+        icon: null,
+        variant: null,
+        status: null,
+      })),
+      warning: `businesses optional columns unavailable: ${error.message}`,
+    });
   }
   return JSON.stringify({ businesses: data ?? [] });
 }
