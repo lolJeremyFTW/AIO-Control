@@ -25,7 +25,7 @@ export function TopicTabs({ baseHref, topicName }: Props) {
         display: "flex",
         alignItems: "center",
         gap: 4,
-        marginBottom: 16,
+        marginBottom: 0,
         borderBottom: "1px solid var(--app-border-2)",
         flexWrap: "wrap",
       }}

@@ -127,8 +127,9 @@ export default async function NavNodePage({ params, searchParams }: Props) {
     );
 
     return (
-      <div className="content">
+      <>
         <TopicTabs baseHref={topicBaseHref} topicName={current.name} />
+        <div className="content">
         <div className="page-title-row">
           <h1>Agents — {current.name}</h1>
           <span className="sub">{t("page.business.agents.sub")}</span>
@@ -156,7 +157,8 @@ export default async function NavNodePage({ params, searchParams }: Props) {
             description: s.description,
           }))}
         />
-      </div>
+        </div>
+      </>
     );
   }
 
@@ -164,8 +166,9 @@ export default async function NavNodePage({ params, searchParams }: Props) {
   if (subRoute === "runs") {
     const businessAgents = allAgents.filter((a) => a.business_id === biz.id);
     return (
-      <div className="content">
+      <>
         <TopicTabs baseHref={topicBaseHref} topicName={current.name} />
+        <div className="content">
         <div className="page-title-row">
           <h1>Runs — {current.name}</h1>
           <span className="sub">Alle runs gekoppeld aan dit topic</span>
@@ -181,7 +184,8 @@ export default async function NavNodePage({ params, searchParams }: Props) {
           offset={Number(sp.offset ?? 0)}
           navNodeId={current.id}
         />
-      </div>
+        </div>
+      </>
     );
   }
 
@@ -201,8 +205,9 @@ export default async function NavNodePage({ params, searchParams }: Props) {
   ];
 
   return (
-    <div className="content">
+    <>
       <TopicTabs baseHref={topicBaseHref} topicName={current?.name ?? ""} />
+      <div className="content">
 
       <div
         style={{
@@ -356,6 +361,7 @@ export default async function NavNodePage({ params, searchParams }: Props) {
             : "+ Nieuwe sub-module"
         }
       />
-    </div>
+      </div>
+    </>
   );
 }
