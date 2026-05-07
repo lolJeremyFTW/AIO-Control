@@ -366,6 +366,7 @@ export async function POST(req: Request) {
           workspaceId: workspace_id,
           businessId: agent.business_id,
           navNodeId: (agent as { nav_node_id?: string | null }).nav_node_id ?? null,
+          agentId: agent.id,
           ollamaEndpoint: ollamaEndpoint ?? undefined,
           hermesAgentName,
           openclawAgentName,
@@ -391,6 +392,10 @@ export async function POST(req: Request) {
         const res = await executeAioTool(tu.name, tu.args, {
           workspaceId: workspace_id,
           defaultBusinessId: agent.business_id,
+          defaultNavNodeId:
+            (agent as { nav_node_id?: string | null }).nav_node_id ?? null,
+          agentId: agent.id,
+          runId: run?.id ?? null,
         });
 
         if (res.kind === "defer") {

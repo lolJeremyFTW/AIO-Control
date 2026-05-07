@@ -119,6 +119,7 @@ export interface StreamChatOptions {
     workspaceId: string;
     businessId?: string | null;
     navNodeId?: string | null;
+    agentId?: string | null;
     /** Resolved Ollama endpoint for this workspace, e.g. http://192.168.0.42:11434.
      *  Empty when the workspace hasn't configured one — providers fall
      *  back to OLLAMA_BASE_URL / localhost. */

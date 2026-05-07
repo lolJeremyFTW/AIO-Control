@@ -63,6 +63,7 @@ const AIO_READ_TOOL_NAMES = new Set([
   "list_runs",
   "list_schedules",
   "list_custom_tabs",
+  "list_review_learnings",
 ]);
 
 // npm global bin dir on the VPS — set NPM_GLOBAL_BIN env var to
@@ -166,6 +167,8 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
       AIO_WORKSPACE_ID: process.env.AIO_WORKSPACE_ID ?? "default",
       AIO_BUSINESS_ID: process.env.AIO_BUSINESS_ID ?? "",
       AIO_NAV_NODE_ID: process.env.AIO_NAV_NODE_ID ?? "",
+      AIO_AGENT_ID: process.env.AIO_AGENT_ID ?? "",
+      AIO_RUN_ID: process.env.AIO_RUN_ID ?? "",
       // Master key for pgcrypto symmetric decrypt — needed by the
       // send_telegram_message tool to resolve the Telegram bot token
       // through the resolve_api_key RPC.

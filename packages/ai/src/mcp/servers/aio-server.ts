@@ -24,6 +24,8 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const WORKSPACE_ID = process.env.AIO_WORKSPACE_ID ?? "default";
 const CURRENT_BUSINESS_ID = process.env.AIO_BUSINESS_ID ?? "";
 const CURRENT_NAV_NODE_ID = process.env.AIO_NAV_NODE_ID ?? "";
+const CURRENT_AGENT_ID = process.env.AIO_AGENT_ID ?? "";
+const CURRENT_RUN_ID = process.env.AIO_RUN_ID ?? "";
 const ALLOW_READ_SECRET = process.env.AIO_MCP_ALLOW_READ_SECRET === "true";
 const AGENT_SECRET_KEY = process.env.AGENT_SECRET_KEY ?? "";
 const APP_ORIGIN = dashboardOrigin(
@@ -110,6 +112,28 @@ const ListRunsSchema = z.object({
   status: z
     .enum(["queued", "running", "done", "failed", "review"])
     .optional(),
+});
+
+const ListReviewLearningsSchema = z.object({
+  business_id: z.string().uuid().optional(),
+  nav_node_id: z.string().uuid().nullable().optional(),
+  agent_id: z.string().uuid().optional(),
+  outcome: z
+    .enum(["pending", "approved", "rejected", "resolved", "noted"])
+    .optional(),
+  limit: z.coerce.number().int().min(1).max(50).optional().default(10),
+});
+
+const RequestHumanReviewSchema = z.object({
+  business_id: z.string().uuid().optional(),
+  nav_node_id: z.string().uuid().nullable().optional(),
+  title: z.string().min(3).max(160),
+  reason: z.string().min(3).max(2000),
+  proposed_action: z.string().max(2000).optional(),
+  risk_level: z.enum(["low", "medium", "high"]).optional().default("medium"),
+  confidence: z.coerce.number().min(0).max(1).optional().default(0.5),
+  state: z.enum(["review", "fail"]).optional().default("review"),
+  payload: z.record(z.unknown()).optional(),
 });
 
 const PublishDashboardSchema = z.object({
@@ -829,6 +853,190 @@ async function listRuns(args: unknown): Promise<string> {
     return JSON.stringify({ error: "db_error", message: error.message });
   }
   return JSON.stringify({ runs: data ?? [] });
+}
+
+async function listReviewLearnings(args: unknown): Promise<string> {
+  const parsed = ListReviewLearningsSchema.safeParse(args);
+  if (!parsed.success) {
+    return JSON.stringify({
+      error: "validation_failed",
+      details: parsed.error.flatten(),
+    });
+  }
+  const businessId = parsed.data.business_id ?? (CURRENT_BUSINESS_ID || null);
+  const navNodeId =
+    parsed.data.nav_node_id === null
+      ? null
+      : parsed.data.nav_node_id ?? (CURRENT_NAV_NODE_ID || null);
+
+  const { data, error } = await supabaseAio
+    .from("agent_review_lessons")
+    .select(
+      "id, business_id, nav_node_id, agent_id, queue_item_id, lesson_type, outcome, confidence, title, body, payload, created_at",
+    )
+    .eq("workspace_id", WORKSPACE_ID)
+    .order("created_at", { ascending: false })
+    .limit(Math.max(parsed.data.limit * 4, parsed.data.limit));
+  if (error) return JSON.stringify({ error: "db_error", message: error.message });
+
+  const rows = ((data ?? []) as Array<Record<string, unknown>>)
+    .filter((row) =>
+      !businessId || row.business_id == null || row.business_id === businessId,
+    )
+    .filter((row) =>
+      !navNodeId || row.nav_node_id == null || row.nav_node_id === navNodeId,
+    )
+    .filter((row) => !parsed.data.agent_id || row.agent_id === parsed.data.agent_id)
+    .filter((row) => !parsed.data.outcome || row.outcome === parsed.data.outcome)
+    .slice(0, parsed.data.limit);
+  return JSON.stringify({ lessons: rows });
+}
+
+async function requestHumanReview(args: unknown): Promise<string> {
+  const parsed = RequestHumanReviewSchema.safeParse(args);
+  if (!parsed.success) {
+    return JSON.stringify({
+      error: "validation_failed",
+      details: parsed.error.flatten(),
+    });
+  }
+  const scope = await resolveReviewScope({
+    business_id: parsed.data.business_id,
+    nav_node_id: parsed.data.nav_node_id,
+  });
+  if ("error" in scope) {
+    return JSON.stringify({ error: "scope_error", message: scope.error });
+  }
+
+  const payload = {
+    source: "agent_uncertainty",
+    reason: parsed.data.reason,
+    proposed_action: parsed.data.proposed_action ?? null,
+    risk_level: parsed.data.risk_level,
+    confidence: parsed.data.confidence,
+    agent_id: CURRENT_AGENT_ID || null,
+    run_id: CURRENT_RUN_ID || null,
+    context: parsed.data.payload ?? {},
+  };
+  const meta = [
+    `${parsed.data.risk_level} risk`,
+    `${Math.round(parsed.data.confidence * 100)}% confidence`,
+    parsed.data.reason,
+  ]
+    .filter(Boolean)
+    .join(" - ")
+    .slice(0, 500);
+
+  const { data: queueItem, error: queueError } = await supabaseAio
+    .from("queue_items")
+    .insert({
+      workspace_id: WORKSPACE_ID,
+      business_id: scope.business_id,
+      nav_node_id: scope.nav_node_id,
+      agent_id: CURRENT_AGENT_ID || null,
+      state: parsed.data.state,
+      confidence: parsed.data.confidence,
+      title: parsed.data.title,
+      meta,
+      payload,
+    })
+    .select("id")
+    .single();
+  if (queueError || !queueItem) {
+    return JSON.stringify({
+      error: "db_error",
+      message: queueError?.message ?? "queue item insert failed",
+    });
+  }
+
+  const { data: lesson, error: lessonError } = await supabaseAio
+    .from("agent_review_lessons")
+    .insert({
+      workspace_id: WORKSPACE_ID,
+      business_id: scope.business_id,
+      nav_node_id: scope.nav_node_id,
+      agent_id: CURRENT_AGENT_ID || null,
+      run_id: CURRENT_RUN_ID || null,
+      queue_item_id: queueItem.id,
+      lesson_type: "uncertainty",
+      outcome: "pending",
+      confidence: parsed.data.confidence,
+      title: `Review requested: ${parsed.data.title}`,
+      body: parsed.data.proposed_action
+        ? `${parsed.data.reason}\n\nProposed action: ${parsed.data.proposed_action}`
+        : parsed.data.reason,
+      payload,
+    })
+    .select("id")
+    .maybeSingle();
+  if (lessonError) {
+    console.error("[aio-mcp] agent_review_lessons insert failed", lessonError);
+  }
+
+  const { data: workspace } = await supabaseAio
+    .from("workspaces")
+    .select("slug")
+    .eq("id", WORKSPACE_ID)
+    .maybeSingle();
+  return JSON.stringify({
+    ok: true,
+    queue_item_id: queueItem.id,
+    lesson_id: lesson?.id ?? null,
+    state: parsed.data.state,
+    queue_path: workspace?.slug ? `/${workspace.slug}/queue` : null,
+  });
+}
+
+async function resolveReviewScope(input: {
+  business_id?: string;
+  nav_node_id?: string | null;
+}): Promise<{ business_id: string; nav_node_id: string | null } | { error: string }> {
+  let navNodeId = input.nav_node_id ?? (CURRENT_NAV_NODE_ID || null);
+  let businessId = input.business_id ?? (CURRENT_BUSINESS_ID || null);
+
+  if (navNodeId) {
+    const { data: node, error } = await supabaseAio
+      .from("nav_nodes")
+      .select("id, business_id")
+      .eq("workspace_id", WORKSPACE_ID)
+      .eq("id", navNodeId)
+      .maybeSingle();
+    if (error) return { error: error.message };
+    if (!node) return { error: "nav_node_id not found in current workspace." };
+    const nodeBusinessId = node.business_id as string;
+    if (businessId && businessId !== nodeBusinessId) {
+      return { error: "nav_node_id belongs to a different business_id." };
+    }
+    businessId = nodeBusinessId;
+  }
+
+  if (businessId) {
+    const { data: business, error } = await supabaseAio
+      .from("businesses")
+      .select("id")
+      .eq("workspace_id", WORKSPACE_ID)
+      .eq("id", businessId)
+      .is("archived_at", null)
+      .maybeSingle();
+    if (error) return { error: error.message };
+    if (!business) return { error: "business_id not found in current workspace." };
+    return { business_id: businessId, nav_node_id: navNodeId };
+  }
+
+  const { data: businesses, error } = await supabaseAio
+    .from("businesses")
+    .select("id")
+    .eq("workspace_id", WORKSPACE_ID)
+    .is("archived_at", null)
+    .limit(2);
+  if (error) return { error: error.message };
+  if ((businesses ?? []).length === 1) {
+    return { business_id: businesses![0]!.id as string, nav_node_id: navNodeId };
+  }
+  return {
+    error:
+      "request_human_review needs business_id because this workspace has multiple businesses and the agent is not business-scoped.",
+  };
 }
 
 async function resolveScheduleScope(input: {
@@ -1994,6 +2202,78 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "list_review_learnings",
+      description:
+        "List recent HITL review lessons: why agents escalated, what operators approved/rejected, and what future agents should remember before similar decisions.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          business_id: {
+            type: "string",
+            format: "uuid",
+            description:
+              "Optional business UUID. Defaults to the current MCP business scope.",
+          },
+          nav_node_id: {
+            type: ["string", "null"],
+            format: "uuid",
+            description:
+              "Optional topic/nav-node UUID. Defaults to the current MCP topic scope; pass null to disable topic filtering.",
+          },
+          agent_id: { type: "string", format: "uuid" },
+          outcome: {
+            type: "string",
+            enum: ["pending", "approved", "rejected", "resolved", "noted"],
+          },
+          limit: { type: "number", default: 10, minimum: 1, maximum: 50 },
+        },
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "request_human_review",
+      description:
+        "Create a persistent HITL queue item when the agent is uncertain, low-confidence, blocked, or about to take a risky/irreversible/brand/legal/financial action. Safe escalation: does not perform the action and records a learning note.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          business_id: {
+            type: "string",
+            format: "uuid",
+            description:
+              "Business UUID. Defaults to the current MCP business scope; required for workspace-global agents unless a single business can be inferred.",
+          },
+          nav_node_id: {
+            type: ["string", "null"],
+            format: "uuid",
+            description: "Optional topic/nav-node UUID.",
+          },
+          title: { type: "string", minLength: 3, maxLength: 160 },
+          reason: { type: "string", minLength: 3, maxLength: 2000 },
+          proposed_action: { type: "string", maxLength: 2000 },
+          risk_level: {
+            type: "string",
+            enum: ["low", "medium", "high"],
+            default: "medium",
+          },
+          confidence: {
+            type: "number",
+            minimum: 0,
+            maximum: 1,
+            default: 0.5,
+          },
+          state: {
+            type: "string",
+            enum: ["review", "fail"],
+            default: "review",
+          },
+          payload: { type: "object" },
+        },
+        required: ["title", "reason"],
+        additionalProperties: false,
+      },
+    },
+    {
       name: "list_schedules",
       description:
         "List cron/webhook/manual schedules in the current workspace. Defaults to the current MCP business/topic scope when available; pass business_id or nav_node_id to be explicit.",
@@ -2159,6 +2439,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       break;
     case "list_runs":
       result = await listRuns(args);
+      break;
+    case "list_review_learnings":
+      result = await listReviewLearnings(args);
+      break;
+    case "request_human_review":
+      result = await requestHumanReview(args);
       break;
     case "list_schedules":
       result = await listSchedules(args);

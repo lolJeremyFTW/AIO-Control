@@ -19,6 +19,11 @@ export type AioToolContext = {
   /** When the agent itself is business-scoped, defaults its writes
    *  to that business unless the caller passes business_id explicitly. */
   defaultBusinessId: string | null;
+  /** Optional topic scope inherited from the active agent/run. */
+  defaultNavNodeId?: string | null;
+  /** Current agent/run attribution for durable review learning. */
+  agentId?: string | null;
+  runId?: string | null;
   /** Present for interactive chat turns so meta tools can write back to
    *  the same thread after the stream has closed. */
   chatThreadId?: string | null;
@@ -171,6 +176,44 @@ export async function executeAioTool(
         return { kind: "ok", data: data ?? [] };
       }
 
+      case "list_review_learnings": {
+        const limit = Math.min(Math.max(Number(a.limit ?? 10), 1), 50);
+        const businessId =
+          typeof a.business_id === "string"
+            ? a.business_id
+            : ctx.defaultBusinessId;
+        const navNodeId =
+          typeof a.nav_node_id === "string"
+            ? a.nav_node_id
+            : ctx.defaultNavNodeId;
+        const agentId = typeof a.agent_id === "string" ? a.agent_id : null;
+        const outcome = typeof a.outcome === "string" ? a.outcome : null;
+        const { data, error } = await admin
+          .from("agent_review_lessons")
+          .select(
+            "id, business_id, nav_node_id, agent_id, queue_item_id, lesson_type, outcome, confidence, title, body, payload, created_at",
+          )
+          .eq("workspace_id", ctx.workspaceId)
+          .order("created_at", { ascending: false })
+          .limit(Math.max(limit * 4, limit));
+        if (error) return { kind: "error", error: error.message };
+        const rows = ((data ?? []) as Array<Record<string, unknown>>)
+          .filter((row) =>
+            !businessId ||
+            row.business_id == null ||
+            row.business_id === businessId,
+          )
+          .filter((row) =>
+            !navNodeId ||
+            row.nav_node_id == null ||
+            row.nav_node_id === navNodeId,
+          )
+          .filter((row) => !agentId || row.agent_id === agentId)
+          .filter((row) => !outcome || row.outcome === outcome)
+          .slice(0, limit);
+        return { kind: "ok", data: rows };
+      }
+
       case "get_workspace_settings": {
         const { data, error } = await admin
           .from("workspaces")
@@ -282,6 +325,12 @@ export async function executeAioTool(
       // First-pass: defer with confirm_required. The chat-route's
       // approve_tool path re-enters via executeAioWriteTool below
       // when the user clicks Approve.
+      case "request_human_review": {
+        const created = await createHumanReviewItem(a, ctx);
+        if ("error" in created) return { kind: "error", error: created.error };
+        return { kind: "ok", data: created };
+      }
+
       case "create_business":
       case "create_agent":
       case "update_agent":
@@ -306,6 +355,184 @@ export async function executeAioTool(
       error: err instanceof Error ? err.message : String(err),
     };
   }
+}
+
+async function createHumanReviewItem(
+  a: Record<string, unknown>,
+  ctx: AioToolContext,
+): Promise<
+  | {
+      ok: true;
+      queue_item_id: string;
+      lesson_id: string | null;
+      state: "review" | "fail";
+      queue_path: string | null;
+    }
+  | { error: string }
+> {
+  const title = cleanReviewText(a.title, 160);
+  const reason = cleanReviewText(a.reason, 2_000);
+  if (!title) return { error: "request_human_review needs a title." };
+  if (!reason) return { error: "request_human_review needs a reason." };
+
+  const scope = await resolveHumanReviewScope(ctx.workspaceId, {
+    businessId:
+      typeof a.business_id === "string" ? a.business_id : ctx.defaultBusinessId,
+    navNodeId:
+      typeof a.nav_node_id === "string" ? a.nav_node_id : ctx.defaultNavNodeId,
+  });
+  if ("error" in scope) return { error: scope.error };
+
+  const admin = getServiceRoleSupabase();
+  const state = a.state === "fail" ? "fail" : "review";
+  const riskLevel =
+    a.risk_level === "low" || a.risk_level === "high"
+      ? a.risk_level
+      : "medium";
+  const confidence = clamp01(Number(a.confidence ?? 0.5));
+  const proposedAction = cleanReviewText(a.proposed_action, 2_000);
+  const extraPayload =
+    a.payload && typeof a.payload === "object" && !Array.isArray(a.payload)
+      ? (a.payload as Record<string, unknown>)
+      : {};
+  const payload = {
+    source: "agent_uncertainty",
+    reason,
+    proposed_action: proposedAction || null,
+    risk_level: riskLevel,
+    confidence,
+    agent_id: ctx.agentId ?? null,
+    run_id: ctx.runId ?? null,
+    chat_thread_id: ctx.chatThreadId ?? null,
+    context: extraPayload,
+  };
+  const metaParts = [
+    `${riskLevel} risk`,
+    `${Math.round(confidence * 100)}% confidence`,
+    reason,
+  ];
+
+  const { data: queueItem, error: queueError } = await admin
+    .from("queue_items")
+    .insert({
+      workspace_id: ctx.workspaceId,
+      business_id: scope.businessId,
+      nav_node_id: scope.navNodeId,
+      agent_id: ctx.agentId ?? null,
+      state,
+      confidence,
+      title,
+      meta: cleanReviewText(metaParts.filter(Boolean).join(" - "), 500),
+      payload,
+    })
+    .select("id")
+    .single();
+  if (queueError || !queueItem) {
+    return { error: queueError?.message ?? "queue item insert failed" };
+  }
+
+  const { data: lesson, error: lessonError } = await admin
+    .from("agent_review_lessons")
+    .insert({
+      workspace_id: ctx.workspaceId,
+      business_id: scope.businessId,
+      nav_node_id: scope.navNodeId,
+      agent_id: ctx.agentId ?? null,
+      run_id: ctx.runId ?? null,
+      queue_item_id: queueItem.id,
+      lesson_type: "uncertainty",
+      outcome: "pending",
+      confidence,
+      title: `Review requested: ${title}`,
+      body: proposedAction
+        ? `${reason}\n\nProposed action: ${proposedAction}`
+        : reason,
+      payload,
+    })
+    .select("id")
+    .maybeSingle();
+  if (lessonError) {
+    console.error("agent_review_lessons insert failed", lessonError);
+  }
+
+  const { data: workspace } = await admin
+    .from("workspaces")
+    .select("slug")
+    .eq("id", ctx.workspaceId)
+    .maybeSingle();
+
+  return {
+    ok: true,
+    queue_item_id: queueItem.id as string,
+    lesson_id: (lesson?.id as string | undefined) ?? null,
+    state,
+    queue_path: workspace?.slug ? `/${workspace.slug}/queue` : null,
+  };
+}
+
+async function resolveHumanReviewScope(
+  workspaceId: string,
+  input: { businessId?: string | null; navNodeId?: string | null },
+): Promise<{ businessId: string; navNodeId: string | null } | { error: string }> {
+  const admin = getServiceRoleSupabase();
+  let businessId = input.businessId ?? null;
+  let navNodeId = input.navNodeId ?? null;
+
+  if (navNodeId) {
+    const { data: node, error } = await admin
+      .from("nav_nodes")
+      .select("id, business_id")
+      .eq("workspace_id", workspaceId)
+      .eq("id", navNodeId)
+      .maybeSingle();
+    if (error) return { error: error.message };
+    if (!node) return { error: "nav_node_id not found in current workspace." };
+    const nodeBusinessId = node.business_id as string;
+    if (businessId && businessId !== nodeBusinessId) {
+      return { error: "nav_node_id belongs to a different business_id." };
+    }
+    businessId = nodeBusinessId;
+  }
+
+  if (businessId) {
+    const { data: business, error } = await admin
+      .from("businesses")
+      .select("id")
+      .eq("workspace_id", workspaceId)
+      .eq("id", businessId)
+      .is("archived_at", null)
+      .maybeSingle();
+    if (error) return { error: error.message };
+    if (!business) {
+      return { error: "business_id not found in current workspace." };
+    }
+    return { businessId, navNodeId };
+  }
+
+  const { data: businesses, error } = await admin
+    .from("businesses")
+    .select("id")
+    .eq("workspace_id", workspaceId)
+    .is("archived_at", null)
+    .limit(2);
+  if (error) return { error: error.message };
+  if ((businesses ?? []).length === 1) {
+    return { businessId: businesses![0]!.id as string, navNodeId };
+  }
+  return {
+    error:
+      "request_human_review needs business_id because this workspace has multiple businesses and the agent is not business-scoped.",
+  };
+}
+
+function cleanReviewText(value: unknown, max: number): string {
+  const text = typeof value === "string" ? value.trim() : "";
+  return text.length > max ? text.slice(0, max - 1) + "..." : text;
+}
+
+function clamp01(value: number): number {
+  if (!Number.isFinite(value)) return 0.5;
+  return Math.max(0, Math.min(1, value));
 }
 
 export function scheduleChatPing(

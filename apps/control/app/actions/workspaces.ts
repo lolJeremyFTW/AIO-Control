@@ -94,6 +94,7 @@ export async function exportWorkspaceData(input: {
     integrations,
     schedules,
     runs,
+    reviewLessons,
     revenue,
     audits,
   ] = await Promise.all([
@@ -141,6 +142,13 @@ export async function exportWorkspaceData(input: {
       .limit(5000)
       .then((r) => r.data ?? []),
     supabase
+      .from("agent_review_lessons")
+      .select("*")
+      .eq("workspace_id", wsId)
+      .order("created_at", { ascending: false })
+      .limit(5000)
+      .then((r) => r.data ?? []),
+    supabase
       .from("revenue_events")
       .select("*")
       .eq("workspace_id", wsId)
@@ -164,6 +172,7 @@ export async function exportWorkspaceData(input: {
     integrations,
     schedules,
     runs,
+    agent_review_lessons: reviewLessons,
     revenue_events: revenue,
     audit_logs: audits,
   };

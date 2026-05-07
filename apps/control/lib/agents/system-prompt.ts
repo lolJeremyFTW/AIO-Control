@@ -41,6 +41,8 @@ const MCP_TOOL_CATALOGUE: Record<string, { description: string; tools: string[] 
       "publish_topic_dashboard",
       "upsert_custom_tab",
       "list_custom_tabs",
+      "list_review_learnings",
+      "request_human_review",
       "create_cron_schedule",
       "update_schedule",
       "toggle_schedule",
@@ -88,6 +90,7 @@ const AIO_READ_ONLY_TOOLS = new Set([
   "list_runs",
   "list_schedules",
   "list_custom_tabs",
+  "list_review_learnings",
 ]);
 
 type Target = {
@@ -142,7 +145,16 @@ export async function buildAgentSystemPrompt(
       | null) ?? {};
 
   // Fan out the lookups in parallel — single round-trip total.
-  const [bizRes, wsRes, integrations, siblings, spend, skillsRes, navNodeRes] =
+  const [
+    bizRes,
+    wsRes,
+    integrations,
+    siblings,
+    spend,
+    skillsRes,
+    navNodeRes,
+    reviewLessonsRes,
+  ] =
     await Promise.all([
       agent.business_id
         ? admin
@@ -184,7 +196,38 @@ export async function buildAgentSystemPrompt(
             .eq("id", agent.nav_node_id)
             .maybeSingle()
         : Promise.resolve({ data: null }),
+      admin
+        .from("agent_review_lessons")
+        .select(
+          "business_id, nav_node_id, lesson_type, outcome, confidence, title, body, created_at",
+        )
+        .eq("workspace_id", agent.workspace_id)
+        .order("created_at", { ascending: false })
+        .limit(25),
     ]);
+
+  type ReviewLessonRow = {
+    business_id: string | null;
+    nav_node_id: string | null;
+    lesson_type: string;
+    outcome: string | null;
+    confidence: number | string | null;
+    title: string;
+    body: string;
+    created_at: string;
+  };
+  const relevantReviewLessons = ((reviewLessonsRes.data ?? []) as ReviewLessonRow[])
+    .filter((lesson) =>
+      !agent.business_id ||
+      lesson.business_id == null ||
+      lesson.business_id === agent.business_id,
+    )
+    .filter((lesson) =>
+      !agent.nav_node_id ||
+      lesson.nav_node_id == null ||
+      lesson.nav_node_id === agent.nav_node_id,
+    )
+    .slice(0, 8);
 
   const lines: string[] = [];
 
@@ -227,10 +270,41 @@ export async function buildAgentSystemPrompt(
       "Niet stilvallen.",
   );
   lines.push(
+    "- **Gebruik HITL bij twijfel over actie.** Als je confidence laag is " +
+      "(richtlijn: < 0.75), data mist, bronnen botsen, of de actie " +
+      "risico heeft voor geld, merk, klanten, publicatie, juridische " +
+      "claims of onomkeerbare writes: voer de actie niet uit. Maak " +
+      "een queue-item met `request_human_review` en geef title, reason, " +
+      "proposed_action, risk_level, confidence en relevante payload mee.",
+  );
+  lines.push(
+    "- **Leer van eerdere reviews.** Gebruik `list_review_learnings` " +
+      "wanneer een beslissing lijkt op iets dat eerder in HITL zat. " +
+      "Operator approvals/rejections zijn beleidssignalen voor volgende runs.",
+  );
+  lines.push(
     "- **Match the language.** Spreek dezelfde taal als de operator " +
       "(Nederlands tenzij anders aangegeven). Direct, zakelijk, geen " +
       "overdreven beleefdheid en geen padding.",
   );
+
+  if (relevantReviewLessons.length > 0) {
+    lines.push("");
+    lines.push("## Recente HITL learnings");
+    lines.push(
+      "Gebruik deze als decision memory. Ze zijn niet absoluut, maar " +
+        "wel sterke signalen over wat de operator eerder goedkeurde of afwees.",
+    );
+    for (const lesson of relevantReviewLessons) {
+      const body =
+        lesson.body.length > 220
+          ? `${lesson.body.slice(0, 219)}...`
+          : lesson.body;
+      lines.push(
+        `- [${lesson.outcome ?? lesson.lesson_type}] ${lesson.title}: ${body}`,
+      );
+    }
+  }
 
   // ── Anti-disclaimer rules ──────────────────────────────────────────
   // Without these, MiniMax/OpenAI-class models default to "Let op: ik
@@ -519,7 +593,7 @@ export async function buildAgentSystemPrompt(
       "- Gebruik targets als richting en KPI's/runs/schedules als feedback. Kies per run 1 bottleneck, voer 1 veilige actie uit of maak 1 concreet voorstel, en stop daarna.",
     );
     lines.push(
-      "- Voor nieuwe agents, skills, integraties of risicovolle wijzigingen: gebruik `aio__propose_improvement` wanneer AIO read-write beschikbaar is, of rapporteer het voorstel in plaats van stil de architectuur te veranderen.",
+      "- Voor nieuwe agents, skills, integraties of risicovolle wijzigingen: gebruik `aio__propose_improvement` wanneer AIO read-write beschikbaar is, of vraag human review/rapporteer het voorstel in plaats van stil de architectuur te veranderen.",
     );
   }
 

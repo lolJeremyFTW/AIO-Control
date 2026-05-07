@@ -206,6 +206,12 @@ async function* streamClaudeWithMcp(
       if (opts.tenant?.navNodeId) {
         envOverrides.AIO_NAV_NODE_ID = opts.tenant.navNodeId;
       }
+      if (opts.tenant?.agentId) {
+        envOverrides.AIO_AGENT_ID = opts.tenant.agentId;
+      }
+      if (opts.runId) {
+        envOverrides.AIO_RUN_ID = opts.runId;
+      }
       if (opts.tenant?.mcpToolKeys) {
         Object.assign(envOverrides, opts.tenant.mcpToolKeys);
       }

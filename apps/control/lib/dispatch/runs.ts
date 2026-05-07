@@ -159,6 +159,7 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
     id: agent.id,
     workspace_id: run.workspace_id,
     business_id: run.business_id,
+    nav_node_id: run.nav_node_id,
     name: agent.name,
     kind: "worker", // dispatched runs default to worker semantics
     provider: agent.provider,
@@ -310,6 +311,7 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
         workspaceId: run.workspace_id,
         businessId: run.business_id,
         navNodeId: run.nav_node_id,
+        agentId: agent.id,
         ollamaEndpoint,
         hermesAgentName,
         openclawAgentName,

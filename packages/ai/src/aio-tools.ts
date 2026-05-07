@@ -134,6 +134,40 @@ export const AIO_TOOLS: Record<string, AioToolSpec> = {
       additionalProperties: false,
     },
   },
+  list_review_learnings: {
+    name: "list_review_learnings",
+    category: "read",
+    description:
+      "List recent HITL review lessons for the current workspace/business. Use this before a similar uncertain or risky action so the agent can learn from earlier operator approvals/rejections.",
+    parameters: {
+      type: "object",
+      properties: {
+        business_id: {
+          type: "string",
+          description:
+            "Optional business UUID. Defaults to the agent's current business when scoped.",
+        },
+        nav_node_id: {
+          type: "string",
+          description:
+            "Optional topic/nav-node UUID. Defaults to the agent's current topic when scoped.",
+        },
+        agent_id: {
+          type: "string",
+          description: "Optional agent UUID filter.",
+        },
+        outcome: {
+          type: "string",
+          enum: ["pending", "approved", "rejected", "resolved", "noted"],
+        },
+        limit: {
+          type: "number",
+          description: "Default 10, max 50.",
+        },
+      },
+      additionalProperties: false,
+    },
+  },
   get_workspace_settings: {
     name: "get_workspace_settings",
     category: "read",
@@ -375,6 +409,63 @@ export const AIO_TOOLS: Record<string, AioToolSpec> = {
       additionalProperties: false,
     },
   },
+  request_human_review: {
+    name: "request_human_review",
+    category: "meta",
+    description:
+      "Create a persistent HITL review item when the agent is uncertain, low-confidence, blocked, or about to take a risky/irreversible/brand/legal/financial action. This safe escalation does not perform the action; it parks the decision in the review queue and records a learning note.",
+    parameters: {
+      type: "object",
+      properties: {
+        business_id: {
+          type: "string",
+          description:
+            "Business UUID for the review item. Defaults to the agent's business; required for workspace-global agents unless a single business can be inferred.",
+        },
+        nav_node_id: {
+          type: "string",
+          description:
+            "Optional topic/nav-node UUID. Defaults to the agent's active topic when scoped.",
+        },
+        title: {
+          type: "string",
+          description: "Short operator-facing title for the queue card.",
+        },
+        reason: {
+          type: "string",
+          description:
+            "Why the agent is unsure or why this action needs human judgement.",
+        },
+        proposed_action: {
+          type: "string",
+          description:
+            "The action the agent would take if approved, or the decision it needs.",
+        },
+        risk_level: {
+          type: "string",
+          enum: ["low", "medium", "high"],
+          description: "Operator impact if the wrong action is taken.",
+        },
+        confidence: {
+          type: "number",
+          description: "Agent confidence from 0 to 1.",
+        },
+        state: {
+          type: "string",
+          enum: ["review", "fail"],
+          description:
+            "Use review for normal uncertainty, fail when work is blocked or likely wrong without intervention.",
+        },
+        payload: {
+          type: "object",
+          description:
+            "Optional structured context: candidate data, source URLs, draft text, ids, tool outputs, or constraints.",
+        },
+      },
+      required: ["title", "reason"],
+      additionalProperties: false,
+    },
+  },
 };
 
 export const AIO_TOOL_NAMES = Object.keys(AIO_TOOLS);
@@ -401,10 +492,16 @@ export function defaultToolsForKind(kind: string): string[] {
       ];
     case "router":
       // Router agents need to introspect siblings.
-      return ["list_agents", "list_businesses", "ask_followup"];
+      return [
+        "list_agents",
+        "list_businesses",
+        "list_review_learnings",
+        "ask_followup",
+        "request_human_review",
+      ];
     default:
       // Worker/reviewer/generator: minimal — only ask_followup for
       // edge-case clarifications.
-      return ["ask_followup"];
+      return ["list_review_learnings", "ask_followup", "request_human_review"];
   }
 }

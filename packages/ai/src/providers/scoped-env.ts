@@ -15,6 +15,12 @@ export function scopedSubprocessEnv(opts: StreamChatOptions): NodeJS.ProcessEnv 
   if (opts.tenant && "navNodeId" in opts.tenant) {
     env.AIO_NAV_NODE_ID = opts.tenant.navNodeId ?? "";
   }
+  if (opts.tenant && "agentId" in opts.tenant) {
+    env.AIO_AGENT_ID = opts.tenant.agentId ?? "";
+  }
+  if (opts.runId) {
+    env.AIO_RUN_ID = opts.runId;
+  }
 
   return env;
 }
