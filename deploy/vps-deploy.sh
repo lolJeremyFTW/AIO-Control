@@ -59,8 +59,24 @@ build_and_stage() {
   # exists, failing with "File '...validator.ts' not found." Running
   # typegen explicitly first removes the race.
   ( cd "$APP" && BASE_PATH="$base_path" pnpm exec next typegen )
-  mkdir -p "$APP/.next/turbopack" "$APP/.next/static/$GIT_COMMIT_SHA"
-  BASE_PATH="$base_path" pnpm exec turbo run build --force --filter=@aio/control
+  # Next 16/Turbopack intermittently removes .next/static/<buildId> just
+  # before writing temp manifest files. Keep the deterministic build-id
+  # directory present while the build runs.
+  (
+    while true; do
+      mkdir -p "$APP/.next/static/$GIT_COMMIT_SHA"
+      sleep 0.05
+    done
+  ) &
+  static_dir_keeper=$!
+  set +e
+  ( cd "$APP" && BASE_PATH="$base_path" pnpm exec next build --turbopack )
+  build_status=$?
+  set -e
+  kill "$static_dir_keeper" 2>/dev/null || true
+  if [[ $build_status -ne 0 ]]; then
+    return "$build_status"
+  fi
 
   # Stage the standalone bundle. Standalone produces apps/control under
   # the .next/standalone tree because we're in a monorepo — preserve that.
