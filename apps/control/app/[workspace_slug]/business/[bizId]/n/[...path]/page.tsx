@@ -29,11 +29,15 @@ import {
   resolveNavPathBySlugs,
 } from "../../../../../../lib/queries/nav-nodes";
 import { listSkillsForWorkspace } from "../../../../../../lib/queries/skills";
-import type { ScheduleRow } from "../../../../../../lib/queries/schedules";
+import type {
+  RunRow,
+  ScheduleRow,
+} from "../../../../../../lib/queries/schedules";
 import { AgentsList } from "../../../../../../components/AgentsList";
 import { GenerateDashboardCard } from "../../../../../../components/GenerateDashboardCard";
 import { NewNavNodeButton } from "../../../../../../components/NewNavNodeButton";
 import { RunsPage } from "../../../../../../components/RunsPage";
+import { RunsTimeline } from "../../../../../../components/RunsTimeline";
 import { SavedModuleDashboard } from "../../../../../../components/SavedModuleDashboard";
 import { ScheduleBuilderDialog } from "../../../../../../components/ScheduleBuilderDialog";
 import { SchedulesPanel } from "../../../../../../components/SchedulesPanel";
@@ -232,6 +236,7 @@ export default async function NavNodePage({ params, searchParams }: Props) {
     const [
       navNodes,
       { data: rows },
+      { data: recentRuns },
       { data: telegramRows },
       { data: customRows },
       { t },
@@ -246,6 +251,16 @@ export default async function NavNodePage({ params, searchParams }: Props) {
         .eq("business_id", biz.id)
         .in("nav_node_id", scopeIds)
         .order("created_at", { ascending: false }),
+      supabase
+        .from("runs")
+        .select(
+          "id, agent_id, business_id, nav_node_id, schedule_id, schedules:schedule_id(title), triggered_by, status, started_at, ended_at, duration_ms, cost_cents, output, error_text, created_at",
+        )
+        .eq("workspace_id", workspace.id)
+        .eq("business_id", biz.id)
+        .in("nav_node_id", scopeIds)
+        .order("created_at", { ascending: false })
+        .limit(10),
       supabase
         .from("telegram_targets")
         .select("id, name")
@@ -309,6 +324,49 @@ export default async function NavNodePage({ params, searchParams }: Props) {
             navNodes={navNodes}
             hideCreateForm={agents.length > 0}
           />
+          <section style={{ marginTop: 28 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "baseline",
+                justifyContent: "space-between",
+                gap: 12,
+                marginBottom: 10,
+              }}
+            >
+              <h2
+                style={{
+                  fontFamily: "var(--hand)",
+                  fontSize: 22,
+                  fontWeight: 700,
+                  margin: 0,
+                }}
+              >
+                Laatste 10 runs
+              </h2>
+              <Link
+                href={`${topicBaseHref}/runs`}
+                style={{
+                  padding: "8px 14px",
+                  border: "1.5px solid var(--app-border)",
+                  background: "var(--app-card-2)",
+                  color: "var(--app-fg)",
+                  borderRadius: 10,
+                  fontWeight: 700,
+                  fontSize: 12.5,
+                  textDecoration: "none",
+                }}
+              >
+                Alle runs
+              </Link>
+            </div>
+            <RunsTimeline
+              runs={(recentRuns ?? []) as unknown as RunRow[]}
+              agents={agents}
+              businessId={biz.id}
+              workspaceId={workspace.id}
+            />
+          </section>
         </div>
       </>
     );
