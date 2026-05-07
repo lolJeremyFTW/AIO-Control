@@ -1016,7 +1016,9 @@ export function WorkspaceShell({
               </button>
               <button
                 role="menuitem"
-                onClick={() => router.push(`/admin/marketplace`)}
+                onClick={() =>
+                  router.push(`/${workspace.slug}/admin/marketplace`)
+                }
               >
                 {t("nav.marketplaceAdmin")}
               </button>
