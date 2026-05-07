@@ -10,6 +10,7 @@ export type NavNode = {
   workspace_id: string;
   business_id: string;
   parent_id: string | null;
+  slug: string;
   name: string;
   sub: string | null;
   letter: string;
@@ -31,7 +32,7 @@ export async function listNavNodes(
   let q = supabase
     .from("nav_nodes")
     .select(
-      "id, workspace_id, business_id, parent_id, name, sub, letter, variant, icon, color_hex, logo_url, href, sort_order",
+      "id, workspace_id, business_id, parent_id, slug, name, sub, letter, variant, icon, color_hex, logo_url, href, sort_order",
     )
     .eq("business_id", businessId)
     .is("archived_at", null)
@@ -58,7 +59,7 @@ export async function resolveNavPath(
   const { data, error } = await supabase
     .from("nav_nodes")
     .select(
-      "id, workspace_id, business_id, parent_id, name, sub, letter, variant, icon, color_hex, logo_url, href, sort_order",
+      "id, workspace_id, business_id, parent_id, slug, name, sub, letter, variant, icon, color_hex, logo_url, href, sort_order",
     )
     .eq("business_id", businessId)
     .in("id", ids);
@@ -70,17 +71,75 @@ export async function resolveNavPath(
   return ids.map((id) => byId.get(id)).filter((n): n is NavNode => !!n);
 }
 
+/** Resolves a path of slugs into the actual node objects, in order.
+ *  Slugs are unique per business (UNIQUE(business_id, slug) constraint),
+ *  so a single query fetches all nodes; we then reorder to match the URL path.
+ *  Falls back gracefully: if a slug matches no node we return a shorter chain
+ *  (the route will 404 via the chain.length !== path.length check). */
+export async function resolveNavPathBySlugs(
+  businessId: string,
+  slugs: string[],
+): Promise<NavNode[]> {
+  if (slugs.length === 0) return [];
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("nav_nodes")
+    .select(
+      "id, workspace_id, business_id, parent_id, slug, name, sub, letter, variant, icon, color_hex, logo_url, href, sort_order",
+    )
+    .eq("business_id", businessId)
+    .in("slug", slugs);
+  if (error || !data) return [];
+  const bySlug = new Map((data as NavNode[]).map((n) => [n.slug, n]));
+  return slugs.map((s) => bySlug.get(s)).filter((n): n is NavNode => !!n);
+}
+
+/** Generates a URL-safe slug from a nav node name. */
+export function slugifyNavName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/[\s-]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 60) || "node";
+}
+
+/** Finds an available slug for a nav_node within a business, appending -2/-3 on collision. */
+export async function generateUniqueNavNodeSlug(
+  supabase: Awaited<ReturnType<typeof import("../supabase/server").createSupabaseServerClient>>,
+  businessId: string,
+  name: string,
+  excludeId?: string,
+): Promise<string> {
+  const base = slugifyNavName(name);
+  let slug = base;
+  let attempt = 2;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    let q = supabase
+      .from("nav_nodes")
+      .select("id")
+      .eq("business_id", businessId)
+      .eq("slug", slug);
+    if (excludeId) q = q.neq("id", excludeId);
+    const { data } = await q.maybeSingle();
+    if (!data) return slug;
+    slug = `${base}-${attempt}`;
+    attempt++;
+  }
+}
+
 /** Flattens the entire nav_nodes tree for a business into a single
  *  ordered list with `depth` precomputed — feeds the topic-pin select
  *  in the agent edit dialog. Cheap: businesses rarely have more than
  *  a few dozen topics so we just fetch all and walk client-side. */
 export async function listFlatNavNodes(
   businessId: string,
-): Promise<{ id: string; name: string; depth: number }[]> {
+): Promise<{ id: string; slug: string; name: string; depth: number }[]> {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("nav_nodes")
-    .select("id, parent_id, name, sort_order")
+    .select("id, slug, parent_id, name, sort_order")
     .eq("business_id", businessId)
     .is("archived_at", null)
     .order("sort_order", { ascending: true });
@@ -90,6 +149,7 @@ export async function listFlatNavNodes(
   }
   type Row = {
     id: string;
+    slug: string;
     parent_id: string | null;
     name: string;
     sort_order: number;
@@ -102,11 +162,11 @@ export async function listFlatNavNodes(
     list.push(r);
     byParent.set(k, list);
   }
-  const out: { id: string; name: string; depth: number }[] = [];
+  const out: { id: string; slug: string; name: string; depth: number }[] = [];
   const walk = (parent: string | null, depth: number) => {
     const kids = byParent.get(parent) ?? [];
     for (const k of kids) {
-      out.push({ id: k.id, name: k.name, depth });
+      out.push({ id: k.id, slug: k.slug, name: k.name, depth });
       walk(k.id, depth + 1);
     }
   };

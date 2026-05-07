@@ -13,7 +13,7 @@ import {
   getCurrentUser,
   getWorkspaceBySlug,
 } from "../../../../lib/auth/workspace";
-import { listBusinesses } from "../../../../lib/queries/businesses";
+import { listBusinesses, findBusiness } from "../../../../lib/queries/businesses";
 import { createSupabaseServerClient } from "../../../../lib/supabase/server";
 import { getDict } from "../../../../lib/i18n/server";
 import { BusinessTabs } from "../../../../components/BusinessTabs";
@@ -33,31 +33,32 @@ export default async function BusinessLayout({ children, params }: Props) {
   if (!workspace) notFound();
 
   const businesses = await listBusinesses(workspace.id);
-  const biz = businesses.find((b) => b.id === bizId);
+  const biz = findBusiness(businesses, bizId);
   if (!biz) notFound();
 
   // Pull the two pieces of context BusinessTabs needs in parallel.
   // Both are RLS-gated so we don't have to re-check membership.
+  // Use biz.id (UUID) for all queries — bizId param may now be a slug.
   const supabase = await createSupabaseServerClient();
   const [{ count: routinesCount }, { data: lastRunRow }, { data: customTabRows }, dict] =
     await Promise.all([
       supabase
         .from("schedules")
         .select("id", { count: "exact", head: true })
-        .eq("business_id", bizId)
+        .eq("business_id", biz.id)
         .in("kind", ["cron", "webhook"])
         .eq("enabled", true),
       supabase
         .from("runs")
         .select("status, ended_at, started_at, created_at")
-        .eq("business_id", bizId)
+        .eq("business_id", biz.id)
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle(),
       supabase
         .from("custom_tabs")
         .select("id, label, url")
-        .eq("business_id", bizId)
+        .eq("business_id", biz.id)
         .order("sort_order", { ascending: true }),
       getDict(),
     ]);
@@ -93,7 +94,7 @@ export default async function BusinessLayout({ children, params }: Props) {
     <>
       <BusinessTabs
         workspaceSlug={workspace_slug}
-        businessId={bizId}
+        businessId={biz.slug}
         workspaceId={workspace.id}
         routinesCount={routinesCount ?? 0}
         lastRun={lastRun}

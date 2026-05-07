@@ -14,10 +14,10 @@ import {
   getWorkspaceBySlug,
 } from "../../../../../../lib/auth/workspace";
 import { listAgentsForWorkspace } from "../../../../../../lib/queries/agents";
-import { listBusinesses } from "../../../../../../lib/queries/businesses";
+import { listBusinesses, findBusiness } from "../../../../../../lib/queries/businesses";
 import {
   listNavNodes,
-  resolveNavPath,
+  resolveNavPathBySlugs,
 } from "../../../../../../lib/queries/nav-nodes";
 import { GenerateDashboardCard } from "../../../../../../components/GenerateDashboardCard";
 import { NewNavNodeButton } from "../../../../../../components/NewNavNodeButton";
@@ -42,21 +42,23 @@ export default async function NavNodePage({ params }: Props) {
   const workspace = await getWorkspaceBySlug(workspace_slug);
   if (!workspace) notFound();
 
-  const [businesses, chain, allAgents] = await Promise.all([
+  const [businesses, allAgents] = await Promise.all([
     listBusinesses(workspace.id),
-    resolveNavPath(bizId, path),
     listAgentsForWorkspace(workspace.id),
   ]);
-  const biz = businesses.find((b) => b.id === bizId);
+  const biz = findBusiness(businesses, bizId);
   if (!biz) notFound();
+
+  // path now contains slugs; resolve to actual NavNode objects using biz.id (UUID)
+  const chain = await resolveNavPathBySlugs(biz.id, path);
   if (chain.length !== path.length) notFound();
   const current = chain[chain.length - 1];
   const [children, savedDashboard] = await Promise.all([
-    current ? listNavNodes(bizId, current.id) : Promise.resolve([]),
+    current ? listNavNodes(biz.id, current.id) : Promise.resolve([]),
     current ? getModuleDashboard(current.id) : Promise.resolve(null),
   ]);
 
-  const baseHref = `/${workspace.slug}/business/${biz.id}`;
+  const baseHref = `/${workspace.slug}/business/${biz.slug}`;
   const breadcrumb = [
     { name: biz.name, href: baseHref, icon: biz.icon },
     ...chain.map((n, i) => ({
@@ -184,7 +186,7 @@ export default async function NavNodePage({ params }: Props) {
         {children.map((c) => (
           <Link
             key={c.id}
-            href={`${baseHref}/n/${[...path, c.id].join("/")}`}
+            href={`${baseHref}/n/${[...path, c.slug].join("/")}`}
             style={{
               border: "1.5px solid var(--app-border)",
               borderRadius: 14,

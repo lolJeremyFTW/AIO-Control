@@ -11,7 +11,7 @@ import {
 } from "../../../../../lib/auth/workspace";
 import { getDict } from "../../../../../lib/i18n/server";
 import { listAgentsForWorkspace } from "../../../../../lib/queries/agents";
-import { listBusinesses } from "../../../../../lib/queries/businesses";
+import { listBusinesses, findBusiness } from "../../../../../lib/queries/businesses";
 import { RunsPage } from "../../../../../components/RunsPage";
 
 type Props = {
@@ -32,9 +32,9 @@ export default async function BusinessRunsPage({ params, searchParams }: Props) 
     listBusinesses(workspace.id),
     listAgentsForWorkspace(workspace.id),
   ]);
-  const biz = businesses.find((b) => b.id === bizId);
+  const biz = findBusiness(businesses, bizId);
   if (!biz) notFound();
-  const agents = allAgents.filter((a) => a.business_id === bizId);
+  const agents = allAgents.filter((a) => a.business_id === biz.id);
 
   const { t } = await getDict();
 

@@ -10,7 +10,7 @@ import {
 import { resolveApiKey } from "../../../../../lib/api-keys/resolve";
 import { getDict } from "../../../../../lib/i18n/server";
 import { listAgentsForWorkspace } from "../../../../../lib/queries/agents";
-import { listBusinesses } from "../../../../../lib/queries/businesses";
+import { listBusinesses, findBusiness } from "../../../../../lib/queries/businesses";
 import { listFlatNavNodes } from "../../../../../lib/queries/nav-nodes";
 import { listSkillsForWorkspace } from "../../../../../lib/queries/skills";
 import { AgentsList } from "../../../../../components/AgentsList";
@@ -32,7 +32,6 @@ export default async function BusinessAgentsPage({ params }: Props) {
   const [
     businesses,
     allAgents,
-    navOptions,
     skills,
     { data: telegramRows },
     { data: customRows },
@@ -40,7 +39,6 @@ export default async function BusinessAgentsPage({ params }: Props) {
   ] = await Promise.all([
     listBusinesses(workspace.id),
     listAgentsForWorkspace(workspace.id),
-    listFlatNavNodes(bizId),
     listSkillsForWorkspace(workspace.id),
     supabase
       .from("telegram_targets")
@@ -58,9 +56,10 @@ export default async function BusinessAgentsPage({ params }: Props) {
       .eq("id", workspace.id)
       .maybeSingle(),
   ]);
-  const biz = businesses.find((b) => b.id === bizId);
+  const biz = findBusiness(businesses, bizId);
   if (!biz) notFound();
-  const agents = allAgents.filter((a) => a.business_id === bizId);
+  const [navOptions] = await Promise.all([listFlatNavNodes(biz.id)]);
+  const agents = allAgents.filter((a) => a.business_id === biz.id);
 
   // Resolve key status per provider used by this business's agents so
   // each card can render a "key set / missing" pill. We dedupe so we

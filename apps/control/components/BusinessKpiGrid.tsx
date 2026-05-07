@@ -63,7 +63,7 @@ export async function BusinessKpiGrid({
         return (
           <Link
             key={b.id}
-            href={`/${workspaceSlug}/business/${b.id}`}
+            href={`/${workspaceSlug}/business/${b.slug}`}
             style={{
               border: "1.5px solid var(--app-border)",
               borderRadius: 14,

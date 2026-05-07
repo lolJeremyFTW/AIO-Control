@@ -247,7 +247,7 @@ export function WorkspaceShell({
       new RegExp(`^/${workspace.slug}/business/([^/]+)(?:/(.*))?$`),
     );
     if (!m) return null;
-    const biz = businesses.find((b) => b.id === m[1]);
+    const biz = businesses.find((b) => b.slug === m[1] || b.id === m[1]);
     if (!biz) return null;
     const rest = m[2] ?? "";
     const navMatch = rest.match(/^n\/(.+)$/);
@@ -263,9 +263,11 @@ export function WorkspaceShell({
   const navContext = useMemo(() => {
     if (!drilledBiz) return null;
     const inBiz = navNodes.filter((n) => n.business_id === drilledBiz.biz.id);
+    // navPath is now slug-based (from URL); resolve by slug first, fall back to id.
+    const bySlug = new Map(inBiz.map((n) => [n.slug, n]));
     const byId = new Map(inBiz.map((n) => [n.id, n]));
     const chain = drilledBiz.navPath
-      .map((id) => byId.get(id))
+      .map((seg) => bySlug.get(seg) ?? byId.get(seg))
       .filter((n): n is NavNode => !!n);
     const parentId = chain[chain.length - 1]?.id ?? null;
     const childrenOfParent = inBiz
@@ -288,9 +290,9 @@ export function WorkspaceShell({
       // Drop the emoji from the label — we render it as the node icon
       // separately so the row-text doesn't double up.
       label: n.name,
-      // Path appended to /[ws]/business/<bizId>: nav drill always goes
-      // under /n/, with all currently-selected ids preserved.
-      path: `/n/${[...drilledBiz.navPath, n.id].join("/")}`,
+      // Path appended to /[ws]/business/<bizSlug>: nav drill always goes
+      // under /n/, with all currently-selected slugs preserved.
+      path: `/n/${[...drilledBiz.navPath, n.slug].join("/")}`,
       variant: (n.variant as Topic["variant"]) ?? "dashed",
       // Prefer a registered SVG icon (icon name like "video"). Old
       // emoji rows still render via the legacy span fallback so we
@@ -303,10 +305,14 @@ export function WorkspaceShell({
 
   const selectedTopicId = useMemo(() => {
     if (!drilledBiz) return null;
-    if (drilledBiz.navPath.length > 0)
-      return drilledBiz.navPath[drilledBiz.navPath.length - 1] ?? null;
+    if (drilledBiz.navPath.length > 0) {
+      // navPath contains slugs; resolve the deepest slug to its node's UUID
+      // so Rail's id-based highlight matches the railTopics entries.
+      const lastNode = navContext?.chain[navContext.chain.length - 1];
+      return lastNode?.id ?? null;
+    }
     return drilledBiz.tab;
-  }, [drilledBiz]);
+  }, [drilledBiz, navContext]);
 
   // Derive the active rail-item from the URL when drilled in we always
   // show "dashboard" highlight. When NOT drilled in, prefer the prop
@@ -428,7 +434,7 @@ export function WorkspaceShell({
         onClick: () => {
           closeRail();
           router.push(
-            `/${workspace.slug}/business/${drilledBiz.biz.id}/n/${navPathToHere.join("/")}`,
+            `/${workspace.slug}/business/${drilledBiz.biz.slug}/n/${navPathToHere.join("/")}`,
           );
         },
       };
@@ -451,7 +457,7 @@ export function WorkspaceShell({
     if (origin.kind === "business" || origin.kind === "drilled-business") {
       const biz = businesses.find((b) => b.id === origin.id);
       if (!biz) return [];
-      const path = `/${workspace.slug}/business/${biz.id}`;
+      const path = `/${workspace.slug}/business/${biz.slug}`;
       return [
         {
           label: t("ctx.open"),
@@ -566,7 +572,7 @@ export function WorkspaceShell({
               const topic = railTopics.find((x) => x.id === origin.id);
               if (topic && drilledBiz) {
                 router.push(
-                  `/${workspace.slug}/business/${drilledBiz.biz.id}${topic.path}`,
+                  `/${workspace.slug}/business/${drilledBiz.biz.slug}${topic.path}`,
                 );
               }
             },
@@ -574,12 +580,12 @@ export function WorkspaceShell({
         ];
       }
       // Build the path to this node so "Open" navigates correctly.
-      const idx = drilledBiz.navPath.indexOf(node.id);
+      const idx = drilledBiz.navPath.indexOf(node.slug);
       const pathSegments =
         idx >= 0
           ? drilledBiz.navPath.slice(0, idx + 1)
-          : [...drilledBiz.navPath, node.id];
-      const fullPath = `/${workspace.slug}/business/${drilledBiz.biz.id}/n/${pathSegments.join("/")}`;
+          : [...drilledBiz.navPath, node.slug];
+      const fullPath = `/${workspace.slug}/business/${drilledBiz.biz.slug}/n/${pathSegments.join("/")}`;
       // Possible move targets: every other node in the same business +
       // a "(business root)" option. We cap depth at 5 to keep menu sane.
       const moveTargets = navNodes
@@ -637,6 +643,7 @@ export function WorkspaceShell({
               workspace_slug: workspace.slug,
               workspace_id: workspace.id,
               business_id: drilledBiz.biz.id,
+              business_slug: drilledBiz.biz.slug,
               source_id: node.id,
             });
             if (res.ok) router.refresh();
@@ -651,6 +658,7 @@ export function WorkspaceShell({
             const res = await reorderNavNode({
               workspace_slug: workspace.slug,
               business_id: drilledBiz.biz.id,
+              business_slug: drilledBiz.biz.slug,
               id: node.id,
               direction: "up",
             });
@@ -665,6 +673,7 @@ export function WorkspaceShell({
             const res = await reorderNavNode({
               workspace_slug: workspace.slug,
               business_id: drilledBiz.biz.id,
+              business_slug: drilledBiz.biz.slug,
               id: node.id,
               direction: "down",
             });
@@ -680,6 +689,7 @@ export function WorkspaceShell({
             const res = await moveNavNode({
               workspace_slug: workspace.slug,
               business_id: drilledBiz.biz.id,
+              business_slug: drilledBiz.biz.slug,
               id: node.id,
               new_parent_id: null,
             });
@@ -700,6 +710,7 @@ export function WorkspaceShell({
               const res = await moveNavNode({
                 workspace_slug: workspace.slug,
                 business_id: drilledBiz.biz.id,
+                business_slug: drilledBiz.biz.slug,
                 id: node.id,
                 new_parent_id: target.id,
               });
@@ -728,6 +739,7 @@ export function WorkspaceShell({
             const res = await archiveNavNode({
               workspace_slug: workspace.slug,
               business_id: drilledBiz.biz.id,
+              business_slug: drilledBiz.biz.slug,
               id: node.id,
             });
             if (res.ok) {
@@ -776,8 +788,8 @@ export function WorkspaceShell({
             const next = drilledBiz.navPath.slice(0, -1);
             const path =
               next.length === 0
-                ? `/${workspace.slug}/business/${drilledBiz.biz.id}`
-                : `/${workspace.slug}/business/${drilledBiz.biz.id}/n/${next.join("/")}`;
+                ? `/${workspace.slug}/business/${drilledBiz.biz.slug}`
+                : `/${workspace.slug}/business/${drilledBiz.biz.slug}/n/${next.join("/")}`;
             router.push(path);
           } else {
             router.push(`/${workspace.slug}/dashboard`);
@@ -787,7 +799,7 @@ export function WorkspaceShell({
           if (!drilledBiz) return;
           closeRail();
           router.push(
-            `/${workspace.slug}/business/${drilledBiz.biz.id}${t.path}`,
+            `/${workspace.slug}/business/${drilledBiz.biz.slug}${t.path}`,
           );
         }}
         mobileOpen={railOpen}
@@ -814,7 +826,8 @@ export function WorkspaceShell({
         }}
         onSelectBusiness={(id) => {
           closeRail();
-          router.push(`/${workspace.slug}/business/${id}`);
+          const biz = businesses.find((b) => b.id === id);
+          router.push(`/${workspace.slug}/business/${biz?.slug ?? id}`);
         }}
         onContextMenuRail={(e, origin) => {
           setMenu({ x: e.clientX, y: e.clientY, origin });
@@ -824,6 +837,7 @@ export function WorkspaceShell({
           const res = await swapNavNodeOrder({
             workspace_slug: workspace.slug,
             business_id: drilledBiz.biz.id,
+            business_slug: drilledBiz.biz.slug,
             source_id: sourceId,
             target_id: targetId,
           });

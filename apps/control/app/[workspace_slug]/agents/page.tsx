@@ -91,6 +91,7 @@ export default async function WorkspaceAgentsPage({ params }: Props) {
   const groups = businesses
     .map((b) => ({
       id: b.id,
+      slug: b.slug,
       title: b.name,
       sub: b.sub ?? null,
       agents: allAgents.filter((a) => a.business_id === b.id),
@@ -195,7 +196,7 @@ export default async function WorkspaceAgentsPage({ params }: Props) {
                 ? t("page.workspaceAgents.countSingular")
                 : t("page.workspaceAgents.countPlural")
             }
-            href={`/${workspace.slug}/business/${g.id}/agents`}
+            href={`/${workspace.slug}/business/${g.slug}/agents`}
           />
           <AgentsList
             workspaceSlug={workspace.slug}

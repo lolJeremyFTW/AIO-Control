@@ -11,6 +11,7 @@ import {
 import { listAgentsForWorkspace } from "../../../../lib/queries/agents";
 import {
   listBusinesses,
+  findBusiness,
   listKpisForWorkspace,
   listOpenQueueItems,
 } from "../../../../lib/queries/businesses";
@@ -31,17 +32,19 @@ export default async function BusinessPage({ params }: Props) {
   const workspace = await getWorkspaceBySlug(workspace_slug);
   if (!workspace) notFound();
 
-  const [businesses, queue, kpis, agents, runs] = await Promise.all([
+  const [businesses, kpis, agents] = await Promise.all([
     listBusinesses(workspace.id),
-    listOpenQueueItems(workspace.id, bizId, 6),
     listKpisForWorkspace(workspace.id),
     listAgentsForWorkspace(workspace.id),
-    listRecentRunsForBusiness(bizId, 5),
   ]);
-  const biz = businesses.find((b) => b.id === bizId);
+  const biz = findBusiness(businesses, bizId);
   if (!biz) notFound();
-  const bizKpis = kpis.filter((k) => k.business_id === bizId);
-  const bizAgents = agents.filter((a) => a.business_id === bizId);
+  const [queue, runs] = await Promise.all([
+    listOpenQueueItems(workspace.id, biz.id, 6),
+    listRecentRunsForBusiness(biz.id, 5),
+  ]);
+  const bizKpis = kpis.filter((k) => k.business_id === biz.id);
+  const bizAgents = agents.filter((a) => a.business_id === biz.id);
   const { t } = await getDict();
 
   return (
