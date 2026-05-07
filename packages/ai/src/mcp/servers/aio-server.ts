@@ -24,7 +24,11 @@ const WORKSPACE_ID = process.env.AIO_WORKSPACE_ID ?? "default";
 const CURRENT_NAV_NODE_ID = process.env.AIO_NAV_NODE_ID ?? "";
 const ALLOW_READ_SECRET = process.env.AIO_MCP_ALLOW_READ_SECRET === "true";
 const AGENT_SECRET_KEY = process.env.AGENT_SECRET_KEY ?? "";
-const APP_ORIGIN = process.env.NEXT_PUBLIC_TRIGGER_ORIGIN ?? "https://aio.tromptech.life";
+const APP_ORIGIN = dashboardOrigin(
+  process.env.AIO_DASHBOARD_ORIGIN ??
+    process.env.NEXT_PUBLIC_DASHBOARD_ORIGIN ??
+    process.env.NEXT_PUBLIC_TRIGGER_ORIGIN,
+);
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   // Write to stderr so it doesn't corrupt the JSON-RPC stream
@@ -46,6 +50,22 @@ const supabaseAio = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 });
 
 // ── Input schemas (Zod) ────────────────────────────────────────────────────
+function dashboardOrigin(value: string | undefined): string {
+  const raw = (value || "https://aio.tromptech.life").replace(/\/+$/, "");
+  try {
+    const url = new URL(raw);
+    if (
+      url.hostname === "tromptech.life" &&
+      (url.pathname === "" || url.pathname === "/aio")
+    ) {
+      return "https://aio.tromptech.life";
+    }
+    return url.origin + (url.pathname === "/" ? "" : url.pathname);
+  } catch {
+    return "https://aio.tromptech.life";
+  }
+}
+
 const ListAgentsSchema = z.object({
   scope: z.enum(["all", "global", "business"]).optional().default("all"),
   business_id: z.string().uuid().optional(),
