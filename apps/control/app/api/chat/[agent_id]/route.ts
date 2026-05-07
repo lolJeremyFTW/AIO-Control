@@ -228,10 +228,16 @@ export async function POST(
 
   const stream = new ReadableStream({
     async start(controller) {
+      let clientConnected = true;
       const send = (event: AGUIEvent) => {
-        controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify(event)}\n\n`),
-        );
+        if (!clientConnected) return;
+        try {
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify(event)}\n\n`),
+          );
+        } catch {
+          clientConnected = false;
+        }
       };
 
       // Multi-turn dispatch loop. We accumulate tool_use blocks the
@@ -526,7 +532,13 @@ export async function POST(
         });
       } finally {
         finishedAt.ts = Date.now();
-        controller.close();
+        if (clientConnected) {
+          try {
+            controller.close();
+          } catch {
+            clientConnected = false;
+          }
+        }
 
         // Best-effort persistence after the stream closes. We use the
         // (RLS-aware) Supabase client the user owns, so writes still

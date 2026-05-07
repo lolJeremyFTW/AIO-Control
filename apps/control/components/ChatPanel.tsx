@@ -12,7 +12,7 @@ import type { CSSProperties } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { ChatIcon } from "@aio/ui/icon";
+import { ChatIcon, PlusIcon } from "@aio/ui/icon";
 import type { AGUIEvent, ChatMessage } from "@aio/ai/ag-ui";
 
 import type { AgentRow } from "../lib/queries/agents";
@@ -92,12 +92,61 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(false);
   const [unreadPingCount, setUnreadPingCount] = useState(0);
+  const [storageLoaded, setStorageLoaded] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const restoredThreadRef = useRef(false);
+  const autoLoadedThreadRef = useRef(false);
+  const storageKey = `aio-chat:${workspaceSlug ?? "workspace"}`;
 
   useEffect(() => {
     setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as {
+        open?: boolean;
+        agentId?: string | null;
+        threadId?: string | null;
+      };
+      if (saved.agentId && agents.some((a) => a.id === saved.agentId)) {
+        setAgentId(saved.agentId);
+      }
+      if (saved.threadId) {
+        restoredThreadRef.current = true;
+        setActiveThreadId(saved.threadId);
+      }
+      if (saved.open) setOpen(true);
+    } catch {
+      // Ignore stale localStorage from older panel versions.
+    } finally {
+      setStorageLoaded(true);
+    }
+  }, [agents, mounted, storageKey]);
+
+  useEffect(() => {
+    if (!mounted || !storageLoaded) return;
+    try {
+      window.localStorage.setItem(
+        storageKey,
+        JSON.stringify({ open, agentId, threadId: activeThreadId }),
+      );
+    } catch {
+      // Non-critical; DB persistence still keeps the actual chat history.
+    }
+  }, [activeThreadId, agentId, mounted, open, storageKey, storageLoaded]);
+
+  const startNewThread = useCallback(() => {
+    restoredThreadRef.current = false;
+    autoLoadedThreadRef.current = true;
+    setShowSidebar(false);
+    setActiveThreadId(null);
+    setMessages([]);
   }, []);
 
   // Reload thread list whenever the open agent changes.
@@ -108,12 +157,42 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
     }
     let cancelled = false;
     void listThreads(agentId).then((rows) => {
-      if (!cancelled) setThreads(rows);
+      if (cancelled) return;
+      setThreads(rows);
+
+      const nextThreadId =
+        activeThreadId && rows.some((row) => row.id === activeThreadId)
+          ? activeThreadId
+          : rows[0]?.id ?? null;
+
+      if (
+        nextThreadId &&
+        (restoredThreadRef.current ||
+          (!activeThreadId && messages.length === 0 && !autoLoadedThreadRef.current))
+      ) {
+        restoredThreadRef.current = false;
+        autoLoadedThreadRef.current = true;
+        setActiveThreadId(nextThreadId);
+        void listMessages(nextThreadId).then((messageRows) => {
+          if (cancelled) return;
+          setMessages(
+            messageRows.map((r) => ({
+              id: r.id,
+              role:
+                r.role === "system"
+                  ? "assistant"
+                  : (r.role as "user" | "assistant"),
+              text: r.content?.text ?? "",
+              createdAt: r.created_at ? new Date(r.created_at) : new Date(),
+            })),
+          );
+        });
+      }
     });
     return () => {
       cancelled = true;
     };
-  }, [agentId, open]);
+  }, [activeThreadId, agentId, messages.length, open]);
 
   // Switch threads → load history.
   const switchThread = useCallback(async (threadId: string | null) => {
@@ -642,6 +721,8 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
               value={agentId ?? ""}
               onChange={(e) => {
                 setAgentId(e.target.value);
+                restoredThreadRef.current = false;
+                autoLoadedThreadRef.current = false;
                 setMessages([]);
                 setActiveThreadId(null);
               }}
@@ -662,6 +743,27 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
               ))}
             </select>
             <button
+              type="button"
+              onClick={startNewThread}
+              title="Nieuwe chat"
+              style={{
+                border: "1.5px solid var(--app-border)",
+                background: "transparent",
+                color: "var(--app-fg-2)",
+                borderRadius: 8,
+                width: 30,
+                height: 30,
+                display: "grid",
+                placeItems: "center",
+                cursor: "pointer",
+                padding: 0,
+                flexShrink: 0,
+              }}
+            >
+              <PlusIcon size={15} />
+            </button>
+            <button
+              type="button"
               onClick={() => setOpen(false)}
               style={{
                 border: "1.5px solid var(--app-border)",
@@ -709,10 +811,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
                 </span>
                 <button
                   type="button"
-                  onClick={() => {
-                    setActiveThreadId(null);
-                    setMessages([]);
-                  }}
+                  onClick={startNewThread}
                   style={{
                     background: "transparent",
                     border: "1px solid var(--app-border)",
