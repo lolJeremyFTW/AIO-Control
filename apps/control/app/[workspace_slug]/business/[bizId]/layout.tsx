@@ -1,6 +1,6 @@
 // Business-scoped layout. Wraps EVERY page under
 //   /[workspace_slug]/business/[bizId]/...
-// including sub-tabs (agents/schedules/integrations/runs) AND the
+// including sub-tabs (agents/schedules/runs) AND the
 // nav-node drill catch-all (/n/...).
 //
 // We resolve the business + workspace once here so the BusinessTabs
@@ -112,7 +112,6 @@ export default async function BusinessLayout({ children, params }: Props) {
           agents: t("biztabs.agents"),
           routines: t("biztabs.routines"),
           runs: t("biztabs.runs"),
-          integrations: t("biztabs.integrations"),
           lastRun: t("biztabs.lastRun"),
           relNow: t("rel.now"),
           relMin: t("rel.m"),

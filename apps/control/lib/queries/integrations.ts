@@ -36,3 +36,22 @@ export async function listIntegrationsForBusiness(
   }
   return (data ?? []) as IntegrationRow[];
 }
+
+export async function listIntegrationsForWorkspace(
+  workspaceId: string,
+): Promise<IntegrationRow[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("integrations")
+    .select(
+      "id, workspace_id, business_id, provider, name, status, last_refresh_at, created_at",
+    )
+    .eq("workspace_id", workspaceId)
+    .is("business_id", null)
+    .order("created_at", { ascending: true });
+  if (error) {
+    console.error("listIntegrationsForWorkspace failed", error);
+    return [];
+  }
+  return (data ?? []) as IntegrationRow[];
+}

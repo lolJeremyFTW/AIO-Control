@@ -91,7 +91,6 @@ type Props = {
     agents?: string;
     routines?: string;
     runs?: string;
-    integrations?: string;
     /** Right-aligned status pill prefix, e.g. "Laatste run". */
     lastRun?: string;
     /** Relative-time templates with {n} placeholder. Used by the
@@ -212,7 +211,6 @@ export function BusinessTabs({
     agents: labels?.agents ?? "Agents",
     routines: labels?.routines ?? "Routines",
     runs: labels?.runs ?? "Runs",
-    integrations: labels?.integrations ?? "Integrations",
     lastRun: labels?.lastRun ?? "Laatste run",
   };
 
@@ -235,11 +233,6 @@ export function BusinessTabs({
       href: `${base}/runs`,
       label: L.runs,
       match: (p) => p.startsWith(`${base}/runs`),
-    },
-    {
-      href: `${base}/integrations`,
-      label: L.integrations,
-      match: (p) => p.startsWith(`${base}/integrations`),
     },
     {
       href: `${base}/schedules`,

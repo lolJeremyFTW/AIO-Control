@@ -1,4 +1,4 @@
-// Integrations list + add form for a single business. The OAuth handshake
+// Integrations list + add form for workspace-level integrations. The OAuth handshake
 // per provider is provider-specific (YouTube Data API needs Google OAuth,
 // Stripe needs the dashboard, etc.) — phase 7+ adds those flows. This UI
 // labels integrations + tracks status so agents can reference them.
@@ -31,7 +31,7 @@ const PROVIDERS: { id: IntegrationProvider; label: string }[] = [
 type Props = {
   workspaceSlug: string;
   workspaceId: string;
-  businessId: string;
+  businessId?: string;
   integrations: IntegrationRow[];
 };
 

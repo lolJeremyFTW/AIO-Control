@@ -45,7 +45,10 @@ export async function createIntegration(input: {
     .select("id")
     .single();
   if (error || !data) return { ok: false, error: error?.message ?? "insert failed" };
-  revalidatePath(`/${input.workspace_slug}/business/${input.business_id ?? ""}/integrations`);
+  revalidatePath(`/${input.workspace_slug}/settings/integrations`);
+  if (input.business_id) {
+    revalidatePath(`/${input.workspace_slug}/business/${input.business_id}/integrations`);
+  }
   return { ok: true, data: { id: data.id } };
 }
 
@@ -57,6 +60,9 @@ export async function deleteIntegration(input: {
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.from("integrations").delete().eq("id", input.id);
   if (error) return { ok: false, error: error.message };
-  revalidatePath(`/${input.workspace_slug}/business/${input.business_id ?? ""}/integrations`);
+  revalidatePath(`/${input.workspace_slug}/settings/integrations`);
+  if (input.business_id) {
+    revalidatePath(`/${input.workspace_slug}/business/${input.business_id}/integrations`);
+  }
   return { ok: true, data: null };
 }

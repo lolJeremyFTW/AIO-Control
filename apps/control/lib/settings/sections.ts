@@ -8,6 +8,7 @@
 
 export type SettingsSectionId =
   | "general"
+  | "integrations"
   | "agent-defaults"
   | "weather"
   | "api-keys"
@@ -61,6 +62,12 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     id: "general",
     labelKey: "settings.section.general",
     descKey: "settings.section.general.desc",
+    group: "workspace",
+  },
+  {
+    id: "integrations",
+    labelKey: "settings.section.integrations",
+    descKey: "settings.section.integrations.desc",
     group: "workspace",
   },
   {

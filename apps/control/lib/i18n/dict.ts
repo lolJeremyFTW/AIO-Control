@@ -501,6 +501,9 @@ const nl: Dict = {
   "settings.section.general": "Algemeen",
   "settings.section.general.desc":
     "Workspace-naam, e-mail, tijdzone en uitloggen.",
+  "settings.section.integrations": "Integraties",
+  "settings.section.integrations.desc":
+    "Workspace-brede externe services en providerlabels.",
   "settings.section.providers": "Providers",
   "settings.section.providers.desc":
     "Stap-voor-stap onboarding voor self-hosted providers (Hermes-agent, OpenClaw, Ollama). Geen handmatig prutsen meer.",
@@ -886,6 +889,9 @@ const en: Partial<Dict> = {
   "settings.section.general": "General",
   "settings.section.general.desc":
     "Workspace name, email, timezone and sign-out.",
+  "settings.section.integrations": "Integrations",
+  "settings.section.integrations.desc":
+    "Workspace-wide external services and provider labels.",
   "settings.section.providers": "Providers",
   "settings.section.providers.desc":
     "Step-by-step onboarding for self-hosted providers (Hermes-agent, OpenClaw, Ollama). No more manual fiddling.",
@@ -1465,6 +1471,9 @@ const de: Partial<Dict> = {
   "settings.section.general": "Allgemein",
   "settings.section.general.desc":
     "Workspace-Name, E-Mail, Zeitzone und Abmelden.",
+  "settings.section.integrations": "Integrationen",
+  "settings.section.integrations.desc":
+    "Workspace-weite externe Services und Provider-Labels.",
   "settings.section.providers": "Providers",
   "settings.section.providers.desc":
     "Schritt-für-Schritt Onboarding für self-hosted Providers (Hermes-agent, OpenClaw, Ollama).",
