@@ -181,6 +181,7 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
       "--executable-path",
       PLAYWRIGHT_BROWSER_EXECUTABLE_PATH,
       "--isolated",
+      "--no-sandbox",
     ],
   },
   // Brave Search MCP — high-quality web + news search backed by the
