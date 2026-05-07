@@ -115,6 +115,8 @@ Use AIO Control dashboard styling only:
 - Use CSS variables: --app-bg, --app-fg, --app-fg-2, --app-fg-3, --app-border, --app-border-2, --app-card, --app-card-2, --tt-green, --rose, --amber, --type.
 - Support both body[data-theme="dark"] and body[data-theme="light"].
 - Use compact KPI tiles, 8-12px radii, subtle borders, no unrelated gradients/orbs/stock visuals.
+- Follow the ghost.md visual rule for icons: do not use emoji as icons or status glyphs. Use small inline SVG line icons, text labels, initials, or CSS-drawn dots/pills instead.
+- If you need dashboard icon examples, use simple 16px SVG strokes that inherit currentColor (chart, list, inbox, robot, calendar, external-link). Keep them quiet and consistent with the AIO icon registry style.
 - Do not hardcode a dark-only or light-only palette; prefer var(...) for every surface/text/border.
 - Match the AIO dashboard feel: quiet operator UI, card grid, dense tables, clear status pills.
 - When this is for a topic (for example Outreach), pass nav_node_id or use publish_topic_dashboard so it appears as a topic tab instead of only a separate public URL.
