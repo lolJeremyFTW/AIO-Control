@@ -65,6 +65,9 @@ build_and_stage() {
   (
     while true; do
       mkdir -p "$APP/.next/static/$GIT_COMMIT_SHA"
+      if [[ ! -f "$APP/.next/package.json" ]]; then
+        printf '{"type":"commonjs"}\n' > "$APP/.next/package.json"
+      fi
       sleep 0.05
     done
   ) &
