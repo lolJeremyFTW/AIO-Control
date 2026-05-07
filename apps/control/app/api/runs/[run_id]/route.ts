@@ -27,7 +27,7 @@ export async function GET(
     .select(
       `id, workspace_id, agent_id, business_id, schedule_id,
        triggered_by, status, started_at, ended_at, duration_ms,
-       cost_cents, input_tokens, output_tokens, input, output,
+       cost_cents, input_tokens, output_tokens, output,
        error_text, message_history,
        created_at, attempt, max_attempts, next_retry_at,
        agents:agent_id ( id, name, provider, model )`,
@@ -41,5 +41,21 @@ export async function GET(
   if (!data) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
-  return NextResponse.json({ run: data });
+
+  let input: unknown = null;
+  const hasReplay =
+    Array.isArray(data.message_history) && data.message_history.length > 0;
+  if (!hasReplay) {
+    const { data: inputRow, error: inputError } = await supabase
+      .from("runs")
+      .select("input")
+      .eq("id", run_id)
+      .maybeSingle();
+    if (inputError) {
+      return NextResponse.json({ error: inputError.message }, { status: 500 });
+    }
+    input = inputRow?.input ?? null;
+  }
+
+  return NextResponse.json({ run: { ...data, input } });
 }

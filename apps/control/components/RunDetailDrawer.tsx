@@ -791,9 +791,9 @@ function ToolCallCard({
   step: RunStep & { kind: "tool_call" };
 }) {
   const [open, setOpen] = useState(false);
-  const argsPreview = previewJson(step.args);
+  const argsPreview = previewJson(step.args, open ? 20_000 : 2_000);
   const resultPreview =
-    step.result !== undefined ? previewJson(step.result) : null;
+    step.result !== undefined ? previewJson(step.result, open ? 20_000 : 2_000) : null;
   return (
     <div
       style={{
@@ -862,13 +862,19 @@ function ToolCallCard({
   );
 }
 
-function previewJson(value: unknown): string {
+function previewJson(value: unknown, maxChars = 2_000): string {
   try {
     const s = JSON.stringify(value, null, 2);
-    return s ?? String(value);
+    return truncatePreview(s ?? String(value), maxChars);
   } catch {
-    return String(value);
+    return truncatePreview(String(value), maxChars);
   }
+}
+
+function truncatePreview(value: string, maxChars: number): string {
+  if (value.length <= maxChars) return value;
+  const omitted = value.length - maxChars;
+  return `${value.slice(0, maxChars)}\n... ${omitted.toLocaleString("nl-NL")} tekens verborgen`;
 }
 
 function StatusPill({
