@@ -25,6 +25,11 @@ import * as cron from "node-cron";
 
 import { dispatchRun } from "./runs";
 import { deliverDueChatPings } from "../agents/tool-execution";
+import {
+  mergeScheduleSnapshotIntoInput,
+  readRunPrompt,
+  type ScheduleLabelSource,
+} from "../runs/schedule-label";
 import { getServiceRoleSupabase } from "../supabase/service";
 
 let started = false;
@@ -287,9 +292,20 @@ async function runRetrySweep(): Promise<void> {
   for (const r of due) {
     const { data: original } = await admin
       .from("runs")
-      .select("input")
+      .select("input, schedule_id, nav_node_id")
       .eq("id", r.id as string)
       .maybeSingle();
+    const schedule = await resolveRetryScheduleContext(admin, {
+      workspaceId: r.workspace_id as string,
+      agentId: r.agent_id as string,
+      businessId: (r.business_id as string | null) ?? null,
+      scheduleId: (original?.schedule_id as string | null) ?? null,
+      input: original?.input ?? null,
+    });
+    const retryInput = mergeScheduleSnapshotIntoInput(
+      original?.input ?? null,
+      schedule,
+    );
 
     const { data: newRun } = await admin
       .from("runs")
@@ -297,9 +313,15 @@ async function runRetrySweep(): Promise<void> {
         workspace_id: r.workspace_id,
         agent_id: r.agent_id,
         business_id: r.business_id,
+        schedule_id:
+          (original?.schedule_id as string | null) ?? schedule?.id ?? null,
+        nav_node_id:
+          (original?.nav_node_id as string | null) ??
+          schedule?.nav_node_id ??
+          null,
         triggered_by: "retry",
         status: "queued",
-        input: original?.input ?? null,
+        input: retryInput,
         attempt: ((r.attempt as number) ?? 1) + 1,
         max_attempts: r.max_attempts,
       })
@@ -320,6 +342,43 @@ async function runRetrySweep(): Promise<void> {
       `[cron-scheduler] retried ${r.id} → ${newRun.id} (attempt ${(r.attempt as number) + 1}/${r.max_attempts})`,
     );
   }
+}
+
+async function resolveRetryScheduleContext(
+  admin: ReturnType<typeof getServiceRoleSupabase>,
+  opts: {
+    workspaceId: string;
+    agentId: string;
+    businessId: string | null;
+    scheduleId: string | null;
+    input: unknown;
+  },
+): Promise<ScheduleLabelSource | null> {
+  if (opts.scheduleId) {
+    const { data } = await admin
+      .from("schedules")
+      .select("id, title, kind, cron_expr, nav_node_id")
+      .eq("id", opts.scheduleId)
+      .maybeSingle();
+    if (data) return data as ScheduleLabelSource;
+  }
+
+  const prompt = readRunPrompt(opts.input);
+  if (!prompt) return null;
+
+  let query = admin
+    .from("schedules")
+    .select("id, title, kind, cron_expr, nav_node_id")
+    .eq("workspace_id", opts.workspaceId)
+    .eq("agent_id", opts.agentId)
+    .eq("instructions", prompt)
+    .limit(2);
+  query = opts.businessId
+    ? query.eq("business_id", opts.businessId)
+    : query.is("business_id", null);
+
+  const { data } = await query;
+  return data && data.length === 1 ? (data[0] as ScheduleLabelSource) : null;
 }
 
 export function stopCronScheduler(): void {
@@ -380,7 +439,7 @@ async function tick(): Promise<void> {
   const { data, error } = await admin
     .from("schedules")
     .select(
-      "id, workspace_id, agent_id, business_id, nav_node_id, cron_expr, instructions, last_fired_at, agents!inner(key_source, archived_at, nav_node_id)",
+      "id, workspace_id, agent_id, business_id, nav_node_id, title, cron_expr, instructions, last_fired_at, agents!inner(key_source, archived_at, nav_node_id)",
     )
     .eq("kind", "cron")
     .eq("enabled", true);
@@ -396,6 +455,7 @@ async function tick(): Promise<void> {
     agent_id: string;
     business_id: string | null;
     nav_node_id: string | null;
+    title: string | null;
     cron_expr: string | null;
     instructions: string | null;
     last_fired_at: string | null;
@@ -471,9 +531,15 @@ async function tick(): Promise<void> {
           status: "queued",
           // The dispatcher reads `input.prompt` to build the message
           // list. Without this the run starts with "(no input)".
-          input: sched.instructions
-            ? { prompt: sched.instructions }
-            : null,
+          input: mergeScheduleSnapshotIntoInput(
+            sched.instructions ? { prompt: sched.instructions } : null,
+            {
+              id: sched.id,
+              title: sched.title,
+              kind: "cron",
+              cron_expr: sched.cron_expr,
+            },
+          ),
         })
         .select("id")
         .single();

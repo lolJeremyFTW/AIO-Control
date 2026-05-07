@@ -10,6 +10,11 @@
 import { NextResponse } from "next/server";
 
 import { dispatchRun } from "../../../../lib/dispatch/runs";
+import {
+  mergeScheduleSnapshotIntoInput,
+  readRunPrompt,
+  type ScheduleLabelSource,
+} from "../../../../lib/runs/schedule-label";
 import { getServiceRoleSupabase } from "../../../../lib/supabase/service";
 
 export const dynamic = "force-dynamic";
@@ -39,9 +44,20 @@ export async function POST(req: Request) {
     // same payload.
     const { data: original } = await supabase
       .from("runs")
-      .select("input")
+      .select("input, schedule_id, nav_node_id")
       .eq("id", r.id)
       .maybeSingle();
+    const schedule = await resolveRetryScheduleContext(supabase, {
+      workspaceId: r.workspace_id as string,
+      agentId: r.agent_id as string,
+      businessId: (r.business_id as string | null) ?? null,
+      scheduleId: (original?.schedule_id as string | null) ?? null,
+      input: original?.input ?? null,
+    });
+    const retryInput = mergeScheduleSnapshotIntoInput(
+      original?.input ?? null,
+      schedule,
+    );
 
     const { data: newRun } = await supabase
       .from("runs")
@@ -49,9 +65,15 @@ export async function POST(req: Request) {
         workspace_id: r.workspace_id,
         agent_id: r.agent_id,
         business_id: r.business_id,
+        schedule_id:
+          (original?.schedule_id as string | null) ?? schedule?.id ?? null,
+        nav_node_id:
+          (original?.nav_node_id as string | null) ??
+          schedule?.nav_node_id ??
+          null,
         triggered_by: "retry",
         status: "queued",
-        input: original?.input ?? null,
+        input: retryInput,
         attempt: (r.attempt as number) + 1,
         max_attempts: r.max_attempts,
       })
@@ -71,4 +93,41 @@ export async function POST(req: Request) {
   }
 
   return NextResponse.json({ requeued, count: requeued.length });
+}
+
+async function resolveRetryScheduleContext(
+  supabase: ReturnType<typeof getServiceRoleSupabase>,
+  opts: {
+    workspaceId: string;
+    agentId: string;
+    businessId: string | null;
+    scheduleId: string | null;
+    input: unknown;
+  },
+): Promise<ScheduleLabelSource | null> {
+  if (opts.scheduleId) {
+    const { data } = await supabase
+      .from("schedules")
+      .select("id, title, kind, cron_expr, nav_node_id")
+      .eq("id", opts.scheduleId)
+      .maybeSingle();
+    if (data) return data as ScheduleLabelSource;
+  }
+
+  const prompt = readRunPrompt(opts.input);
+  if (!prompt) return null;
+
+  let query = supabase
+    .from("schedules")
+    .select("id, title, kind, cron_expr, nav_node_id")
+    .eq("workspace_id", opts.workspaceId)
+    .eq("agent_id", opts.agentId)
+    .eq("instructions", prompt)
+    .limit(2);
+  query = opts.businessId
+    ? query.eq("business_id", opts.businessId)
+    : query.is("business_id", null);
+
+  const { data } = await query;
+  return data && data.length === 1 ? (data[0] as ScheduleLabelSource) : null;
 }

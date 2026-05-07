@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import type { RunStep } from "../lib/runs/message-history";
+import { getRunScheduleLabel } from "../lib/runs/schedule-label";
 import { getSupabaseBrowserClient } from "../lib/supabase/client";
 import { MarkdownText } from "./MarkdownText";
 
@@ -34,6 +35,11 @@ type RunDetail = {
   max_attempts?: number | null;
   next_retry_at?: string | null;
   agents: { id: string; name: string; provider: string; model: string | null } | null;
+  schedules: {
+    title: string | null;
+    kind: string | null;
+    cron_expr: string | null;
+  } | null;
 };
 
 type Props = {
@@ -1075,6 +1081,7 @@ function StatusPill({
 
 function RunFooter({ run }: { run: RunDetail }) {
   const tokenUsage = getRunTokenUsage(run);
+  const scheduleLabel = getRunScheduleLabel(run);
   return (
     <footer
       style={{
@@ -1088,6 +1095,7 @@ function RunFooter({ run }: { run: RunDetail }) {
       }}
     >
       <Stat label="Trigger" value={run.triggered_by} />
+      <Stat label="Schedule" value={scheduleLabel ?? "-"} />
       <LiveDurationStat run={run} />
       <Stat label="Kosten" value={`€${(run.cost_cents / 100).toFixed(4)}`} />
       <Stat

@@ -30,7 +30,8 @@ export async function GET(
        cost_cents, input_tokens, output_tokens, output,
        error_text, message_history,
        created_at, attempt, max_attempts, next_retry_at,
-       agents:agent_id ( id, name, provider, model )`,
+       agents:agent_id ( id, name, provider, model ),
+       schedules:schedule_id ( title, kind, cron_expr )`,
     )
     .eq("id", run_id)
     .maybeSingle();

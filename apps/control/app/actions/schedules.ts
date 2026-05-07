@@ -11,6 +11,7 @@ import { revalidatePath } from "next/cache";
 import { createRoutine, deleteRoutine } from "@aio/ai/routines";
 
 import { dispatchRun } from "../../lib/dispatch/runs";
+import { mergeScheduleSnapshotIntoInput } from "../../lib/runs/schedule-label";
 import { createSupabaseServerClient } from "../../lib/supabase/server";
 
 export type ScheduleKind = "cron" | "webhook" | "manual";
@@ -293,14 +294,45 @@ export async function runAgentNow(input: {
   // instructions, else null (dispatcher will surface "(no input)" so the
   // user knows nothing was sent).
   let prompt: string | null = input.prompt?.trim() || null;
+  let scheduleContext: {
+    id: string;
+    title: string | null;
+    kind: string | null;
+    cron_expr: string | null;
+    nav_node_id: string | null;
+  } | null = null;
   if (!prompt && input.schedule_id) {
     const { data: schedRow } = await supabase
       .from("schedules")
-      .select("instructions")
+      .select("id, title, kind, cron_expr, instructions, nav_node_id")
       .eq("id", input.schedule_id)
       .maybeSingle();
+    scheduleContext = schedRow
+      ? {
+          id: schedRow.id as string,
+          title: (schedRow.title as string | null) ?? null,
+          kind: (schedRow.kind as string | null) ?? null,
+          cron_expr: (schedRow.cron_expr as string | null) ?? null,
+          nav_node_id: (schedRow.nav_node_id as string | null) ?? null,
+        }
+      : null;
     const inst = (schedRow?.instructions as string | null | undefined) ?? null;
     if (inst && inst.trim()) prompt = inst.trim();
+  } else if (input.schedule_id) {
+    const { data: schedRow } = await supabase
+      .from("schedules")
+      .select("id, title, kind, cron_expr, nav_node_id")
+      .eq("id", input.schedule_id)
+      .maybeSingle();
+    scheduleContext = schedRow
+      ? {
+          id: schedRow.id as string,
+          title: (schedRow.title as string | null) ?? null,
+          kind: (schedRow.kind as string | null) ?? null,
+          cron_expr: (schedRow.cron_expr as string | null) ?? null,
+          nav_node_id: (schedRow.nav_node_id as string | null) ?? null,
+        }
+      : null;
   }
 
   const { data, error } = await supabase
@@ -309,10 +341,18 @@ export async function runAgentNow(input: {
       workspace_id: input.workspace_id,
       agent_id: input.agent_id,
       business_id: input.business_id ?? null,
-      nav_node_id: input.nav_node_id ?? agentRow?.nav_node_id ?? null,
+      nav_node_id:
+        input.nav_node_id ??
+        scheduleContext?.nav_node_id ??
+        agentRow?.nav_node_id ??
+        null,
+      schedule_id: scheduleContext?.id ?? null,
       triggered_by: "manual",
       status: "queued",
-      input: prompt ? { prompt } : null,
+      input: mergeScheduleSnapshotIntoInput(
+        prompt ? { prompt } : null,
+        scheduleContext,
+      ),
     })
     .select("id")
     .single();

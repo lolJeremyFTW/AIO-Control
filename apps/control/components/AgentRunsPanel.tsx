@@ -6,6 +6,8 @@
 
 import { useEffect, useState } from "react";
 
+import { getRunScheduleLabel } from "../lib/runs/schedule-label";
+
 type Run = {
   id: string;
   status: string;
@@ -18,7 +20,11 @@ type Run = {
   error_text: string | null;
   created_at: string;
   schedule_id: string | null;
-  schedules: { title: string | null } | null;
+  schedules: {
+    title: string | null;
+    kind: string | null;
+    cron_expr: string | null;
+  } | null;
 };
 
 type Props = {
@@ -93,7 +99,7 @@ export function AgentRunsPanel({ agentId, workspaceSlug }: Props) {
           )}
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {runs.map((r) => (
-              <RunRow key={r.id} run={r} scheduleTitle={r.schedules?.title ?? null} />
+              <RunRow key={r.id} run={r} scheduleTitle={getRunScheduleLabel(r)} />
             ))}
           </div>
         </div>

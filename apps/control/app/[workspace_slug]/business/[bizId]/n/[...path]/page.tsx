@@ -270,7 +270,7 @@ export default async function NavNodePage({ params, searchParams }: Props) {
       supabase
         .from("runs")
         .select(
-          "id, agent_id, business_id, nav_node_id, schedule_id, schedules:schedule_id(title), triggered_by, status, started_at, ended_at, duration_ms, cost_cents, output, error_text, created_at",
+          "id, agent_id, business_id, nav_node_id, schedule_id, schedules:schedule_id(title, kind, cron_expr), triggered_by, status, started_at, ended_at, duration_ms, cost_cents, input, output, error_text, created_at",
         )
         .eq("workspace_id", workspace.id)
         .eq("business_id", biz.id)
@@ -379,6 +379,7 @@ export default async function NavNodePage({ params, searchParams }: Props) {
             <RunsTimeline
               runs={(recentRuns ?? []) as unknown as RunRow[]}
               agents={agents}
+              schedules={(rows ?? []) as ScheduleRow[]}
               businessId={biz.id}
               workspaceId={workspace.id}
             />

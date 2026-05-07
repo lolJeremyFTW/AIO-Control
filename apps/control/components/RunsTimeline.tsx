@@ -8,20 +8,28 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import type { AgentRow } from "../lib/queries/agents";
-import type { RunRow } from "../lib/queries/schedules";
+import type { RunRow, ScheduleRow } from "../lib/queries/schedules";
+import { getRunScheduleLabel } from "../lib/runs/schedule-label";
 import { getSupabaseBrowserClient } from "../lib/supabase/client";
 import { RunDetailDrawer } from "./RunDetailDrawer";
 
 type Props = {
   runs: RunRow[];
   agents: AgentRow[];
+  schedules?: ScheduleRow[];
   /** When set, scope the realtime subscription to this business so we
    *  don't pay for events from other businesses in the same workspace. */
   businessId?: string;
   workspaceId?: string;
 };
 
-export function RunsTimeline({ runs, agents, businessId, workspaceId }: Props) {
+export function RunsTimeline({
+  runs,
+  agents,
+  schedules = [],
+  businessId,
+  workspaceId,
+}: Props) {
   const router = useRouter();
   const [openRunId, setOpenRunId] = useState<string | null>(null);
 
@@ -83,6 +91,7 @@ export function RunsTimeline({ runs, agents, businessId, workspaceId }: Props) {
       >
         {runs.map((r, i) => {
           const agent = agents.find((a) => a.id === r.agent_id);
+          const scheduleLabel = getRunScheduleLabel(r, schedules);
           const tone =
             r.status === "failed"
               ? "var(--rose)"
@@ -151,9 +160,9 @@ export function RunsTimeline({ runs, agents, businessId, workspaceId }: Props) {
                     marginTop: 2,
                   }}
                 >
-                  {r.schedules?.title && (
+                  {scheduleLabel && (
                     <span style={{ color: "var(--app-fg-2)", fontWeight: 600 }}>
-                      {r.schedules.title}
+                      {scheduleLabel}
                       {" · "}
                     </span>
                   )}

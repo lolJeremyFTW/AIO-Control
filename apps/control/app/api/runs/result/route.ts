@@ -15,6 +15,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { dispatchRunEvent } from "../../../../lib/notify/dispatch";
+import { mergeScheduleSnapshotIntoInput } from "../../../../lib/runs/schedule-label";
 import { getServiceRoleSupabase } from "../../../../lib/supabase/service";
 
 export const dynamic = "force-dynamic";
@@ -56,7 +57,7 @@ export async function POST(req: Request) {
   // Find the schedule this routine belongs to.
   const { data: sched } = await supabase
     .from("schedules")
-    .select("id, workspace_id, agent_id, business_id")
+    .select("id, workspace_id, agent_id, business_id, title, kind, cron_expr")
     .eq("provider_routine_id", body.routine_id)
     .maybeSingle();
   if (!sched) {
@@ -77,6 +78,12 @@ export async function POST(req: Request) {
       schedule_id: sched.id,
       triggered_by: "cron",
       status: body.status ?? "done",
+      input: mergeScheduleSnapshotIntoInput(null, {
+        id: sched.id,
+        title: sched.title,
+        kind: sched.kind,
+        cron_expr: sched.cron_expr,
+      }),
       ended_at: new Date().toISOString(),
       duration_ms: body.duration_ms,
       cost_cents: body.cost_cents ?? 0,

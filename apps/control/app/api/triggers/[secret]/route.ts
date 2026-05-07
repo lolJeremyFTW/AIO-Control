@@ -9,6 +9,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { dispatchRun } from "../../../../lib/dispatch/runs";
+import { mergeScheduleSnapshotIntoInput } from "../../../../lib/runs/schedule-label";
 import { getServiceRoleSupabase } from "../../../../lib/supabase/service";
 
 export const dynamic = "force-dynamic";
@@ -35,7 +36,7 @@ export async function POST(
   const { data: schedules, error } = await supabase
     .from("schedules")
     .select(
-      "id, workspace_id, agent_id, business_id, nav_node_id, enabled, webhook_secret_hash, kind, agents!inner(nav_node_id)",
+      "id, workspace_id, agent_id, business_id, nav_node_id, title, cron_expr, enabled, webhook_secret_hash, kind, agents!inner(nav_node_id)",
     )
     .eq("kind", "webhook")
     .eq("webhook_secret_hash", hash)
@@ -75,7 +76,12 @@ export async function POST(
       schedule_id: schedule.id,
       triggered_by: "webhook",
       status: "queued",
-      input: payload,
+      input: mergeScheduleSnapshotIntoInput(payload, {
+        id: schedule.id,
+        title: schedule.title,
+        kind: schedule.kind,
+        cron_expr: schedule.cron_expr,
+      }),
     })
     .select("id")
     .single();

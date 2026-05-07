@@ -51,13 +51,18 @@ export type RunRow = {
   business_id: string | null;
   nav_node_id: string | null;
   schedule_id: string | null;
-  schedules: { title: string | null } | null;
+  schedules: {
+    title: string | null;
+    kind: string | null;
+    cron_expr: string | null;
+  } | null;
   triggered_by: string;
   status: string;
   started_at: string | null;
   ended_at: string | null;
   duration_ms: number | null;
   cost_cents: number;
+  input: unknown;
   output: unknown;
   error_text: string | null;
   created_at: string;
@@ -71,7 +76,7 @@ export async function listRecentRunsForBusiness(
   const { data, error } = await supabase
     .from("runs")
     .select(
-      "id, agent_id, business_id, nav_node_id, schedule_id, schedules:schedule_id(title), triggered_by, status, started_at, ended_at, duration_ms, cost_cents, output, error_text, created_at",
+      "id, agent_id, business_id, nav_node_id, schedule_id, schedules:schedule_id(title, kind, cron_expr), triggered_by, status, started_at, ended_at, duration_ms, cost_cents, input, output, error_text, created_at",
     )
     .eq("business_id", businessId)
     .order("created_at", { ascending: false })
@@ -114,7 +119,7 @@ export async function listRecentRunsForWorkspace(
   const { data, error } = await supabase
     .from("runs")
     .select(
-      "id, agent_id, business_id, nav_node_id, schedule_id, schedules:schedule_id(title), triggered_by, status, started_at, ended_at, duration_ms, cost_cents, output, error_text, created_at",
+      "id, agent_id, business_id, nav_node_id, schedule_id, schedules:schedule_id(title, kind, cron_expr), triggered_by, status, started_at, ended_at, duration_ms, cost_cents, input, output, error_text, created_at",
     )
     .eq("workspace_id", workspaceId)
     .order("created_at", { ascending: false })

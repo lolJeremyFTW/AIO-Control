@@ -10,6 +10,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import type { AgentRow } from "../lib/queries/agents";
+import { getRunScheduleLabel } from "../lib/runs/schedule-label";
 import { getSupabaseBrowserClient } from "../lib/supabase/client";
 import { RunDetailDrawer } from "./RunDetailDrawer";
 
@@ -25,7 +26,11 @@ type Run = {
   error_text: string | null;
   created_at: string;
   schedule_id: string | null;
-  schedules: { title: string | null } | null;
+  schedules: {
+    title: string | null;
+    kind: string | null;
+    cron_expr: string | null;
+  } | null;
 };
 
 type Props = {
@@ -228,7 +233,7 @@ export function RunsPage({
                   ? (businessName?.[r.business_id] ?? null)
                   : null
               }
-              scheduleTitle={r.schedules?.title ?? null}
+              scheduleTitle={getRunScheduleLabel(r)}
               onOpen={() => setOpenRunId(r.id)}
             />
           ))}

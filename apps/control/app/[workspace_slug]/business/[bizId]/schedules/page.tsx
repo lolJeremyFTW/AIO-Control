@@ -146,6 +146,7 @@ export default async function BusinessSchedulesPage({ params }: Props) {
       <RunsTimeline
         runs={runs}
         agents={agents}
+        schedules={schedules}
         businessId={biz.id}
         workspaceId={biz.workspace_id}
       />
