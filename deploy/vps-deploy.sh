@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 # vps-deploy.sh — pulls latest main, installs deps, then BUILDS TWICE:
 #   1. BASE_PATH=/aio  → staged in .staged-aio/, served by aio-control on :3010
 #                        (used by https://tromptech.life/aio/*)

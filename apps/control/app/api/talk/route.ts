@@ -245,6 +245,11 @@ export async function POST(req: Request) {
         businessId: agent.business_id,
       });
       if (key) mcpToolKeys[envVar] = key;
+      else {
+        console.warn(
+          `[talk] MCP degraded - server=${server} key_missing=true ws=${workspaceSlug} agent=${agentId}`,
+        );
+      }
     }
   }
 
@@ -278,6 +283,12 @@ export async function POST(req: Request) {
     `\n\n---\n\n${talkNote}`;
 
   const config: AgentConfig = { ...agentConfig, model: resolvedModel, systemPrompt };
+
+  console.info(
+    `[talk] context built - ws=${workspaceSlug} agent=${agentId} ` +
+      `tools=${tools.length} mcp_servers=${talkMcpServers.length} ` +
+      `mcp_keys=${Object.keys(mcpToolKeys).length} business=${agent.business_id ?? "(none)"}`,
+  );
 
   // Create a run row so voice interactions appear in the activity log.
   const { data: run } = await supabase
@@ -527,6 +538,7 @@ export async function POST(req: Request) {
         if (logErr) console.error("[talk] log insert failed:", logErr);
       });
 
+    console.info(`[talk] audio returned - ws=${workspaceSlug} agent=${agentId}`);
     return new Response(ttsRes.body, {
       headers: {
         "Content-Type": "audio/mpeg",
