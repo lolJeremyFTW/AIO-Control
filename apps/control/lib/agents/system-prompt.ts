@@ -264,6 +264,9 @@ export async function buildAgentSystemPrompt(
   lines.push("");
   lines.push("## Tooling — wat je kunt aanroepen");
 
+  const usesLocalRuntimeTools =
+    agent.provider === "openclaw" || agent.provider === "hermes";
+
   if (configuredMcpServers.length > 0) {
     lines.push(
       "De volgende MCP-servers zijn geconfigureerd en starten bij elke run. " +
@@ -285,6 +288,14 @@ export async function buildAgentSystemPrompt(
         lines.push(`- **${serverId}**: custom MCP server (tool-namen via API)`);
       }
     }
+  } else if (usesLocalRuntimeTools) {
+    lines.push(
+      "Deze agent draait via een lokale runtime die eigen tools/MCPs kan " +
+        "laden buiten AIO Control om. Gebruik die lokale tools wanneer ze " +
+        "beschikbaar zijn. AIO zet per run `AIO_WORKSPACE_ID`, " +
+        "`AIO_BUSINESS_ID` en `AIO_NAV_NODE_ID` in de subprocess env zodat " +
+        "lokaal geconfigureerde AIO MCP tools de juiste scope hebben.",
+    );
   } else {
     lines.push(
       "Deze agent heeft **geen MCP-servers** geconfigureerd — bash, fetch, " +
@@ -294,11 +305,19 @@ export async function buildAgentSystemPrompt(
   }
 
   lines.push("");
-  lines.push(
-    "**Onthoud**: de tools hierboven zijn de **enige** tools die je hebt. " +
-      "Hallucineer geen fictieve tool-namen en interpreteer geen " +
-      "`[run agent X]` als een echte aanroep.",
-  );
+  if (usesLocalRuntimeTools && configuredMcpServers.length === 0) {
+    lines.push(
+      "**Onthoud**: gebruik alleen tools die jouw lokale runtime echt " +
+        "aanbiedt. Hallucineer geen fictieve tool-namen en interpreteer " +
+        "geen `[run agent X]` als een echte aanroep.",
+    );
+  } else {
+    lines.push(
+      "**Onthoud**: de tools hierboven zijn de **enige** tools die je hebt. " +
+        "Hallucineer geen fictieve tool-namen en interpreteer geen " +
+        "`[run agent X]` als een echte aanroep.",
+    );
+  }
   lines.push(
     "Als je later in dezelfde chat wilt terugkomen met een korte melding " +
       "(bijvoorbeeld \"ik ping je over 2 minuten\"), gebruik dan de " +

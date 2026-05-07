@@ -22,6 +22,7 @@ import { randomUUID } from "node:crypto";
 import type { AGUIEvent } from "../ag-ui";
 import type { StreamChatOptions } from "../router";
 import { resolveCliBin } from "./cli-bin";
+import { scopedSubprocessEnv } from "./scoped-env";
 
 export async function* streamOpenclaw(
   opts: StreamChatOptions,
@@ -98,7 +99,10 @@ export async function* streamOpenclaw(
         prompt,
       ];
 
-  const child = spawn(binary, args, { stdio: ["pipe", "pipe", "pipe"] });
+  const child = spawn(binary, args, {
+    stdio: ["pipe", "pipe", "pipe"],
+    env: scopedSubprocessEnv(opts),
+  });
   child.stdin.end();
 
   const earlyErr = await new Promise<Error | null>((resolve) => {
