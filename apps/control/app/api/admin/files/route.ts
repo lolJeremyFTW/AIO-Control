@@ -17,10 +17,15 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const MAX_PREVIEW_BYTES = 1024 * 1024;
+const MAX_SEARCH_RESULTS = 5000;
+const VIRTUAL_SEARCH_DIRS = new Set(["/dev", "/proc", "/run", "/sys"]);
+
+type BrowserScope = "configured" | "server";
 
 type FileEntry = {
   name: string;
   path: string;
+  serverPath: string;
   type: "directory" | "file" | "symlink" | "other";
   size: number | null;
   modifiedAt: string | null;
@@ -46,8 +51,17 @@ async function requireGlobalAdmin() {
   return { ok: true as const };
 }
 
-function getBrowserRoot() {
-  return path.resolve(process.env.AIO_FILE_BROWSER_ROOT || process.cwd());
+function getServerRoot() {
+  return path.parse(process.cwd()).root;
+}
+
+function getBrowserRoot(scope: BrowserScope) {
+  if (scope === "server") return getServerRoot();
+  return path.resolve(process.env.AIO_FILE_BROWSER_ROOT || getServerRoot());
+}
+
+function parseScope(rawScope: string | null): BrowserScope {
+  return rawScope === "server" ? "server" : "configured";
 }
 
 function toDisplayPath(absPath: string, root: string) {
@@ -55,8 +69,12 @@ function toDisplayPath(absPath: string, root: string) {
   return relative ? `/${relative}` : "/";
 }
 
-function resolveRequestedPath(rawPath: string | null) {
-  const root = getBrowserRoot();
+function toServerPath(absPath: string) {
+  return absPath.replaceAll(path.sep, "/");
+}
+
+function resolveRequestedPath(rawPath: string | null, scope: BrowserScope) {
+  const root = getBrowserRoot(scope);
   const requestPath = (rawPath || "/").replaceAll("\\", "/");
   const relative = requestPath.replace(/^\/+/, "");
   const absPath = path.resolve(root, relative);
@@ -104,6 +122,7 @@ async function readDirectory(root: string, absPath: string) {
       return {
         name: row.name,
         path: toDisplayPath(entryPath, root),
+        serverPath: toServerPath(entryPath),
         type,
         size: info?.isFile() ? info.size : null,
         modifiedAt: info?.mtime ? info.mtime.toISOString() : null,
@@ -124,6 +143,101 @@ function looksTextual(buffer: Buffer) {
   return true;
 }
 
+function normalizeExtension(rawExtension: string | null) {
+  let extension = (rawExtension || ".md").trim().toLowerCase();
+  if (!extension) extension = ".md";
+  if (!extension.startsWith(".")) extension = `.${extension}`;
+  if (!/^\.[a-z0-9][a-z0-9._-]{0,31}$/i.test(extension)) {
+    throw new Error("Invalid extension filter");
+  }
+  return extension;
+}
+
+function shouldSkipSearchDirectory(absPath: string) {
+  if (process.platform === "win32") return false;
+  return VIRTUAL_SEARCH_DIRS.has(toServerPath(path.resolve(absPath)));
+}
+
+async function searchFilesByExtension(
+  root: string,
+  startAbsPath: string,
+  extension: string,
+) {
+  const entries: FileEntry[] = [];
+  const pending = [startAbsPath];
+  let searchedDirectories = 0;
+  let skippedDirectories = 0;
+  let truncated = false;
+
+  while (pending.length > 0) {
+    const directoryPath = pending.shift()!;
+    if (shouldSkipSearchDirectory(directoryPath)) {
+      skippedDirectories += 1;
+      continue;
+    }
+
+    let rows;
+    try {
+      rows = await readdir(directoryPath, { withFileTypes: true });
+      searchedDirectories += 1;
+    } catch {
+      skippedDirectories += 1;
+      continue;
+    }
+
+    rows.sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
+    );
+
+    for (const row of rows) {
+      const entryPath = path.join(directoryPath, row.name);
+      if (row.isSymbolicLink()) continue;
+
+      if (row.isDirectory()) {
+        pending.push(entryPath);
+        continue;
+      }
+
+      if (!row.isFile() || path.extname(row.name).toLowerCase() !== extension) {
+        continue;
+      }
+
+      const info = await lstat(entryPath).catch(() => null);
+      if (!info?.isFile()) continue;
+
+      entries.push({
+        name: row.name,
+        path: toDisplayPath(entryPath, root),
+        serverPath: toServerPath(entryPath),
+        type: "file",
+        size: info.size,
+        modifiedAt: info.mtime.toISOString(),
+        readable: await canRead(entryPath),
+      });
+
+      if (entries.length >= MAX_SEARCH_RESULTS) {
+        truncated = true;
+        break;
+      }
+    }
+
+    if (truncated) break;
+  }
+
+  entries.sort((a, b) =>
+    a.serverPath.localeCompare(b.serverPath, undefined, {
+      sensitivity: "base",
+    }),
+  );
+
+  return {
+    entries,
+    searchedDirectories,
+    skippedDirectories,
+    truncated,
+  };
+}
+
 export async function GET(req: Request) {
   const admin = await requireGlobalAdmin();
   if (!admin.ok) {
@@ -132,10 +246,11 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url);
   const mode = url.searchParams.get("mode") || "list";
+  const scope = parseScope(url.searchParams.get("scope"));
 
   let resolved: ReturnType<typeof resolveRequestedPath>;
   try {
-    resolved = resolveRequestedPath(url.searchParams.get("path"));
+    resolved = resolveRequestedPath(url.searchParams.get("path"), scope);
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Invalid path" },
@@ -206,10 +321,48 @@ export async function GET(req: Request) {
     }
 
     return NextResponse.json({
+      scope,
       path: displayPath,
+      serverPath: toServerPath(absPath),
       size: info.size,
       modifiedAt: info.mtime.toISOString(),
       content: bytes.toString("utf8"),
+    });
+  }
+
+  if (mode === "search") {
+    if (!info.isDirectory()) {
+      return NextResponse.json(
+        { error: "Path is not a directory" },
+        { status: 400 },
+      );
+    }
+
+    let extension: string;
+    try {
+      extension = normalizeExtension(url.searchParams.get("extension"));
+    } catch (error) {
+      return NextResponse.json(
+        {
+          error:
+            error instanceof Error ? error.message : "Invalid extension filter",
+        },
+        { status: 400 },
+      );
+    }
+
+    const startedAt = Date.now();
+    const result = await searchFilesByExtension(root, absPath, extension);
+    return NextResponse.json({
+      scope,
+      root,
+      path: displayPath,
+      serverPath: toServerPath(absPath),
+      extension,
+      previewLimitBytes: MAX_PREVIEW_BYTES,
+      maxResults: MAX_SEARCH_RESULTS,
+      durationMs: Date.now() - startedAt,
+      ...result,
     });
   }
 
@@ -224,8 +377,10 @@ export async function GET(req: Request) {
     displayPath === "/" ? null : toDisplayPath(path.dirname(absPath), root);
   const entries = await readDirectory(root, absPath);
   return NextResponse.json({
+    scope,
     root,
     path: displayPath,
+    serverPath: toServerPath(absPath),
     parent,
     entries,
     previewLimitBytes: MAX_PREVIEW_BYTES,
