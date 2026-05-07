@@ -276,11 +276,15 @@ export function BusinessTabs({
   const tabs: Tab[] = [
     ...builtins,
     ...localTopicTabs.map((t) => {
-      const href = `${base}${t.href}`;
+      // internalAioPath already returns an absolute path starting with
+      // /${workspaceSlug}/; prepending ${base} again would double it.
+      const href = t.href.startsWith(`/${workspaceSlug}/`)
+        ? t.href
+        : `${base}${t.href}`;
       return {
         href,
         label: t.label,
-        hardNav: !!t.id && t.href.includes("/tab/"),
+        hardNav: !!t.id && !t.href.startsWith(`/${workspaceSlug}/`),
         match: (p) => p === href || p.startsWith(`${href}/`),
       } satisfies Tab;
     }),
