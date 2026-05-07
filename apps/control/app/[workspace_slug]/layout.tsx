@@ -24,6 +24,8 @@ type Props = {
   params: Promise<{ workspace_slug: string }>;
 };
 
+const FAILED_RUN_LOOKBACK_HOURS = 24;
+
 export default async function WorkspaceLayout({ children, params }: Props) {
   const { workspace_slug } = await params;
 
@@ -62,6 +64,9 @@ export default async function WorkspaceLayout({ children, params }: Props) {
   // doesn't need its own subscription. Filter by the user's
   // notification_dismissals so the rail count matches what the bell
   // shows after they hit "Wis alles".
+  const failedRunCutoff = new Date(
+    Date.now() - FAILED_RUN_LOOKBACK_HOURS * 60 * 60 * 1000,
+  ).toISOString();
   const [{ data: openQueue }, { data: failedRuns }, { data: dismissals }] =
     await Promise.all([
       supabase
@@ -75,6 +80,7 @@ export default async function WorkspaceLayout({ children, params }: Props) {
         .select("id, business_id")
         .eq("workspace_id", workspace.id)
         .eq("status", "failed")
+        .gte("created_at", failedRunCutoff)
         .order("created_at", { ascending: false })
         .limit(50),
       supabase

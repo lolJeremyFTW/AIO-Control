@@ -5,7 +5,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { getSupabaseBrowserClient } from "../lib/supabase/client";
 
@@ -22,6 +22,7 @@ type Props = { workspaceId: string };
 
 export function RunsToaster({ workspaceId }: Props) {
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const seenStatusRef = useRef<Map<string, string>>(new Map());
 
   useEffect(() => {
     let supabase: ReturnType<typeof getSupabaseBrowserClient>;
@@ -33,6 +34,8 @@ export function RunsToaster({ workspaceId }: Props) {
     }
 
     let toastSeq = 0;
+    const seenStatus = seenStatusRef.current;
+    seenStatus.clear();
     type ChangePayload = {
       eventType: "INSERT" | "UPDATE" | "DELETE";
       new?: Record<string, unknown>;
@@ -52,6 +55,7 @@ export function RunsToaster({ workspaceId }: Props) {
         },
         (payload: ChangePayload) => {
           const newRow = (payload.new ?? {}) as {
+            id?: string;
             status?: string;
             agent_id?: string;
             triggered_by?: string;
@@ -59,6 +63,15 @@ export function RunsToaster({ workspaceId }: Props) {
             input_tokens?: number;
             output_tokens?: number;
           };
+          const oldRow = (payload.old ?? {}) as {
+            status?: string;
+          };
+          if (newRow.status === "running" || newRow.status === "queued") return;
+          if (newRow.id) {
+            const previousStatus = seenStatus.get(newRow.id) ?? oldRow.status;
+            if (previousStatus === newRow.status) return;
+            seenStatus.set(newRow.id, newRow.status ?? "");
+          }
           const tone =
             newRow.status === "failed"
               ? "bad"
@@ -97,7 +110,10 @@ export function RunsToaster({ workspaceId }: Props) {
           }
 
           const id = ++toastSeq;
-          setToasts((t) => [...t, { id, text, tone, cost, inputTokens, outputTokens }]);
+          setToasts((t) => [
+            ...t.slice(-3),
+            { id, text, tone, cost, inputTokens, outputTokens },
+          ]);
           setTimeout(() => {
             setToasts((t) => t.filter((tt) => tt.id !== id));
           }, 4500);

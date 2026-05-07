@@ -7,6 +7,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "../../../lib/supabase/server";
 
 export const dynamic = "force-dynamic";
+const FAILED_RUN_LOOKBACK_HOURS = 24;
 
 type Notif = {
   kind: "queue" | "run";
@@ -25,6 +26,10 @@ export async function GET() {
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const failedRunCutoff = new Date(
+    Date.now() - FAILED_RUN_LOOKBACK_HOURS * 60 * 60 * 1000,
+  ).toISOString();
+
   const [queue, runs, dismissals] = await Promise.all([
     supabase
       .from("queue_items")
@@ -38,6 +43,7 @@ export async function GET() {
       .from("runs")
       .select("id, business_id, status, error_text, created_at")
       .eq("status", "failed")
+      .gte("created_at", failedRunCutoff)
       .order("created_at", { ascending: false })
       .limit(10)
       .then((r) => (r.data ?? []) as { id: string; business_id: string | null; status: string; error_text: string | null; created_at: string }[]),
