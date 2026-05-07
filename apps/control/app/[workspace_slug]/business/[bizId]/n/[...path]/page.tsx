@@ -87,7 +87,6 @@ export default async function NavNodePage({ params, searchParams }: Props) {
   const baseHref = `/${workspace.slug}/business/${biz.slug}`;
   const topicBaseHref = `${baseHref}/n/${navPath.join("/")}`;
   const savedDashboardForTabs = await getModuleDashboard(current.id);
-  const topicExtraTabs = dashboardTabsFromContent(savedDashboardForTabs?.content);
 
   // ── Agents sub-route ────────────────────────────────────────────────
   if (subRoute === "agents") {
@@ -133,7 +132,8 @@ export default async function NavNodePage({ params, searchParams }: Props) {
         <TopicTabs
           baseHref={topicBaseHref}
           topicName={current.name}
-          extraTabs={topicExtraTabs}
+          navNodeId={current.id}
+          workspaceId={workspace.id}
         />
         <div className="content">
         <div className="page-title-row">
@@ -176,7 +176,8 @@ export default async function NavNodePage({ params, searchParams }: Props) {
         <TopicTabs
           baseHref={topicBaseHref}
           topicName={current.name}
-          extraTabs={topicExtraTabs}
+          navNodeId={current.id}
+          workspaceId={workspace.id}
         />
         <div className="content">
         <div className="page-title-row">
@@ -219,7 +220,8 @@ export default async function NavNodePage({ params, searchParams }: Props) {
       <TopicTabs
         baseHref={topicBaseHref}
         topicName={current?.name ?? ""}
-        extraTabs={topicExtraTabs}
+        navNodeId={current?.id ?? ""}
+        workspaceId={workspace.id}
       />
       <div className="content">
 
@@ -380,18 +382,3 @@ export default async function NavNodePage({ params, searchParams }: Props) {
   );
 }
 
-function dashboardTabsFromContent(
-  content: string | undefined,
-): Array<{ label: string; href: string; external?: boolean }> {
-  if (!content) return [];
-  const link = content.match(/\[Open interactief dashboard\]\(([^)]+)\)/i);
-  if (!link?.[1]) return [];
-  const heading = content.match(/^#\s+(.+)$/m);
-  return [
-    {
-      label: heading?.[1]?.trim() || "AI Dashboard",
-      href: link[1],
-      external: true,
-    },
-  ];
-}

@@ -85,13 +85,15 @@ const PublishTopicDashboardSchema = z.object({
 
 const UpsertCustomTabSchema = z.object({
   business_id: z.string().uuid(),
+  nav_node_id: z.string().uuid().optional(),
   label: z.string().min(1).max(80),
   url: z.string().url(),
   sort_order: z.coerce.number().int().optional().default(0),
 });
 
 const ListCustomTabsSchema = z.object({
-  business_id: z.string().uuid(),
+  business_id: z.string().uuid().optional(),
+  nav_node_id: z.string().uuid().optional(),
 });
 
 const SendTelegramSchema = z.object({
@@ -629,8 +631,9 @@ async function publishTopicDashboard(input: {
   const tabResult = await upsertCustomTabInner(
     input.business_id,
     input.label,
-    topicUrl,
+    input.public_url,
     0,
+    input.nav_node_id,
   );
   if (tabResult.error) return { error: tabResult.error };
   return { topic_url: topicUrl, tab_id: tabResult.tab_id };
@@ -701,19 +704,24 @@ async function upsertCustomTabInner(
   label: string,
   url: string,
   sort_order: number,
+  nav_node_id?: string,
 ): Promise<{ tab_id?: string; error?: string }> {
-  const { data: existing } = await supabaseAio
+  let existingQuery = supabaseAio
     .from("custom_tabs")
     .select("id")
     .eq("workspace_id", WORKSPACE_ID)
     .eq("business_id", business_id)
-    .eq("label", label)
-    .maybeSingle();
+    .eq("label", label);
+  existingQuery = nav_node_id
+    ? existingQuery.eq("nav_node_id", nav_node_id)
+    : existingQuery.is("nav_node_id", null);
+
+  const { data: existing } = await existingQuery.maybeSingle();
 
   if (existing) {
     const { error } = await supabaseAio
       .from("custom_tabs")
-      .update({ url, sort_order })
+      .update({ url, sort_order, nav_node_id: nav_node_id ?? null })
       .eq("id", existing.id);
     if (error) return { error: error.message };
     return { tab_id: existing.id as string };
@@ -721,7 +729,14 @@ async function upsertCustomTabInner(
 
   const { data, error } = await supabaseAio
     .from("custom_tabs")
-    .insert({ workspace_id: WORKSPACE_ID, business_id, label, url, sort_order })
+    .insert({
+      workspace_id: WORKSPACE_ID,
+      business_id,
+      nav_node_id: nav_node_id ?? null,
+      label,
+      url,
+      sort_order,
+    })
     .select("id")
     .single();
   if (error) return { error: error.message };
@@ -733,8 +748,14 @@ async function upsertCustomTab(args: unknown): Promise<string> {
   if (!parsed.success) {
     return JSON.stringify({ error: "validation_failed", details: parsed.error.flatten() });
   }
-  const { business_id, label, url, sort_order } = parsed.data;
-  const result = await upsertCustomTabInner(business_id, label, url, sort_order);
+  const { business_id, nav_node_id, label, url, sort_order } = parsed.data;
+  const result = await upsertCustomTabInner(
+    business_id,
+    label,
+    url,
+    sort_order,
+    nav_node_id,
+  );
   if (result.error) return JSON.stringify({ error: "db_error", message: result.error });
   return JSON.stringify({ ok: true, tab_id: result.tab_id });
 }
@@ -744,13 +765,21 @@ async function listCustomTabs(args: unknown): Promise<string> {
   if (!parsed.success) {
     return JSON.stringify({ error: "validation_failed", details: parsed.error.flatten() });
   }
-  const { business_id } = parsed.data;
-  const { data, error } = await supabaseAio
+  const { business_id, nav_node_id } = parsed.data;
+  if (!business_id && !nav_node_id) {
+    return JSON.stringify({
+      error: "validation_failed",
+      message: "business_id or nav_node_id is required",
+    });
+  }
+  let query = supabaseAio
     .from("custom_tabs")
-    .select("id, label, url, sort_order, created_at")
+    .select("id, business_id, nav_node_id, label, url, sort_order, created_at")
     .eq("workspace_id", WORKSPACE_ID)
-    .eq("business_id", business_id)
     .order("sort_order", { ascending: true });
+  if (nav_node_id) query = query.eq("nav_node_id", nav_node_id);
+  else if (business_id) query = query.eq("business_id", business_id).is("nav_node_id", null);
+  const { data, error } = await query;
   if (error) return JSON.stringify({ error: "db_error", message: error.message });
   return JSON.stringify({ tabs: data ?? [] });
 }
@@ -1087,6 +1116,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             format: "uuid",
             description: "UUID van de business.",
           },
+          nav_node_id: {
+            type: "string",
+            format: "uuid",
+            description:
+              "Optionele topic/nav-node UUID. Gebruik dit om de tab in de topic banner te tonen in plaats van alleen op business-niveau.",
+          },
           label: {
             type: "string",
             maxLength: 80,
@@ -1116,10 +1151,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           business_id: {
             type: "string",
             format: "uuid",
-            description: "UUID van de business.",
+            description: "Optionele UUID van de business.",
+          },
+          nav_node_id: {
+            type: "string",
+            format: "uuid",
+            description: "Optionele UUID van het topic/de nav-node.",
           },
         },
-        required: ["business_id"],
         additionalProperties: false,
       },
     },
