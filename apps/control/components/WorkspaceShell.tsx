@@ -110,6 +110,8 @@ type Workspace = {
   name: string;
 };
 
+const TOPIC_SUBROUTES = new Set(["agents", "runs", "routines"]);
+
 type Props = {
   profile: Profile;
   workspace: Workspace;
@@ -283,8 +285,13 @@ export function WorkspaceShell({
       ? (navMatch[1] ?? "").split("/").filter(Boolean)
       : [];
     const tabIndex = navSegments.indexOf("tab");
-    const navPath =
+    const navPathCandidate =
       tabIndex >= 0 ? navSegments.slice(0, tabIndex) : navSegments;
+    const lastNavSegment =
+      navPathCandidate[navPathCandidate.length - 1] ?? "";
+    const navPath = TOPIC_SUBROUTES.has(lastNavSegment)
+      ? navPathCandidate.slice(0, -1)
+      : navPathCandidate;
     const tab = navMatch ? null : rest.split("/")[0] || "queue";
     return { biz, tab, navPath };
   }, [pathname, workspace.slug, businesses]);
