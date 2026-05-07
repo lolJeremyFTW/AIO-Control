@@ -146,7 +146,7 @@ export default async function WorkspaceLayout({ children, params }: Props) {
       weather={weather}
       locale={locale}
       chatPanelAgents={agents}
-      firstBusinessId={businesses[0]?.id}
+      firstBusinessId={businesses[0]?.slug ?? businesses[0]?.id}
     >
       {children}
     </WorkspaceShell>

@@ -63,13 +63,13 @@ export default async function OutreachPage({ params, searchParams }: Props) {
     .from("outreach_leads")
     .select("id", { count: "exact", head: true })
     .eq("workspace_id", workspace.id)
-    .eq("business_id", bizId)
+    .eq("business_id", biz.id)
     .gt("view_count", 0);
   const { count: repliedCount } = await supabase
     .from("outreach_leads")
     .select("id", { count: "exact", head: true })
     .eq("workspace_id", workspace.id)
-    .eq("business_id", bizId)
+    .eq("business_id", biz.id)
     .not("responded_at", "is", null);
 
   // Active filter (default: freebie_ready, since that's the most useful
@@ -84,7 +84,7 @@ export default async function OutreachPage({ params, searchParams }: Props) {
       "id, token, legacy_id, lead_name, lead_email, lead_website, lead_branche, lead_regio, status, score, view_count, last_viewed_at, responded_at, reply_subject, reply_body, reply_from, created_at",
     )
     .eq("workspace_id", workspace.id)
-    .eq("business_id", bizId)
+    .eq("business_id", biz.id)
     .order("created_at", { ascending: false })
     .limit(500);
   if (activeStatus) {

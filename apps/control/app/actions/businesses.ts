@@ -76,7 +76,7 @@ export async function createBusiness(
       mission: input.mission?.trim() || null,
       isolated: !!input.isolated,
     })
-    .select("id")
+    .select("id, slug")
     .single();
 
   if (error) {
@@ -119,7 +119,7 @@ export async function createBusiness(
   revalidatePath(`/${input.workspace_slug}/dashboard`);
   return {
     ok: true,
-    data: { id: data.id, telegram_warning: telegramWarning },
+    data: { id: data.id, slug: data.slug as string, telegram_warning: telegramWarning },
   };
 }
 

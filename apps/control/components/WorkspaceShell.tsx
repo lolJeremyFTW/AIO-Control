@@ -860,14 +860,14 @@ export function WorkspaceShell({
                 // node — so "+ Topic" while you're inside an existing
                 // topic creates a SUB-topic of it. At the business root
                 // it creates a top-level topic.
-                const parentId =
+                // navPath contains slugs; resolve the deepest one to its
+                // UUID so the createNavNode action gets a valid FK value.
+                const parentNode =
                   drilledBiz.navPath.length > 0
-                    ? (drilledBiz.navPath[drilledBiz.navPath.length - 1] ??
-                      null)
+                    ? (navContext?.chain[navContext.chain.length - 1] ?? null)
                     : null;
-                const parentName = parentId
-                  ? navNodes.find((n) => n.id === parentId)?.name
-                  : null;
+                const parentId = parentNode?.id ?? null;
+                const parentName = parentNode?.name ?? null;
                 setCreatingChildOf({
                   businessId: drilledBiz.biz.id,
                   parentId,
@@ -933,6 +933,7 @@ export function WorkspaceShell({
               workspaceId={workspace.id}
               businesses={businesses.map((b) => ({
                 id: b.id,
+                slug: b.slug,
                 name: b.name,
                 letter: b.letter,
                 variant: b.variant ?? "brand",

@@ -24,6 +24,7 @@ type Notif = {
 
 type BusinessLookup = {
   id: string;
+  slug: string;
   name: string;
   /** First letter for the avatar dot when no icon is set. */
   letter: string;
@@ -373,9 +374,10 @@ export function NotificationsBell({
                             setOpen(false);
                             router.push(
                               n.business_id
-                                ? `/${workspaceSlug}/business/${n.business_id}${
-                                    n.kind === "run" ? "/runs" : ""
-                                  }`
+                                ? `/${workspaceSlug}/business/${
+                                    businesses.find((b) => b.id === n.business_id)?.slug ??
+                                    n.business_id
+                                  }${n.kind === "run" ? "/runs" : ""}`
                                 : `/${workspaceSlug}/queue`,
                             );
                           }}

@@ -210,7 +210,8 @@ export function BusinessSetupWizard({
         setError(res.error);
         return;
       }
-      const newBizId = res.data.id;
+      const newBizUuid = res.data.id;
+      const newBizSlug = res.data.slug ?? res.data.id;
       // Telegram topic create may have failed even though the business
       // itself was saved. Surface the reason in-place so the user knows
       // why no topic appeared (usually: bot lacks 'Manage Topics' rights).
@@ -223,7 +224,7 @@ export function BusinessSetupWizard({
         await createNavNode({
           workspace_slug: workspaceSlug,
           workspace_id: workspaceId,
-          business_id: newBizId,
+          business_id: newBizUuid,
           parent_id: null,
           name: t,
         });
@@ -237,7 +238,7 @@ export function BusinessSetupWizard({
         );
         await updateBusiness({
           workspace_slug: workspaceSlug,
-          id: newBizId,
+          id: newBizUuid,
           patch: { targets },
         });
       }
@@ -247,7 +248,7 @@ export function BusinessSetupWizard({
         await createAgent({
           workspace_slug: workspaceSlug,
           workspace_id: workspaceId,
-          business_id: newBizId,
+          business_id: newBizUuid,
           name: agentName.trim(),
           kind: "chat",
           provider: agentProvider,
@@ -266,13 +267,13 @@ export function BusinessSetupWizard({
         );
         await updateBusiness({
           workspace_slug: workspaceSlug,
-          id: newBizId,
+          id: newBizUuid,
           patch: { telegram_target_id: tgExistingId },
         });
       }
 
       onClose();
-      router.push(`/${workspaceSlug}/business/${newBizId}`);
+      router.push(`/${workspaceSlug}/business/${newBizSlug}`);
     } finally {
       setCreating(false);
     }
