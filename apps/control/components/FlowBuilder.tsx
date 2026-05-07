@@ -40,6 +40,10 @@ export function FlowBuilder({ workspaceSlug, workspaceId, businesses }: Props) {
   const [generating, setGenerating] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<{ msg: string; needsApiKey?: boolean } | null>(null);
+  const [createdWebhook, setCreatedWebhook] = useState<{
+    scheduleId: string;
+    url: string;
+  } | null>(null);
   const [plan, setPlan] = useState<FlowPlan | null>(null);
 
   // Editable plan state — copied from generated plan and locally mutable
@@ -51,6 +55,7 @@ export function FlowBuilder({ workspaceSlug, workspaceId, businesses }: Props) {
     if (!description.trim()) return;
     setGenerating(true);
     setError(null);
+    setCreatedWebhook(null);
     setPlan(null);
     try {
       const res = await fetch("/api/flows/generate", {
@@ -79,6 +84,7 @@ export function FlowBuilder({ workspaceSlug, workspaceId, businesses }: Props) {
   function handleCreate() {
     if (!agentDraft) return;
     setError(null);
+    setCreatedWebhook(null);
     setCreating(true);
     startTransition(async () => {
       const result = await createFlow({
@@ -95,6 +101,22 @@ export function FlowBuilder({ workspaceSlug, workspaceId, businesses }: Props) {
       setCreating(false);
       if (!result.ok) {
         setError({ msg: result.error });
+        return;
+      }
+      if (
+        result.data.schedule_kind === "webhook" &&
+        result.data.schedule_id &&
+        result.data.webhook_url
+      ) {
+        setCreatedWebhook({
+          scheduleId: result.data.schedule_id,
+          url: result.data.webhook_url,
+        });
+        setPlan(null);
+        setAgentDraft(null);
+        setSchedDraft(null);
+        setSkillsDraft([]);
+        router.refresh();
         return;
       }
       router.push(`/${workspaceSlug}/agents`);
@@ -252,6 +274,63 @@ export function FlowBuilder({ workspaceSlug, workspaceId, businesses }: Props) {
             error.msg
           )}
         </div>
+      )}
+
+      {createdWebhook && (
+        <section
+          style={{
+            background: "rgba(57,178,85,0.08)",
+            border: "1px solid var(--tt-green)",
+            borderRadius: 8,
+            padding: "14px 16px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 10,
+            fontSize: 13,
+            color: "var(--app-fg)",
+          }}
+        >
+          <strong style={{ color: "var(--tt-green)" }}>
+            Flow aangemaakt. Sla deze webhook URL nu op; hij wordt maar één keer getoond.
+          </strong>
+          <code
+            style={{
+              display: "block",
+              padding: 10,
+              background: "var(--app-surface)",
+              border: "1px solid var(--app-border)",
+              borderRadius: 7,
+              wordBreak: "break-all",
+              color: "var(--app-fg)",
+            }}
+          >
+            {createdWebhook.url}
+          </code>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <Link
+              href={`/${workspaceSlug}/agents`}
+              style={{
+                color: "var(--brand)",
+                fontWeight: 700,
+                textDecoration: "none",
+              }}
+            >
+              Bekijk agent
+            </Link>
+            {businessId && (
+              <Link
+                href={`/${workspaceSlug}/business/${businessId}/schedules?schedule=${createdWebhook.scheduleId}`}
+                style={{
+                  color: "var(--app-fg-2)",
+                  fontWeight: 600,
+                  textDecoration: "none",
+                }}
+              >
+                Bekijk schedule
+              </Link>
+            )}
+          </div>
+        </section>
       )}
 
       {/* ── Step 2: Review + edit generated plan ──────────────────── */}

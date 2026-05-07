@@ -169,6 +169,9 @@ export async function createWebhookSchedule(input: {
   agent_id: string;
   business_id?: string | null;
   nav_node_id?: string | null;
+  title?: string | null;
+  description?: string | null;
+  instructions?: string | null;
 }): Promise<ActionResult<{ id: string; secret: string }>> {
   const supabase = await createSupabaseServerClient();
 
@@ -199,6 +202,9 @@ export async function createWebhookSchedule(input: {
       business_id: input.business_id ?? null,
       kind: "webhook" satisfies ScheduleKind,
       webhook_secret_hash: sha256(secret),
+      title: input.title ?? null,
+      description: input.description ?? null,
+      instructions: input.instructions ?? null,
       nav_node_id: input.nav_node_id ?? null,
     })
     .select("id")
@@ -230,6 +236,9 @@ export async function createManualSchedule(input: {
   workspace_id: string;
   agent_id: string;
   business_id?: string | null;
+  title?: string | null;
+  description?: string | null;
+  instructions?: string | null;
 }): Promise<ActionResult<{ id: string }>> {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
@@ -239,6 +248,9 @@ export async function createManualSchedule(input: {
       agent_id: input.agent_id,
       business_id: input.business_id ?? null,
       kind: "manual" satisfies ScheduleKind,
+      title: input.title ?? null,
+      description: input.description ?? null,
+      instructions: input.instructions ?? null,
     })
     .select("id")
     .single();
@@ -254,6 +266,7 @@ export async function runAgentNow(input: {
   workspace_id: string;
   agent_id: string;
   business_id?: string | null;
+  nav_node_id?: string | null;
   prompt?: string;
   /** When set, fall back to this schedule's stored instructions if
    *  the caller didn't pass an explicit prompt. Lets the per-card
@@ -294,7 +307,7 @@ export async function runAgentNow(input: {
       workspace_id: input.workspace_id,
       agent_id: input.agent_id,
       business_id: input.business_id ?? null,
-      nav_node_id: agentRow?.nav_node_id ?? null,
+      nav_node_id: input.nav_node_id ?? agentRow?.nav_node_id ?? null,
       triggered_by: "manual",
       status: "queued",
       input: prompt ? { prompt } : null,

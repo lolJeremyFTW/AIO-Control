@@ -9,6 +9,9 @@ import { headers } from "next/headers";
 import { createAgent, archiveAgent } from "./agents";
 import { createSkill, archiveSkill, setAgentSkills } from "./skills";
 import { createCronSchedule, createWebhookSchedule, createManualSchedule } from "./schedules";
+import { getCurrentUser } from "../../lib/auth/workspace";
+import { createSupabaseServerClient } from "../../lib/supabase/server";
+import { resolveApiKey } from "../../lib/api-keys/resolve";
 import type { FlowPlan } from "@aio/ai/flow-planner";
 
 export type CreateFlowInput = {
@@ -19,8 +22,29 @@ export type CreateFlowInput = {
 };
 
 export type CreateFlowResult =
-  | { ok: true; data: { agent_id: string; schedule_id?: string; skill_ids: string[] } }
+  | {
+      ok: true;
+      data: {
+        agent_id: string;
+        schedule_id?: string;
+        schedule_kind?: NonNullable<FlowPlan["schedule"]>["kind"];
+        webhook_secret?: string;
+        webhook_url?: string;
+        skill_ids: string[];
+      };
+    }
   | { ok: false; error: string };
+
+function providerNeedsApiKey(provider: FlowPlan["agent"]["provider"]) {
+  return provider !== "ollama";
+}
+
+function providerLabel(provider: FlowPlan["agent"]["provider"]) {
+  if (provider === "claude") return "Claude";
+  if (provider === "minimax") return "MiniMax";
+  if (provider === "openrouter") return "OpenRouter";
+  return "Ollama";
+}
 
 async function rollback(
   workspace_slug: string,
@@ -39,6 +63,47 @@ async function rollback(
 
 export async function createFlow(input: CreateFlowInput): Promise<CreateFlowResult> {
   const { workspace_slug, workspace_id, business_id, plan } = input;
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Niet ingelogd." };
+
+  if (!plan.agent.name.trim()) {
+    return { ok: false, error: "Agentnaam mag niet leeg zijn." };
+  }
+  if (!plan.agent.system_prompt.trim()) {
+    return { ok: false, error: "System prompt mag niet leeg zijn." };
+  }
+  if (providerNeedsApiKey(plan.agent.provider)) {
+    let credentialOwnerUserId = user.id;
+    if (plan.schedule?.kind === "cron" || plan.schedule?.kind === "webhook") {
+      const supabase = await createSupabaseServerClient();
+      const { data: workspace } = await supabase
+        .from("workspaces")
+        .select("owner_id")
+        .eq("id", workspace_id)
+        .maybeSingle();
+      credentialOwnerUserId = workspace?.owner_id ?? user.id;
+    }
+    const apiKey = await resolveApiKey(plan.agent.provider, {
+      workspaceId: workspace_id,
+      businessId: business_id,
+      credentialOwnerUserId,
+    });
+    if (!apiKey) {
+      return {
+        ok: false,
+        error: `${providerLabel(plan.agent.provider)} API key ontbreekt voor deze flow. Kies een geconfigureerde provider of voeg de key toe bij Settings → API Keys.`,
+      };
+    }
+  }
+
+  for (const [idx, skill] of plan.skills.entries()) {
+    if (!skill.name.trim() || !skill.description.trim() || !skill.body.trim()) {
+      return {
+        ok: false,
+        error: `Skill ${idx + 1} is niet compleet. Naam, beschrijving en body zijn verplicht.`,
+      };
+    }
+  }
 
   // ── 1. Create agent ───────────────────────────────────────────────
   const agentResult = await createAgent({
@@ -88,8 +153,12 @@ export async function createFlow(input: CreateFlowInput): Promise<CreateFlowResu
 
   // ── 4. Create schedule (if any) ───────────────────────────────────
   let schedule_id: string | undefined;
+  let schedule_kind: NonNullable<FlowPlan["schedule"]>["kind"] | undefined;
+  let webhook_secret: string | undefined;
+  let webhook_url: string | undefined;
   if (plan.schedule) {
     const sched = plan.schedule;
+    schedule_kind = sched.kind;
 
     if (sched.kind === "cron") {
       const hdrs = await headers();
@@ -115,23 +184,36 @@ export async function createFlow(input: CreateFlowInput): Promise<CreateFlowResu
       }
       schedule_id = schedResult.data.id;
     } else if (sched.kind === "webhook") {
+      const hdrs = await headers();
+      const proto = hdrs.get("x-forwarded-proto") ?? "http";
+      const host = hdrs.get("x-forwarded-host") ?? hdrs.get("host") ?? "localhost:3010";
+      const trigger_origin =
+        process.env.NEXT_PUBLIC_TRIGGER_ORIGIN ?? `${proto}://${host}`;
       const schedResult = await createWebhookSchedule({
         workspace_slug,
         workspace_id,
         agent_id,
         business_id,
+        title: sched.title,
+        description: sched.description,
+        instructions: sched.prompt,
       });
       if (!schedResult.ok) {
         await rollback(workspace_slug, business_id, agent_id, skill_ids);
         return { ok: false, error: `Webhook aanmaken mislukt: ${schedResult.error}` };
       }
       schedule_id = schedResult.data.id;
+      webhook_secret = schedResult.data.secret;
+      webhook_url = `${trigger_origin}/api/triggers/${schedResult.data.secret}`;
     } else if (sched.kind === "manual") {
       const schedResult = await createManualSchedule({
         workspace_slug,
         workspace_id,
         agent_id,
         business_id,
+        title: sched.title,
+        description: sched.description,
+        instructions: sched.prompt,
       });
       if (!schedResult.ok) {
         await rollback(workspace_slug, business_id, agent_id, skill_ids);
@@ -148,5 +230,15 @@ export async function createFlow(input: CreateFlowInput): Promise<CreateFlowResu
   }
   revalidatePath(`/${workspace_slug}/flows`);
 
-  return { ok: true, data: { agent_id, schedule_id, skill_ids } };
+  return {
+    ok: true,
+    data: {
+      agent_id,
+      schedule_id,
+      schedule_kind,
+      webhook_secret,
+      webhook_url,
+      skill_ids,
+    },
+  };
 }

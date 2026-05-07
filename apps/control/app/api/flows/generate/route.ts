@@ -36,7 +36,10 @@ export async function POST(req: NextRequest) {
   let provider: FlowPlanProvider = "claude";
 
   if (workspaceId) {
-    apiKey = await resolveApiKey("claude", { workspaceId });
+    apiKey = await resolveApiKey("claude", {
+      workspaceId,
+      credentialOwnerUserId: user.id,
+    });
   }
   if (!apiKey) {
     apiKey = process.env.ANTHROPIC_API_KEY ?? null;
@@ -45,7 +48,10 @@ export async function POST(req: NextRequest) {
   if (!apiKey) {
     // MiniMax fallback — uses Anthropic-compatible endpoint
     if (workspaceId) {
-      apiKey = await resolveApiKey("minimax", { workspaceId });
+      apiKey = await resolveApiKey("minimax", {
+        workspaceId,
+        credentialOwnerUserId: user.id,
+      });
     }
     if (!apiKey) {
       apiKey = process.env.MINIMAX_API_KEY ?? null;
