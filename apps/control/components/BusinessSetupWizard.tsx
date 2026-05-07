@@ -13,7 +13,7 @@
 
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { createBusiness } from "../app/actions/businesses";
@@ -87,6 +87,137 @@ const PROVIDERS: { id: Provider; label: string; defaultModel?: string }[] = [
   { id: "hermes", label: "Hermes (CLI)" },
   { id: "codex", label: "Codex / OpenAI" },
 ];
+
+function buildSuggestedAgentName({
+  name,
+  description,
+  mission,
+  targets,
+  topicNames,
+}: {
+  name: string;
+  description: string;
+  mission: string;
+  targets: Target[];
+  topicNames: string[];
+}) {
+  const businessName =
+    name
+      .trim()
+      .replace(/\s+/g, " ")
+      .split(" ")
+      .slice(0, 4)
+      .join(" ") || "Business";
+  const corpus = [
+    name,
+    description,
+    mission,
+    ...targets.map((target) => `${target.name} ${target.target}`),
+    ...topicNames,
+  ]
+    .join(" ")
+    .toLowerCase();
+  const hasAny = (words: string[]) =>
+    words.some((word) => corpus.includes(word));
+
+  const role = (() => {
+    if (
+      hasAny([
+        "youtube",
+        "video",
+        "kanaal",
+        "channel",
+        "thumbnail",
+        "script",
+        "publishing",
+      ])
+    ) {
+      return "Channel Producer";
+    }
+    if (
+      hasAny([
+        "lead",
+        "prospect",
+        "outreach",
+        "sales",
+        "verkoop",
+        "offerte",
+        "follow-up",
+        "pipeline",
+        "crm",
+      ])
+    ) {
+      return "Growth Operator";
+    }
+    if (
+      hasAny(["content", "social", "marketing", "seo", "newsletter", "copy", "blog"])
+    ) {
+      return "Content Lead";
+    }
+    if (
+      hasAny([
+        "shop",
+        "shopify",
+        "ecommerce",
+        "e-commerce",
+        "etsy",
+        "listing",
+        "order",
+        "fulfillment",
+        "voorraad",
+      ])
+    ) {
+      return "Commerce Operator";
+    }
+    if (
+      hasAny(["support", "customer", "klant", "ticket", "service", "inbox", "helpdesk"])
+    ) {
+      return "Customer Ops Lead";
+    }
+    if (
+      hasAny([
+        "finance",
+        "invoice",
+        "factuur",
+        "revenue",
+        "kpi",
+        "analytics",
+        "rapportage",
+        "dashboard",
+      ])
+    ) {
+      return "Insights Analyst";
+    }
+    if (
+      hasAny([
+        "research",
+        "deep research",
+        "markt",
+        "analyse",
+        "competitor",
+        "concurrent",
+      ])
+    ) {
+      return "Research Coordinator";
+    }
+    if (
+      hasAny([
+        "automation",
+        "automatisering",
+        "agent",
+        "workflow",
+        "cron",
+        "mcp",
+        "integratie",
+      ])
+    ) {
+      return "Automation Orchestrator";
+    }
+    return "Operations Lead";
+  })();
+
+  return `${businessName} ${role}`;
+}
 
 export function BusinessSetupWizard({
   workspaceSlug,
@@ -182,6 +313,7 @@ export function BusinessSetupWizard({
   // ── Step 4: Main agent ──
   const [createMainAgent, setCreateMainAgent] = useState(true);
   const [agentName, setAgentName] = useState("");
+  const [agentNameTouched, setAgentNameTouched] = useState(false);
   const [agentProvider, setAgentProvider] = useState<Provider>(
     defaultProvider ?? "claude",
   );
@@ -190,12 +322,20 @@ export function BusinessSetupWizard({
     "subscription" | "api_key" | "env"
   >("env");
   const providerSpec = PROVIDERS.find((p) => p.id === agentProvider)!;
-  // When the user types a name in step 1, suggest "<Name> Main Agent"
-  // as the default agent name on first visit to step 4.
+  const suggestedAgentName = useMemo(
+    () =>
+      buildSuggestedAgentName({
+        name,
+        description,
+        mission,
+        targets,
+        topicNames,
+      }),
+    [description, mission, name, targets, topicNames],
+  );
   useEffect(() => {
-    if (!agentName && name) setAgentName(`${name} Main Agent`);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name]);
+    if (!agentNameTouched) setAgentName(suggestedAgentName);
+  }, [agentNameTouched, suggestedAgentName]);
 
   // ── Step 5: Telegram ──
   // "skip" = no telegram target; "existing" = pick one of the
@@ -684,12 +824,44 @@ export function BusinessSetupWizard({
             {createMainAgent && (
               <>
                 <Field label="Agent naam">
-                  <input
-                    value={agentName}
-                    onChange={(e) => setAgentName(e.target.value)}
-                    placeholder={`${name || "Business"} Main Agent`}
-                    style={inp}
-                  />
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        agentNameTouched &&
+                        agentName.trim() !== suggestedAgentName
+                          ? "minmax(0, 1fr) auto"
+                          : "1fr",
+                      gap: 8,
+                    }}
+                  >
+                    <input
+                      value={agentName}
+                      onChange={(e) => {
+                        setAgentNameTouched(true);
+                        setAgentName(e.target.value);
+                      }}
+                      placeholder={suggestedAgentName}
+                      style={inp}
+                    />
+                    {agentNameTouched &&
+                      agentName.trim() !== suggestedAgentName && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAgentName(suggestedAgentName);
+                            setAgentNameTouched(false);
+                          }}
+                          style={{
+                            ...btnSec,
+                            padding: "9px 11px",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          Gebruik voorstel
+                        </button>
+                      )}
+                  </div>
                 </Field>
                 <div
                   style={{
