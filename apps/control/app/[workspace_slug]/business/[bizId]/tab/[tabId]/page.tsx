@@ -14,6 +14,16 @@ type Props = {
   params: Promise<{ workspace_slug: string; bizId: string; tabId: string }>;
 };
 
+function iframeSandboxFor(url: string): string | undefined {
+  try {
+    const parsed = new URL(url, "https://aio.local");
+    if (!parsed.pathname.startsWith("/d/")) return undefined;
+  } catch {
+    if (!url.startsWith("/d/")) return undefined;
+  }
+  return "allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox";
+}
+
 export default async function CustomTabPage({ params }: Props) {
   const { workspace_slug, bizId, tabId } = await params;
   const user = await getCurrentUser();
@@ -47,6 +57,7 @@ export default async function CustomTabPage({ params }: Props) {
         borderRadius: 10,
       }}
       allow="fullscreen"
+      sandbox={iframeSandboxFor(data.url)}
     />
   );
 }

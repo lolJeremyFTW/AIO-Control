@@ -534,8 +534,9 @@ function RunBody({ run, showTools }: { run: RunDetail; showTools: boolean }) {
   const allSteps = stepsFor(run);
   const steps = showTools ? allSteps : allSteps.filter((s) => s.kind !== "tool_call");
   const isLive = run.status === "queued" || run.status === "running";
+  const publishedDashboard = findPublishedDashboard(allSteps);
 
-  if (steps.length === 0 && !isLive) {
+  if (steps.length === 0 && !isLive && !publishedDashboard) {
     return (
       <p style={{ color: "var(--app-fg-3)", fontSize: 13 }}>
         Geen inhoud opgeslagen voor deze run.
@@ -561,8 +562,115 @@ function RunBody({ run, showTools }: { run: RunDetail; showTools: boolean }) {
       {steps.map((step, i) => (
         <StepBubble key={i} step={step} />
       ))}
+      {publishedDashboard && (
+        <PublishedDashboardCard dashboard={publishedDashboard} />
+      )}
       {isLive && <PendingBubble status={run.status} thinking={thinking} />}
     </>
+  );
+}
+
+type PublishedDashboard = {
+  label?: string;
+  url?: string;
+  publicUrl?: string;
+  slug?: string;
+};
+
+function findPublishedDashboard(steps: RunStep[]): PublishedDashboard | null {
+  for (const step of [...steps].reverse()) {
+    if (
+      step.kind !== "tool_call" ||
+      (step.name !== "aio__publish_dashboard" &&
+        step.name !== "aio__publish_topic_dashboard")
+    ) {
+      continue;
+    }
+    const parsed = parseToolJson(step.result);
+    if (!parsed || parsed.ok !== true) continue;
+    const url = stringField(parsed, "url");
+    const publicUrl = stringField(parsed, "public_url");
+    const slug = stringField(parsed, "slug");
+    const args = asRecord(step.args);
+    const label = stringField(args, "label");
+    if (!url && !publicUrl) continue;
+    return { label, url, publicUrl, slug };
+  }
+  return null;
+}
+
+function PublishedDashboardCard({
+  dashboard,
+}: {
+  dashboard: PublishedDashboard;
+}) {
+  const publicUrl = dashboard.publicUrl ?? dashboard.url;
+  const showPublic = publicUrl && publicUrl !== dashboard.url;
+  return (
+    <div
+      style={{
+        alignSelf: "stretch",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 12,
+        flexWrap: "wrap",
+        padding: "10px 12px",
+        border: "1.5px solid rgba(57,178,85,0.45)",
+        borderRadius: 12,
+        background: "rgba(57,178,85,0.10)",
+      }}
+    >
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 800, color: "var(--tt-green)" }}>
+          Dashboard gepubliceerd
+        </div>
+        <div
+          style={{
+            fontSize: 11.5,
+            color: "var(--app-fg-3)",
+            lineHeight: 1.4,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {dashboard.label ?? "Custom dashboard"}
+          {dashboard.slug ? ` / ${dashboard.slug}` : ""}
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {dashboard.url && (
+          <DashboardLink href={dashboard.url} label="Open tab" />
+        )}
+        {showPublic && publicUrl && (
+          <DashboardLink href={publicUrl} label="Open HTML" />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DashboardLink({ href, label }: { href: string; label: string }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      style={{
+        padding: "7px 10px",
+        borderRadius: 8,
+        border: "1.5px solid var(--tt-green)",
+        background: "var(--tt-green)",
+        color: "#fff",
+        fontSize: 12,
+        fontWeight: 800,
+        textDecoration: "none",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {label}
+    </a>
   );
 }
 
@@ -700,6 +808,31 @@ function StepBubble({ step }: { step: RunStep }) {
       {step.message}
     </div>
   );
+}
+
+function parseToolJson(value: unknown): Record<string, unknown> | null {
+  if (typeof value === "string") {
+    try {
+      return asRecord(JSON.parse(value));
+    } catch {
+      return null;
+    }
+  }
+  return asRecord(value);
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function stringField(
+  value: Record<string, unknown> | null,
+  key: string,
+): string | undefined {
+  const field = value?.[key];
+  return typeof field === "string" && field.trim() ? field : undefined;
 }
 
 function fmtTime(at?: string): string {

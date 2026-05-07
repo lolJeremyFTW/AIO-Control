@@ -98,6 +98,7 @@ const ReadSecretSchema = z.object({
 
 const ListRunsSchema = z.object({
   business_id: z.string().uuid().optional(),
+  nav_node_id: z.string().uuid().nullable().optional(),
   agent_id: z.string().uuid().optional(),
   limit: z.coerce.number().int().min(1).max(100).optional().default(20),
   status: z
@@ -548,17 +549,23 @@ async function listRuns(args: unknown): Promise<string> {
     });
   }
   const { agent_id, business_id, limit, status } = parsed.data;
+  const businessId = business_id ?? (CURRENT_BUSINESS_ID || undefined);
+  const navNodeId =
+    parsed.data.nav_node_id === null
+      ? undefined
+      : parsed.data.nav_node_id ?? (CURRENT_NAV_NODE_ID || undefined);
 
   let query = supabaseAio
     .from("runs")
     .select(
-      "id, agent_id, business_id, status, created_at, started_at, finished_at:ended_at, duration_ms, cost_cents, error_text",
+      "id, agent_id, business_id, nav_node_id, status, created_at, started_at, finished_at:ended_at, duration_ms, cost_cents, error_text",
     )
     .order("created_at", { ascending: false })
     .limit(limit);
 
   if (agent_id) query = query.eq("agent_id", agent_id);
-  if (business_id) query = query.eq("business_id", business_id);
+  if (businessId) query = query.eq("business_id", businessId);
+  if (navNodeId) query = query.eq("nav_node_id", navNodeId);
   if (status) query = query.eq("status", status);
 
   const { data, error } = await query;
@@ -1579,7 +1586,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: "list_runs",
       description:
-        "Recent agent runs. Useful for diagnosing failures or summarising activity.",
+        "Recent agent runs. Useful for diagnosing failures or summarising activity. Defaults to the current MCP business/topic scope when available; pass nav_node_id=null to read all runs in the selected business.",
       inputSchema: {
         type: "object",
         properties: {
@@ -1587,6 +1594,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             type: "string",
             format: "uuid",
             description: "Filter to a specific business id.",
+          },
+          nav_node_id: {
+            type: ["string", "null"],
+            format: "uuid",
+            description:
+              "Filter to a specific topic/nav-node. Omit to use the current topic scope; pass null to disable topic filtering.",
           },
           agent_id: {
             type: "string",

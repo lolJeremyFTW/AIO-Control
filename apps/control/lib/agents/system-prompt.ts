@@ -30,12 +30,21 @@ const MCP_TOOL_CATALOGUE: Record<string, { description: string; tools: string[] 
     description: "AIO Control platform — agents, businesses, runs, Telegram notificaties, dashboards/tabs aanmaken",
     tools: [
       "list_businesses",
+      "list_nav_nodes",
+      "resolve_topic",
       "list_agents",
       "list_runs",
+      "list_schedules",
       "send_telegram_message",
       "publish_dashboard",
+      "publish_topic_dashboard",
       "upsert_custom_tab",
       "list_custom_tabs",
+      "create_cron_schedule",
+      "update_schedule",
+      "toggle_schedule",
+      "delete_schedule",
+      "run_schedule_now",
     ],
   },
   fetch: {
@@ -67,6 +76,16 @@ const MCP_TOOL_CATALOGUE: Record<string, { description: string; tools: string[] 
     tools: ["create_entities", "add_observations", "search_nodes", "open_nodes", "create_relations"],
   },
 };
+
+const AIO_READ_ONLY_TOOLS = new Set([
+  "list_businesses",
+  "list_nav_nodes",
+  "resolve_topic",
+  "list_agents",
+  "list_runs",
+  "list_schedules",
+  "list_custom_tabs",
+]);
 
 type Target = {
   id?: string;
@@ -114,6 +133,10 @@ export async function buildAgentSystemPrompt(
     []) as string[];
   const agentConfig = (agentSelfRow?.config as Record<string, unknown> | null) ?? {};
   const configuredMcpServers = (agentConfig.mcpServers as string[] | null) ?? [];
+  const mcpPermissions =
+    (agentConfig.mcpPermissions as
+      | { aio?: "off" | "ro" | "rw"; filesystem?: "off" | "ro" | "rw" }
+      | null) ?? {};
 
   // Fan out the lookups in parallel — single round-trip total.
   const [bizRes, wsRes, integrations, siblings, spend, skillsRes, navNodeRes] =
@@ -248,9 +271,15 @@ export async function buildAgentSystemPrompt(
         "geen aankondiging, geen \"zal ik...?\".",
     );
     for (const serverId of configuredMcpServers) {
+      if (serverId === "aio" && mcpPermissions.aio === "off") continue;
+      if (serverId === "filesystem" && mcpPermissions.filesystem === "off") continue;
       const cat = MCP_TOOL_CATALOGUE[serverId];
       if (cat) {
-        const toolStr = cat.tools.map((t) => `\`${serverId}__${t}\``).join(", ");
+        const toolNames =
+          serverId === "aio" && mcpPermissions.aio === "ro"
+            ? cat.tools.filter((t) => AIO_READ_ONLY_TOOLS.has(t))
+            : cat.tools;
+        const toolStr = toolNames.map((t) => `\`${serverId}__${t}\``).join(", ");
         lines.push(`- **${serverId}**: ${cat.description} → tools: ${toolStr}`);
       } else {
         lines.push(`- **${serverId}**: custom MCP server (tool-namen via API)`);

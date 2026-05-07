@@ -59,6 +59,16 @@ type Props = {
   searchParams: Promise<{ status?: string; agent?: string; offset?: string }>;
 };
 
+function iframeSandboxFor(url: string): string | undefined {
+  try {
+    const parsed = new URL(url, "https://aio.local");
+    if (!parsed.pathname.startsWith("/d/")) return undefined;
+  } catch {
+    if (!url.startsWith("/d/")) return undefined;
+  }
+  return "allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox";
+}
+
 export default async function NavNodePage({ params, searchParams }: Props) {
   const { workspace_slug, bizId, path } = await params;
   const sp = await searchParams;
@@ -405,6 +415,7 @@ export default async function NavNodePage({ params, searchParams }: Props) {
               background: "var(--app-card)",
             }}
             allow="fullscreen"
+            sandbox={iframeSandboxFor(tab.url)}
           />
         </div>
       </>

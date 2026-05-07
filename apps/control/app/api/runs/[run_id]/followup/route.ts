@@ -43,7 +43,7 @@ export async function POST(
   const { data: src } = await supabase
     .from("runs")
     .select(
-      "id, workspace_id, agent_id, business_id, message_history, input, output",
+      "id, workspace_id, agent_id, business_id, nav_node_id, message_history, input, output",
     )
     .eq("id", run_id)
     .maybeSingle();
@@ -79,6 +79,7 @@ export async function POST(
       workspace_id: src.workspace_id,
       agent_id: src.agent_id,
       business_id: src.business_id,
+      nav_node_id: src.nav_node_id,
       triggered_by: "chat",
       status: "queued",
       input: { messages, source: "followup", parent_run_id: src.id },

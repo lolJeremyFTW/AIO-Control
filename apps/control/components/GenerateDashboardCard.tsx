@@ -1,19 +1,13 @@
 // Empty-state card on a topic page that lets the user kick off a
-// "build me a dashboard" agent run. Click the button → modal with a
-// pre-filled prompt + agent picker + optional image attachment →
-// submit triggers runAgentNow with the prompt; the run drawer takes
-// over for streaming progress + result.
-//
-// After the run completes the user can persist the output as the
-// module's saved dashboard via the "Sla op als dashboard" button
-// (calls saveModuleDashboard server action → module_dashboards table).
+// custom dashboard agent run. The run is MCP-first: the selected agent
+// must be able to call aio__publish_dashboard, which writes the HTML to
+// agent_dashboards and pins it as a custom tab.
 
 "use client";
 
 import { useState } from "react";
 
 import { runAgentNow } from "../app/actions/schedules";
-import { saveModuleDashboard } from "../app/actions/dashboards";
 import type { AgentRow } from "../lib/queries/agents";
 import { RunDetailDrawer } from "./RunDetailDrawer";
 
@@ -36,29 +30,12 @@ export function GenerateDashboardCard({
 }: Props) {
   const [open, setOpen] = useState(false);
   const [openRunId, setOpenRunId] = useState<string | null>(null);
-  const [lastRunId, setLastRunId] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
-
-  const handleSave = async () => {
-    if (!lastRunId) return;
-    setSaving(true);
-    setSaveError(null);
-    const res = await saveModuleDashboard({
-      workspace_slug: workspaceSlug,
-      workspace_id: workspaceId,
-      business_id: businessId,
-      nav_node_id: navNodeId,
-      run_id: lastRunId,
-    });
-    setSaving(false);
-    if (!res.ok) {
-      setSaveError(res.error);
-    } else {
-      setSaved(true);
-    }
-  };
+  const dashboardAgents = agents.filter(isDashboardCapableAgent);
+  const disabled = dashboardAgents.length === 0;
+  const disabledTitle =
+    agents.length === 0
+      ? "Eerst een agent in deze business aanmaken"
+      : "Kies of maak een Claude/MiniMax-agent met AIO MCP op Read + Write";
 
   return (
     <>
@@ -95,18 +72,25 @@ export function GenerateDashboardCard({
               margin: 0,
             }}
           >
-            Laat een agent een eerste versie van dit dashboard maken op
-            basis van de huidige data. Je kan een eigen prompt schrijven
-            of de standaard houden — extra screenshots als referentie zijn
-            optioneel. De output verschijnt in een run-drawer die je daarna
-            verder kan finetunen.
+            Laat een agent een eerste versie maken op basis van huidige data.
+            De agent publiceert via AIO MCP direct een custom dashboard-tab.
+            Je kan de prompt aanpassen en een tekstuele visuele referentie
+            toevoegen; de run-drawer blijft open voor live voortgang en
+            finetuning.
           </p>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            alignItems: "flex-end",
+          }}
+        >
           <button
             type="button"
             onClick={() => setOpen(true)}
-            disabled={agents.length === 0}
+            disabled={disabled}
             style={{
               padding: "9px 16px",
               border: "1.5px solid var(--tt-green)",
@@ -115,49 +99,26 @@ export function GenerateDashboardCard({
               borderRadius: 10,
               fontWeight: 700,
               fontSize: 13,
-              cursor: agents.length === 0 ? "not-allowed" : "pointer",
-              opacity: agents.length === 0 ? 0.55 : 1,
+              cursor: disabled ? "not-allowed" : "pointer",
+              opacity: disabled ? 0.55 : 1,
             }}
-            title={
-              agents.length === 0
-                ? "Eerst een agent in deze business aanmaken"
-                : undefined
-            }
+            title={disabled ? disabledTitle : undefined}
           >
-            ✨ Genereer dashboard
+            Genereer dashboard
           </button>
 
-          {lastRunId && !saved && (
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
-              <button
-                type="button"
-                onClick={() => void handleSave()}
-                disabled={saving}
-                style={{
-                  padding: "7px 14px",
-                  border: "1.5px solid var(--app-border)",
-                  background: "var(--app-card)",
-                  color: "var(--app-fg)",
-                  borderRadius: 10,
-                  fontWeight: 600,
-                  fontSize: 12,
-                  cursor: saving ? "wait" : "pointer",
-                  opacity: saving ? 0.6 : 1,
-                }}
-              >
-                {saving ? "Opslaan…" : "Sla op als dashboard"}
-              </button>
-              {saveError && (
-                <span style={{ fontSize: 11, color: "var(--rose)" }}>
-                  {saveError}
-                </span>
-              )}
-            </div>
-          )}
-
-          {saved && (
-            <span style={{ fontSize: 11, color: "var(--tt-green)", fontWeight: 600 }}>
-              ✓ Dashboard opgeslagen
+          {disabled && (
+            <span
+              style={{
+                maxWidth: 280,
+                fontSize: 11,
+                color: "var(--app-fg-3)",
+                lineHeight: 1.4,
+                textAlign: "right",
+              }}
+            >
+              Zet bij een Claude- of MiniMax-agent de MCP server "AIO Control"
+              aan op Read + Write.
             </span>
           )}
         </div>
@@ -168,15 +129,13 @@ export function GenerateDashboardCard({
           workspaceSlug={workspaceSlug}
           workspaceId={workspaceId}
           businessId={businessId}
+          navNodeId={navNodeId}
           navNodeName={navNodeName}
-          agents={agents}
+          agents={dashboardAgents}
           onClose={() => setOpen(false)}
           onLaunched={(runId) => {
             setOpen(false);
             setOpenRunId(runId);
-            setLastRunId(runId);
-            setSaved(false);
-            setSaveError(null);
           }}
         />
       )}
@@ -195,6 +154,7 @@ function ComposerModal({
   workspaceSlug,
   workspaceId,
   businessId,
+  navNodeId,
   navNodeName,
   agents,
   onClose,
@@ -203,18 +163,15 @@ function ComposerModal({
   workspaceSlug: string;
   workspaceId: string;
   businessId: string;
+  navNodeId: string;
   navNodeName: string;
   agents: AgentRow[];
   onClose: () => void;
   onLaunched: (runId: string) => void;
 }) {
-  const defaultPrompt = `Bouw een dashboard voor het topic "${navNodeName}" in deze business. Lever:
-1. Een korte samenvatting (2-3 zinnen) van waar dit topic over gaat.
-2. 3-5 KPI's die belangrijk zijn voor dit topic, met huidige status indien beschikbaar.
-3. De top 3 acties die ik nu zou moeten nemen, gerangschikt op urgentie.
-4. Een tabel met de meest recente runs (als die er zijn) inclusief status, kosten en duur.
-
-Gebruik markdown headings, bullets en eventueel tabellen. Wees beknopt en zakelijk — geen filler.`;
+  const defaultPrompt = `Maak een compact custom dashboard voor topic "${navNodeName}".
+Focus op actuele runs, status, kosten, belangrijkste signalen en de topacties voor nu.
+Gebruik een rustige AIO Control operator-layout met KPI-tegels bovenaan en een compacte tabel of actielijst eronder.`;
 
   const [agentId, setAgentId] = useState(agents[0]?.id ?? "");
   const [prompt, setPrompt] = useState(defaultPrompt);
@@ -225,14 +182,19 @@ Gebruik markdown headings, bullets en eventueel tabellen. Wees beknopt en zakeli
   const submit = async () => {
     setError(null);
     setPending(true);
-    const fullPrompt = imageNote.trim()
-      ? `${prompt}\n\n## Visuele referentie (door de gebruiker beschreven)\n${imageNote.trim()}`
-      : prompt;
+    const fullPrompt = buildDashboardPublishPrompt({
+      prompt,
+      imageNote,
+      businessId,
+      navNodeId,
+      navNodeName,
+    });
     const res = await runAgentNow({
       workspace_slug: workspaceSlug,
       workspace_id: workspaceId,
       agent_id: agentId,
       business_id: businessId,
+      nav_node_id: navNodeId,
       prompt: fullPrompt,
     });
     setPending(false);
@@ -287,8 +249,8 @@ Gebruik markdown headings, bullets en eventueel tabellen. Wees beknopt en zakeli
             margin: "0 0 16px",
           }}
         >
-          De agent kan tijdens de run nog vragen stellen of vervolgstappen
-          voorstellen — die zie je live in de drawer die zo opent.
+          De agent gebruikt AIO MCP, publiceert de dashboard-tab en toont de
+          voortgang live in de drawer die zo opent.
         </p>
 
         <Field label="Welke agent voert het uit?">
@@ -299,27 +261,31 @@ Gebruik markdown headings, bullets en eventueel tabellen. Wees beknopt en zakeli
           >
             {agents.map((a) => (
               <option key={a.id} value={a.id}>
-                {a.name} · {a.provider}
+                {a.name} - {a.provider}
               </option>
             ))}
           </select>
         </Field>
 
-        <Field label="Prompt (mag je aanpassen)">
+        <Field label="Dashboardwens (mag je aanpassen)">
           <textarea
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
-            rows={9}
-            style={{ ...inputStyle, resize: "vertical", fontFamily: "var(--type)" }}
+            rows={7}
+            style={{
+              ...inputStyle,
+              resize: "vertical",
+              fontFamily: "var(--type)",
+            }}
           />
         </Field>
 
-        <Field label="Visuele referentie (optioneel)">
+        <Field label="Tekstuele visuele referentie (optioneel)">
           <textarea
             value={imageNote}
             onChange={(e) => setImageNote(e.target.value)}
             rows={3}
-            placeholder="Bijv. 'lijkt op de standaard Notion dashboard layout, met card-grid bovenin en een tabel eronder'."
+            placeholder="Bijv. 'zoals een Notion dashboard: card-grid bovenin, tabel eronder, veel witruimte'."
             style={{
               ...inputStyle,
               resize: "vertical",
@@ -334,8 +300,8 @@ Gebruik markdown headings, bullets en eventueel tabellen. Wees beknopt en zakeli
               lineHeight: 1.5,
             }}
           >
-            Voor nu een tekst-omschrijving. Image-upload komt zodra de
-            dispatcher attachments kan accepteren.
+            Voor nu alleen tekst. Echte image-upload komt zodra dispatcher
+            attachments kan accepteren.
           </p>
         </Field>
 
@@ -381,7 +347,7 @@ Gebruik markdown headings, bullets en eventueel tabellen. Wees beknopt en zakeli
               cursor: pending ? "wait" : "pointer",
             }}
           >
-            {pending ? "Bezig…" : "✨ Genereer"}
+            {pending ? "Bezig..." : "Genereer"}
           </button>
         </div>
       </div>
@@ -410,6 +376,60 @@ function Field({
       {children}
     </label>
   );
+}
+
+type AgentMcpConfig = {
+  mcpServers?: unknown;
+  mcpPermissions?: { aio?: "off" | "ro" | "rw" } | null;
+};
+
+function isDashboardCapableAgent(agent: AgentRow): boolean {
+  if (agent.key_source === "subscription") return false;
+  if (agent.provider !== "claude" && agent.provider !== "minimax") {
+    return false;
+  }
+  const config = (agent.config ?? {}) as AgentMcpConfig;
+  const servers = Array.isArray(config.mcpServers)
+    ? config.mcpServers.filter((s): s is string => typeof s === "string")
+    : [];
+  const aioMode = config.mcpPermissions?.aio ?? "rw";
+  return servers.includes("aio") && aioMode === "rw";
+}
+
+function buildDashboardPublishPrompt(input: {
+  prompt: string;
+  imageNote?: string;
+  businessId: string;
+  navNodeId: string;
+  navNodeName: string;
+}): string {
+  const operatorPrompt = input.prompt.trim();
+  const visualReference = input.imageNote?.trim();
+  return [
+    "Je maakt een custom AIO Control topic-dashboard via MCP.",
+    "",
+    "Vaste context:",
+    `- business_id: ${input.businessId}`,
+    `- nav_node_id: ${input.navNodeId}`,
+    `- topic: ${input.navNodeName}`,
+    "",
+    "Uitvoering:",
+    "1. Gebruik AIO MCP tools om huidige data te lezen. Start minimaal met `aio__list_runs` zonder args; die gebruikt de huidige business/topic scope. Gebruik `aio__list_custom_tabs` wanneer je bestaande dashboard-tabs wil checken.",
+    "2. Bouw een compact HTML-fragment: `<main class=\"aio-dashboard\">...</main>` met optioneel scoped `<style>`. Gebruik AIO CSS variables, geen eigen globale navigatie, geen marketingpagina.",
+    `3. Publiceer of update het dashboard door \`aio__publish_dashboard\` aan te roepen met exact deze scope en label: business_id=\`${input.businessId}\`, nav_node_id=\`${input.navNodeId}\`, label=\`${input.navNodeName} dashboard\`, plus jouw \`html_content\`.`,
+    "4. Eindig met maximaal 4 bullets: welke dashboard-tab is gepubliceerd, welke data je gebruikte, de URL(s) uit de tool-result, en 1-2 logische vervolgstappen.",
+    "",
+    "Belangrijke grenzen:",
+    "- Maak geen los markdown-dashboard als eindresultaat; de publicatie via `aio__publish_dashboard` is het resultaat.",
+    "- Gebruik geen gevoelige secrets, tokens, privegegevens of ruwe persoonsgegevens. De publieke `/d/<slug>` URL is voorlopig zichtbaar voor iedereen met de link.",
+    "- Als specifieke data ontbreekt, zeg kort wat ontbreekt en gebruik geen verzonnen cijfers.",
+    "",
+    "Operatorwens:",
+    operatorPrompt || "Maak de beste eerste versie op basis van de huidige topicdata.",
+    visualReference ? `\nVisuele referentie in woorden:\n${visualReference}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 const inputStyle: React.CSSProperties = {

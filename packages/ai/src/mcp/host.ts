@@ -54,6 +54,16 @@ const WRITE_TOOL_PATTERNS = [
   /[-_]edit$/i,
 ];
 
+const AIO_READ_TOOL_NAMES = new Set([
+  "list_businesses",
+  "list_nav_nodes",
+  "resolve_topic",
+  "list_agents",
+  "list_runs",
+  "list_schedules",
+  "list_custom_tabs",
+]);
+
 // npm global bin dir on the VPS — set NPM_GLOBAL_BIN env var to
 // override. All MCP server packages are pre-installed here so we
 // bypass npx's npm-registry lookup (which takes 30+ s on every run).
@@ -472,6 +482,7 @@ export class McpHost {
       throw listErr;
     });
     const fsScope = permissions.filesystem ?? "rw";
+    const aioScope = permissions.aio ?? "rw";
     const tools: McpToolDef[] = list.tools
       .filter((t) => {
         // Filesystem read-only mode: drop any tool whose name matches
@@ -479,6 +490,9 @@ export class McpHost {
         // read tools (read_file, list_directory, …) stay available.
         if (id === "filesystem" && fsScope === "ro") {
           return !WRITE_TOOL_PATTERNS.some((re) => re.test(t.name));
+        }
+        if (id === "aio" && aioScope === "ro") {
+          return AIO_READ_TOOL_NAMES.has(t.name);
         }
         return true;
       })

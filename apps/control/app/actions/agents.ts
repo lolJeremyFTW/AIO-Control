@@ -52,9 +52,10 @@ export type AgentInput = {
    *  pick from "minimax", "filesystem", "fetch". streamMinimax spawns
    *  each native via @aio/ai/mcp/host. */
   mcpServers?: string[];
-  /** Per-MCP-server scope (today: filesystem off/ro/rw). */
+  /** Per-MCP-server scope. */
   mcpPermissions?: {
     filesystem?: "off" | "ro" | "rw";
+    aio?: "off" | "ro" | "rw";
   };
 };
 
@@ -184,10 +185,11 @@ export async function updateAgent(input: {
      *  "filesystem", "fetch". streamMinimax spawns each via
      *  @aio/ai/mcp/host and exposes their tools to the model. */
     mcpServers?: string[] | null;
-    /** Per-MCP-server scope rules. Today only filesystem honours these
-     *  ("off" / "ro" / "rw"). Stored as agent.config.mcpPermissions. */
+    /** Per-MCP-server scope rules ("off" / "ro" / "rw").
+     *  Stored as agent.config.mcpPermissions. */
     mcpPermissions?: {
       filesystem?: "off" | "ro" | "rw";
+      aio?: "off" | "ro" | "rw";
     } | null;
     /** Maximum tool-call hops for MiniMax agents. null = use the global
      *  AGENT_MAX_HOPS env var (default 150). */
@@ -255,7 +257,7 @@ export async function updateAgent(input: {
     if (input.patch.mcpPermissions !== undefined) {
       const perms = input.patch.mcpPermissions;
       // Empty / null → drop the field. Otherwise store as-is so the
-      // router's mcpPermissions.filesystem check reads it directly.
+      // router's mcpPermissions checks read it directly.
       if (!perms || Object.keys(perms).length === 0) {
         delete config.mcpPermissions;
       } else {

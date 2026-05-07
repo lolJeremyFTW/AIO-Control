@@ -32,9 +32,8 @@ export interface AgentConfig {
   temperature?: number;
   maxTokens?: number;
   mcpServers?: string[];
-  /** Per-MCP-server scope flags. Today only filesystem honours this:
-   *  "off" skips spawning, "ro" filters out write/edit/delete tools,
-   *  "rw" (default) is full access. Other servers ignore this. */
+  /** Per-MCP-server scope flags. "off" skips spawning, "ro" filters
+   *  write/publish tools, "rw" (default) is full access. */
   mcpPermissions?: {
     filesystem?: "off" | "ro" | "rw";
     aio?: "off" | "ro" | "rw";
