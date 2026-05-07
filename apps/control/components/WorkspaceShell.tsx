@@ -279,9 +279,11 @@ export function WorkspaceShell({
     if (!biz) return null;
     const rest = m[2] ?? "";
     const navMatch = rest.match(/^n\/(.+)$/);
-    const navPath = navMatch
+    const navSegments = navMatch
       ? (navMatch[1] ?? "").split("/").filter(Boolean)
       : [];
+    const tabIndex = navSegments.indexOf("tab");
+    const navPath = tabIndex >= 0 ? navSegments.slice(0, tabIndex) : navSegments;
     const tab = navMatch ? null : rest.split("/")[0] || "queue";
     return { biz, tab, navPath };
   }, [pathname, workspace.slug, businesses]);
@@ -989,9 +991,12 @@ export function WorkspaceShell({
               drilledBiz
                 ? () => {
                     // Click on the right-side crumb (the business name)
-                    // exits drill-mode → workspace dashboard.
+                    // exits the topic/custom-tab drill and returns to the
+                    // business root, not the workspace dashboard.
                     closeRail();
-                    router.push(`/${workspace.slug}/dashboard`);
+                    router.push(
+                      `/${workspace.slug}/business/${drilledBiz.biz.slug}`,
+                    );
                   }
                 : undefined
             }
