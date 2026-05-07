@@ -15,6 +15,8 @@ export type ResolveContext = {
   workspaceId: string;
   businessId?: string | null;
   navNodeId?: string | null;
+  credentialOwnerUserId?: string | null;
+  credentialType?: "api_key" | "oauth_token";
 };
 
 const ENV_FALLBACK: Record<string, string | undefined> = {
@@ -73,14 +75,21 @@ export async function resolveApiKey(
       // workspace fallback. We do this by calling the RPC with a
       // dummy workspace_id when there's nothing more specific —
       // OR we manually decrypt the business-scope row.
-      const { data: row } = await supabase
+      let businessQuery = supabase
         .from("api_keys")
         .select("encrypted_value")
         .eq("workspace_id", ctx.workspaceId)
         .eq("scope", "business")
         .eq("scope_id", ctx.businessId!)
         .eq("provider", provider)
-        .maybeSingle();
+        .eq("credential_type", ctx.credentialType ?? "api_key");
+      if (ctx.credentialOwnerUserId) {
+        businessQuery = businessQuery.eq(
+          "owner_user_id",
+          ctx.credentialOwnerUserId,
+        );
+      }
+      const { data: row } = await businessQuery.maybeSingle();
       if (!row) return null;
       // Decrypt via the existing RPC pointed at JUST this row.
       const { data: decrypted } = await supabase.rpc("resolve_api_key", {
@@ -89,6 +98,8 @@ export async function resolveApiKey(
         _nav_node_id: ctx.navNodeId ?? null,
         _provider: provider,
         _master_key: masterKey,
+        _owner_user_id: ctx.credentialOwnerUserId ?? null,
+        _credential_type: ctx.credentialType ?? "api_key",
       });
       // The RPC walks navnode → business → workspace, so we filter
       // out the workspace-level value by also asking ourselves the
@@ -100,6 +111,8 @@ export async function resolveApiKey(
         _nav_node_id: null,
         _provider: provider,
         _master_key: masterKey,
+        _owner_user_id: ctx.credentialOwnerUserId ?? null,
+        _credential_type: ctx.credentialType ?? "api_key",
       });
       // If the resolver returned the workspace default it means
       // there's no business/navnode override — refuse it.
@@ -114,6 +127,8 @@ export async function resolveApiKey(
       _nav_node_id: ctx.navNodeId ?? null,
       _provider: provider,
       _master_key: masterKey,
+      _owner_user_id: ctx.credentialOwnerUserId ?? null,
+      _credential_type: ctx.credentialType ?? "api_key",
     });
     if (error) {
       console.error("resolve_api_key RPC failed", error);

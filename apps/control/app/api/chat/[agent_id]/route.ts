@@ -15,6 +15,7 @@ import type { AGUIEvent, ChatMessage } from "@aio/ai/ag-ui";
 import { AIO_TOOLS, defaultToolsForKind } from "@aio/ai/aio-tools";
 
 import { resolveApiKey } from "../../../../lib/api-keys/resolve";
+import { resolveCodexCredential } from "../../../../lib/openai-codex/oauth";
 import { resolveOllamaEndpoint } from "../../../../lib/ollama/endpoint";
 import {
   buildAgentSystemPrompt,
@@ -150,6 +151,7 @@ export async function POST(
     id: agent.id,
     workspace_id: agent.workspace_id,
     business_id: agent.business_id,
+    nav_node_id: agent.nav_node_id,
     name: agent.name,
     kind: agent.kind,
     provider: agent.provider,
@@ -160,27 +162,51 @@ export async function POST(
   // Resolve the per-tenant API key for this agent's provider. Order
   // is navnode → business → workspace → env-var fallback. Set up once
   // per request — providers reuse it.
-  const apiKey = await resolveApiKey(agent.provider, {
-    workspaceId: agent.workspace_id,
-    businessId: agent.business_id,
-  });
+  const apiKey =
+    agent.provider === "openai_codex"
+      ? (
+          await resolveCodexCredential({
+            workspaceId: agent.workspace_id,
+            ownerUserId: user.id,
+          })
+        )?.accessToken ?? null
+      : await resolveApiKey(agent.provider, {
+          workspaceId: agent.workspace_id,
+          businessId: agent.business_id,
+          navNodeId: agent.nav_node_id,
+          credentialOwnerUserId: user.id,
+        });
 
   // Resolve MCP tool keys so interactive chat sessions can use brave/
   // firecrawl without them being in process.env.
   const chatMcpServers: string[] =
     ((agent as { config?: { mcpServers?: string[] } }).config?.mcpServers) ?? [];
-  const MCP_TOOL_KEY_MAP: Record<string, string> = {
-    brave: "BRAVE_API_KEY",
-    firecrawl: "FIRECRAWL_API_KEY",
+  const MCP_TOOL_KEY_MAP: Record<string, { envVar: string; provider: string }> = {
+    brave: { envVar: "BRAVE_API_KEY", provider: "brave" },
+    firecrawl: { envVar: "FIRECRAWL_API_KEY", provider: "firecrawl" },
+    "firecrawl-pc": { envVar: "FIRECRAWL_API_KEY", provider: "firecrawl" },
+    "openai-images": { envVar: "OPENAI_API_KEY", provider: "openai" },
+    "minimax-images": { envVar: "MINIMAX_API_KEY", provider: "minimax" },
   };
   const mcpToolKeys: Record<string, string> = {};
-  for (const [server, envVar] of Object.entries(MCP_TOOL_KEY_MAP)) {
+  for (const [server, spec] of Object.entries(MCP_TOOL_KEY_MAP)) {
     if (chatMcpServers.includes(server)) {
-      const k = await resolveApiKey(server, {
+      const k = await resolveApiKey(spec.provider, {
         workspaceId: agent.workspace_id,
         businessId: agent.business_id,
+        navNodeId: agent.nav_node_id,
+        credentialOwnerUserId: user.id,
       });
-      if (k) mcpToolKeys[envVar] = k;
+      if (k) mcpToolKeys[spec.envVar] = k;
+    }
+  }
+  if (chatMcpServers.includes("openai-images")) {
+    const codexCredential = await resolveCodexCredential({
+      workspaceId: agent.workspace_id,
+      ownerUserId: user.id,
+    });
+    if (codexCredential?.accessToken) {
+      mcpToolKeys.OPENAI_CODEX_ACCESS_TOKEN = codexCredential.accessToken;
     }
   }
 
@@ -359,6 +385,7 @@ export async function POST(
             tenant: {
               workspaceId: agent.workspace_id,
               businessId: agent.business_id,
+              navNodeId: agent.nav_node_id,
               ollamaEndpoint,
               hermesAgentName,
               openclawAgentName,

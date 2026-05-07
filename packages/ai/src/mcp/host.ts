@@ -115,6 +115,18 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
         process.env.MINIMAX_API_HOST ?? "https://api.minimax.io",
     }),
   },
+  "minimax-images": {
+    command: `${NPM_GLOBAL_BIN}/tsx`,
+    args: [`${AIO_SRC}/minimax-image-server.ts`],
+    env: () => ({
+      ...(process.env.MINIMAX_API_KEY
+        ? { MINIMAX_API_KEY: process.env.MINIMAX_API_KEY }
+        : {}),
+      MINIMAX_API_HOST:
+        process.env.MINIMAX_API_HOST ?? "https://api.minimax.io",
+      MINIMAX_IMAGE_MODEL: process.env.MINIMAX_IMAGE_MODEL ?? "image-01",
+    }),
+  },
   // Filesystem read/write/list — same toolset Claude Code's Read/Write
   // tools provide, but as a standalone MCP server. Sandboxed to
   // MCP_FS_ROOTS (colon-separated list) or MCP_FS_ROOT (single dir).
@@ -164,6 +176,19 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
   fetch: {
     command: `${NPM_GLOBAL_BIN}/tsx`,
     args: [`${AIO_SRC}/fetch-server.ts`],
+  },
+  "openai-images": {
+    command: `${NPM_GLOBAL_BIN}/tsx`,
+    args: [`${AIO_SRC}/image-server.ts`],
+    env: () => ({
+      ...(process.env.OPENAI_API_KEY
+        ? { OPENAI_API_KEY: process.env.OPENAI_API_KEY }
+        : {}),
+      ...(process.env.OPENAI_CODEX_ACCESS_TOKEN
+        ? { OPENAI_CODEX_ACCESS_TOKEN: process.env.OPENAI_CODEX_ACCESS_TOKEN }
+        : {}),
+      OPENAI_IMAGE_MODEL: process.env.OPENAI_IMAGE_MODEL ?? "gpt-image-1.5",
+    }),
   },
   // Microsoft Playwright MCP — full Chromium browser with JS rendering.
   // Models are natively trained on Playwright tool signatures. Headless
