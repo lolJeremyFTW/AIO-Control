@@ -44,6 +44,7 @@ type AgentLite = {
 
 type BusinessLite = {
   id: string;
+  slug: string;
   name: string;
   letter: string;
   variant: string;
@@ -118,15 +119,13 @@ export function AgentsDashboard({
     const bizCost = runs
       .filter(
         (r) =>
-          r.business_id === b.id &&
-          new Date(r.created_at).getTime() >= since30,
+          r.business_id === b.id && new Date(r.created_at).getTime() >= since30,
       )
       .reduce((acc, r) => acc + (r.cost_cents ?? 0), 0);
     const bizRunsToday = runs.filter(
       (r) =>
         r.business_id === b.id &&
-        new Date(r.created_at).getTime() >=
-          new Date().setHours(0, 0, 0, 0),
+        new Date(r.created_at).getTime() >= new Date().setHours(0, 0, 0, 0),
     ).length;
     return { biz: b, costCents: bizCost, runsToday: bizRunsToday };
   });
@@ -151,7 +150,7 @@ export function AgentsDashboard({
       const fires = computeFires(s.cron_expr, window.start, window.end);
       const agent = agents.find((a) => a.id === s.agent_id);
       const biz = s.business_id
-        ? businesses.find((b) => b.id === s.business_id) ?? null
+        ? (businesses.find((b) => b.id === s.business_id) ?? null)
         : null;
       for (const t of fires) {
         const key = dayKey(t);
@@ -165,17 +164,21 @@ export function AgentsDashboard({
       }
     }
     // Also overlay actual past runs in the visible window so the
-    // user sees what has already fired.
+    // user sees what has already fired. Scheduled runs merge into
+    // their matching planned fire chip; manual/off-schedule runs stay
+    // as separate chips.
     for (const r of runs) {
       const at = new Date(r.created_at);
       if (at < window.start || at > window.end) continue;
       const key = dayKey(at);
       if (!map.has(key)) continue;
+      const bucket = map.get(key)!;
+      if (mergeRunIntoScheduledFire(bucket, r, at)) continue;
       const agent = agents.find((a) => a.id === r.agent_id);
       const biz = r.business_id
-        ? businesses.find((b) => b.id === r.business_id) ?? null
+        ? (businesses.find((b) => b.id === r.business_id) ?? null)
         : null;
-      map.get(key)!.push({
+      bucket.push({
         time: at,
         run: r,
         agentName: agent?.name ?? tr("dash.unknownAgent"),
@@ -240,7 +243,11 @@ export function AgentsDashboard({
           label={tr("dash.kpi.cost30d")}
           value={`€${(stats.cost30Cents / 100).toFixed(2)}`}
         />
-        <Kpi label={tr("dash.kpi.revenue30d")} value="—" sub="Stripe/Mollie ↗" />
+        <Kpi
+          label={tr("dash.kpi.revenue30d")}
+          value="—"
+          sub="Stripe/Mollie ↗"
+        />
       </div>
 
       {/* ── Calendar ────────────────────────────────────────── */}
@@ -311,9 +318,7 @@ export function AgentsDashboard({
                       borderRadius: 999,
                       border: "none",
                       cursor: "pointer",
-                      background: active
-                        ? "var(--tt-green)"
-                        : "transparent",
+                      background: active ? "var(--tt-green)" : "transparent",
                       color: active ? "#fff" : "var(--app-fg-2)",
                       fontFamily: "var(--type)",
                       fontWeight: 700,
@@ -674,13 +679,10 @@ function WeekView({
           <div
             key={i}
             style={{
-              borderRight:
-                i < 6 ? "1px solid var(--app-border-2)" : undefined,
+              borderRight: i < 6 ? "1px solid var(--app-border-2)" : undefined,
               padding: 8,
               minHeight: 220,
-              background: isToday
-                ? "rgba(57,178,85,0.04)"
-                : "var(--app-card)",
+              background: isToday ? "rgba(57,178,85,0.04)" : "var(--app-card)",
             }}
           >
             <div
@@ -884,8 +886,8 @@ function FireChip({
       : fire.run.status === "failed"
         ? "var(--rose)"
         : "var(--amber)"
-    : fire.biz?.color_hex ??
-      `var(--${fire.biz?.variant ?? "tt-green"}, var(--tt-green))`;
+    : (fire.biz?.color_hex ??
+      `var(--${fire.biz?.variant ?? "tt-green"}, var(--tt-green))`);
   return (
     <span
       title={`${fire.time.toLocaleTimeString(intlLocale, {
@@ -899,9 +901,7 @@ function FireChip({
         alignItems: "center",
         gap: 6,
         padding: compact ? "2px 6px" : "4px 8px",
-        background: isPast
-          ? "var(--app-card-2)"
-          : "rgba(57,178,85,0.06)",
+        background: isPast ? "var(--app-card-2)" : "rgba(57,178,85,0.06)",
         border: `1px solid ${
           isPast ? "var(--app-border-2)" : "var(--tt-green)"
         }`,
@@ -963,6 +963,33 @@ function isSameDay(a: Date, b: Date): boolean {
     a.getMonth() === b.getMonth() &&
     a.getDate() === b.getDate()
   );
+}
+
+function isSameMinute(a: Date, b: Date): boolean {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate() &&
+    a.getHours() === b.getHours() &&
+    a.getMinutes() === b.getMinutes()
+  );
+}
+
+function mergeRunIntoScheduledFire(
+  fires: ScheduleFire[],
+  run: RunLite,
+  at: Date,
+): boolean {
+  if (!run.schedule_id) return false;
+  const planned = fires.find(
+    (fire) =>
+      fire.schedule?.id === run.schedule_id &&
+      fire.schedule.agent_id === run.agent_id &&
+      isSameMinute(fire.time, at),
+  );
+  if (!planned) return false;
+  planned.run = run;
+  return true;
 }
 
 function buildWindow(

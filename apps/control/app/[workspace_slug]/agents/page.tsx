@@ -74,9 +74,7 @@ export default async function WorkspaceAgentsPage({ params }: Props) {
   }));
 
   // Resolve key status across every provider used in the workspace.
-  const uniqueProviders = Array.from(
-    new Set(allAgents.map((a) => a.provider)),
-  );
+  const uniqueProviders = Array.from(new Set(allAgents.map((a) => a.provider)));
   const providerKeyStatus: Record<string, boolean> = {};
   await Promise.all(
     uniqueProviders.map(async (p) => {
@@ -109,8 +107,7 @@ export default async function WorkspaceAgentsPage({ params }: Props) {
   const wsDefaultsTyped = {
     provider: (wsDefaults?.default_provider as string | null) ?? null,
     model: (wsDefaults?.default_model as string | null) ?? null,
-    systemPrompt:
-      (wsDefaults?.default_system_prompt as string | null) ?? null,
+    systemPrompt: (wsDefaults?.default_system_prompt as string | null) ?? null,
   };
 
   return (
@@ -131,6 +128,7 @@ export default async function WorkspaceAgentsPage({ params }: Props) {
           }))}
           businesses={businesses.map((b) => ({
             id: b.id,
+            slug: b.slug,
             name: b.name,
             letter: b.letter,
             variant: b.variant ?? "brand",

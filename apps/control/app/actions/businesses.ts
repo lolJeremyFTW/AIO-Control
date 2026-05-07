@@ -11,9 +11,7 @@ import {
   telegramCreateForumTopic,
   telegramEditForumTopic,
 } from "../../lib/notify/telegram";
-import {
-  generateUniqueBusinessSlug,
-} from "../../lib/queries/businesses";
+import { generateUniqueBusinessSlug } from "../../lib/queries/businesses";
 import { createSupabaseServerClient } from "../../lib/supabase/server";
 import { getServiceRoleSupabase } from "../../lib/supabase/service";
 
@@ -37,11 +35,15 @@ export type BusinessInput = {
 
 const HEX_RE = /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
 
-export type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string };
+export type ActionResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: string };
 
 export async function createBusiness(
   input: BusinessInput,
-): Promise<ActionResult<{ id: string; telegram_warning?: string }>> {
+): Promise<
+  ActionResult<{ id: string; slug: string; telegram_warning?: string }>
+> {
   if (!input.name.trim()) {
     return { ok: false, error: "Naam mag niet leeg zijn." };
   }
@@ -119,7 +121,11 @@ export async function createBusiness(
   revalidatePath(`/${input.workspace_slug}/dashboard`);
   return {
     ok: true,
-    data: { id: data.id, slug: data.slug as string, telegram_warning: telegramWarning },
+    data: {
+      id: data.id,
+      slug: data.slug as string,
+      telegram_warning: telegramWarning,
+    },
   };
 }
 
@@ -180,7 +186,8 @@ export async function updateBusiness(input: {
     const v = input.patch.color_hex;
     if (v === null || v === "") patch.color_hex = null;
     else if (HEX_RE.test(v)) patch.color_hex = v.toLowerCase();
-    else return { ok: false, error: "Ongeldige hex (gebruik #rgb of #rrggbb)." };
+    else
+      return { ok: false, error: "Ongeldige hex (gebruik #rgb of #rrggbb)." };
   }
   if (input.patch.logo_url !== undefined)
     patch.logo_url = input.patch.logo_url?.toString().trim() || null;
@@ -217,7 +224,8 @@ export async function updateBusiness(input: {
   }
 
   revalidatePath(`/${input.workspace_slug}/dashboard`);
-  const bizPathId = (patch.slug as string | undefined) ?? input.business_slug ?? input.id;
+  const bizPathId =
+    (patch.slug as string | undefined) ?? input.business_slug ?? input.id;
   revalidatePath(`/${input.workspace_slug}/business/${bizPathId}`, "layout");
   return { ok: true, data: null };
 }
@@ -239,7 +247,11 @@ export async function duplicateBusiness(input: {
     return { ok: false, error: srcErr?.message ?? "Origineel niet gevonden." };
   }
   const copyName = `${src.name} (kopie)`;
-  const copySlug = await generateUniqueBusinessSlug(supabase, input.workspace_id, copyName);
+  const copySlug = await generateUniqueBusinessSlug(
+    supabase,
+    input.workspace_id,
+    copyName,
+  );
   const { data, error } = await supabase
     .from("businesses")
     .insert({
@@ -482,9 +494,7 @@ async function renameTelegramTopicForBusiness(opts: {
     .maybeSingle();
   if (!target?.chat_id || target.topic_id == null) return;
 
-  const topicName = biz.icon
-    ? `${biz.icon} ${opts.new_name}`
-    : opts.new_name;
+  const topicName = biz.icon ? `${biz.icon} ${opts.new_name}` : opts.new_name;
   await telegramEditForumTopic({
     workspace_id: biz.workspace_id,
     chat_id: target.chat_id,
