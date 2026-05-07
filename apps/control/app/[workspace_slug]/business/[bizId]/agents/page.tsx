@@ -10,8 +10,15 @@ import {
 import { resolveApiKey } from "../../../../../lib/api-keys/resolve";
 import { getDict } from "../../../../../lib/i18n/server";
 import { listAgentsForWorkspace } from "../../../../../lib/queries/agents";
-import { listBusinesses, findBusiness } from "../../../../../lib/queries/businesses";
+import {
+  listBusinesses,
+  findBusiness,
+} from "../../../../../lib/queries/businesses";
 import { listFlatNavNodes } from "../../../../../lib/queries/nav-nodes";
+import {
+  listNotificationBindingsForOwners,
+  listSlackDiscordNotificationTargets,
+} from "../../../../../lib/queries/notification-targets";
 import { listSkillsForWorkspace } from "../../../../../lib/queries/skills";
 import { AgentsList } from "../../../../../components/AgentsList";
 import { createSupabaseServerClient } from "../../../../../lib/supabase/server";
@@ -33,6 +40,7 @@ export default async function BusinessAgentsPage({ params }: Props) {
     businesses,
     allAgents,
     skills,
+    notificationTargets,
     { data: telegramRows },
     { data: customRows },
     { data: wsDefaults },
@@ -40,6 +48,7 @@ export default async function BusinessAgentsPage({ params }: Props) {
     listBusinesses(workspace.id),
     listAgentsForWorkspace(workspace.id),
     listSkillsForWorkspace(workspace.id),
+    listSlackDiscordNotificationTargets(workspace.id),
     supabase
       .from("telegram_targets")
       .select("id, name")
@@ -60,6 +69,13 @@ export default async function BusinessAgentsPage({ params }: Props) {
   if (!biz) notFound();
   const [navOptions] = await Promise.all([listFlatNavNodes(biz.id)]);
   const agents = allAgents.filter((a) => a.business_id === biz.id);
+  const notificationTargetBindings = await listNotificationBindingsForOwners(
+    workspace.id,
+    agents.map((agent) => ({
+      owner_type: "agent",
+      owner_id: agent.id,
+    })),
+  );
 
   // Resolve key status per provider used by this business's agents so
   // each card can render a "key set / missing" pill. We dedupe so we
@@ -94,6 +110,8 @@ export default async function BusinessAgentsPage({ params }: Props) {
         customIntegrations={
           (customRows ?? []) as { id: string; name: string }[]
         }
+        notificationTargets={notificationTargets}
+        notificationTargetBindings={notificationTargetBindings}
         workspaceDefaults={{
           provider: (wsDefaults?.default_provider as string | null) ?? null,
           model: (wsDefaults?.default_model as string | null) ?? null,

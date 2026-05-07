@@ -11,12 +11,19 @@ import {
 } from "../../../../../lib/auth/workspace";
 import { getDict } from "../../../../../lib/i18n/server";
 import { listAgentsForWorkspace } from "../../../../../lib/queries/agents";
-import { listBusinesses, findBusiness } from "../../../../../lib/queries/businesses";
+import {
+  listBusinesses,
+  findBusiness,
+} from "../../../../../lib/queries/businesses";
 import {
   listSchedulesForBusiness,
   listRecentRunsForBusiness,
 } from "../../../../../lib/queries/schedules";
 import { listFlatNavNodes } from "../../../../../lib/queries/nav-nodes";
+import {
+  listNotificationBindingsForOwners,
+  listSlackDiscordNotificationTargets,
+} from "../../../../../lib/queries/notification-targets";
 import { RunsTimeline } from "../../../../../components/RunsTimeline";
 import { ScheduleBuilderDialog } from "../../../../../components/ScheduleBuilderDialog";
 import { SchedulesPanel } from "../../../../../components/SchedulesPanel";
@@ -39,12 +46,14 @@ export default async function BusinessSchedulesPage({ params }: Props) {
     businesses,
     allAgents,
     hdrs,
+    notificationTargets,
     { data: telegramRows },
     { data: customRows },
   ] = await Promise.all([
     listBusinesses(workspace.id),
     listAgentsForWorkspace(workspace.id),
     headers(),
+    listSlackDiscordNotificationTargets(workspace.id),
     supabase
       .from("telegram_targets")
       .select("id, name")
@@ -66,14 +75,28 @@ export default async function BusinessSchedulesPage({ params }: Props) {
   const agents = allAgents.filter(
     (a) => a.business_id === biz.id || a.business_id === null,
   );
-  const telegramTargets = (telegramRows ?? []) as { id: string; name: string }[];
-  const customIntegrations = (customRows ?? []) as { id: string; name: string }[];
+  const telegramTargets = (telegramRows ?? []) as {
+    id: string;
+    name: string;
+  }[];
+  const customIntegrations = (customRows ?? []) as {
+    id: string;
+    name: string;
+  }[];
+  const notificationTargetBindings = await listNotificationBindingsForOwners(
+    workspace.id,
+    schedules.map((schedule) => ({
+      owner_type: "schedule",
+      owner_id: schedule.id,
+    })),
+  );
 
   // Build the public origin webhook URLs should resolve under. In production
   // this is whatever Caddy fronts (tromptech.life); in dev it falls back to
   // the request's own host.
   const proto = hdrs.get("x-forwarded-proto") ?? "http";
-  const host = hdrs.get("x-forwarded-host") ?? hdrs.get("host") ?? "localhost:3010";
+  const host =
+    hdrs.get("x-forwarded-host") ?? hdrs.get("host") ?? "localhost:3010";
   const triggerOrigin =
     process.env.NEXT_PUBLIC_TRIGGER_ORIGIN ?? `${proto}://${host}`;
 
@@ -92,6 +115,7 @@ export default async function BusinessSchedulesPage({ params }: Props) {
             triggerOrigin={triggerOrigin}
             telegramTargets={telegramTargets}
             customIntegrations={customIntegrations}
+            notificationTargets={notificationTargets}
             navNodes={navNodes}
           />
         )}
@@ -105,6 +129,10 @@ export default async function BusinessSchedulesPage({ params }: Props) {
         schedules={schedules}
         triggerOrigin={triggerOrigin}
         navNodes={navNodes}
+        telegramTargets={telegramTargets}
+        customIntegrations={customIntegrations}
+        notificationTargets={notificationTargets}
+        notificationTargetBindings={notificationTargetBindings}
         hideCreateForm={agents.length > 0}
       />
 

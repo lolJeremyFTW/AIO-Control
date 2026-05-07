@@ -14,6 +14,10 @@ import { resolveApiKey } from "../../../lib/api-keys/resolve";
 import { listAgentsForWorkspace } from "../../../lib/queries/agents";
 import { listBusinesses } from "../../../lib/queries/businesses";
 import { listFlatNavNodes } from "../../../lib/queries/nav-nodes";
+import {
+  listNotificationBindingsForOwners,
+  listSlackDiscordNotificationTargets,
+} from "../../../lib/queries/notification-targets";
 import { listSkillsForWorkspace } from "../../../lib/queries/skills";
 import {
   listRecentRunsForWorkspace,
@@ -41,6 +45,7 @@ export default async function WorkspaceAgentsPage({ params }: Props) {
     schedules,
     runs,
     skills,
+    notificationTargets,
     { data: telegramRows },
     { data: customRows },
     { data: wsDefaults },
@@ -51,6 +56,7 @@ export default async function WorkspaceAgentsPage({ params }: Props) {
     listSchedulesForWorkspace(workspace.id),
     listRecentRunsForWorkspace(workspace.id, 200),
     listSkillsForWorkspace(workspace.id),
+    listSlackDiscordNotificationTargets(workspace.id),
     supabase
       .from("telegram_targets")
       .select("id, name")
@@ -73,12 +79,21 @@ export default async function WorkspaceAgentsPage({ params }: Props) {
     name: s.name,
     description: s.description,
   }));
-  const topicGroups = await Promise.all(
-    businesses.map(async (b) => ({
-      business_id: b.id,
-      topics: await listFlatNavNodes(b.id),
-    })),
-  );
+  const [topicGroups, notificationTargetBindings] = await Promise.all([
+    Promise.all(
+      businesses.map(async (b) => ({
+        business_id: b.id,
+        topics: await listFlatNavNodes(b.id),
+      })),
+    ),
+    listNotificationBindingsForOwners(
+      workspace.id,
+      allAgents.map((agent) => ({
+        owner_type: "agent",
+        owner_id: agent.id,
+      })),
+    ),
+  ]);
   const calendarTopics = topicGroups.flatMap((group) =>
     group.topics.map((topic) => ({
       id: topic.id,
@@ -198,6 +213,8 @@ export default async function WorkspaceAgentsPage({ params }: Props) {
           providerKeyStatus={providerKeyStatus}
           telegramTargets={telegramTargets}
           customIntegrations={customIntegrations}
+          notificationTargets={notificationTargets}
+          notificationTargetBindings={notificationTargetBindings}
           workspaceDefaults={wsDefaultsTyped}
           availableSkills={availableSkills}
         />
@@ -225,6 +242,8 @@ export default async function WorkspaceAgentsPage({ params }: Props) {
             providerKeyStatus={providerKeyStatus}
             telegramTargets={telegramTargets}
             customIntegrations={customIntegrations}
+            notificationTargets={notificationTargets}
+            notificationTargetBindings={notificationTargetBindings}
             workspaceDefaults={wsDefaultsTyped}
             navOptions={topicsByBusiness.get(g.id) ?? []}
           />

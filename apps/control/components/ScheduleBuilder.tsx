@@ -13,6 +13,10 @@ import { useMemo, useState, useTransition } from "react";
 
 import type { AgentRow } from "../lib/queries/agents";
 import { createCronSchedule } from "../app/actions/schedules";
+import {
+  NotificationBindingsField,
+  type NotificationTargetChoice,
+} from "./NotificationBindingsField";
 
 const DAYS = [
   { id: 0, label: "Zon" },
@@ -36,6 +40,7 @@ type Props = {
   triggerOrigin: string;
   telegramTargets: Target[];
   customIntegrations: Target[];
+  notificationTargets?: NotificationTargetChoice[];
   navNodes?: { id: string; name: string; depth: number }[];
   initialNavNodeId?: string | null;
   onCreated?: () => void;
@@ -49,6 +54,7 @@ export function ScheduleBuilder({
   triggerOrigin,
   telegramTargets,
   customIntegrations,
+  notificationTargets = [],
   navNodes = [],
   initialNavNodeId = null,
   onCreated,
@@ -67,6 +73,9 @@ export function ScheduleBuilder({
   const [customCron, setCustomCron] = useState("0 9 * * *");
   const [telegramTargetId, setTelegramTargetId] = useState<string>("");
   const [customIntegrationId, setCustomIntegrationId] = useState<string>("");
+  const [notificationTargetIds, setNotificationTargetIds] = useState<string[]>(
+    [],
+  );
 
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -115,6 +124,7 @@ export function ScheduleBuilder({
         instructions,
         telegram_target_id: telegramTargetId || null,
         custom_integration_id: customIntegrationId || null,
+        notification_target_ids: notificationTargetIds,
       });
       if (!res.ok) {
         setError(res.error);
@@ -124,6 +134,7 @@ export function ScheduleBuilder({
       setTitle("");
       setDescription("");
       setInstructions("");
+      setNotificationTargetIds([]);
       onCreated?.();
     });
   };
@@ -235,9 +246,7 @@ export function ScheduleBuilder({
                     mode === m ? "var(--tt-green)" : "var(--app-border)"
                   }`,
                   background:
-                    mode === m
-                      ? "rgba(57,178,85,0.10)"
-                      : "transparent",
+                    mode === m ? "rgba(57,178,85,0.10)" : "transparent",
                   color: mode === m ? "var(--tt-green)" : "var(--app-fg-2)",
                   cursor: "pointer",
                 }}
@@ -290,7 +299,9 @@ export function ScheduleBuilder({
         )}
 
         {(mode === "daily" || mode === "weekly") && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div
+            style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}
+          >
             <Field label="Uur (0–23)">
               <input
                 type="number"
@@ -406,7 +417,8 @@ export function ScheduleBuilder({
             <option value="">— Business-niveau (geen topic) —</option>
             {navNodes.map((n) => (
               <option key={n.id} value={n.id}>
-                {"  ".repeat(n.depth)}{n.name}
+                {"  ".repeat(n.depth)}
+                {n.name}
               </option>
             ))}
           </select>
@@ -415,7 +427,9 @@ export function ScheduleBuilder({
 
       {/* ── Reporting targets ────────────────────────────────── */}
       {(telegramTargets.length > 0 || customIntegrations.length > 0) && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div
+          style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}
+        >
           {telegramTargets.length > 0 && (
             <Field label="Telegram channel (optioneel)">
               <select
@@ -451,10 +465,14 @@ export function ScheduleBuilder({
         </div>
       )}
 
+      <NotificationBindingsField
+        targets={notificationTargets}
+        selectedIds={notificationTargetIds}
+        onChange={setNotificationTargetIds}
+      />
+
       {error && (
-        <p style={{ color: "var(--rose)", fontSize: 12, margin: 0 }}>
-          {error}
-        </p>
+        <p style={{ color: "var(--rose)", fontSize: 12, margin: 0 }}>{error}</p>
       )}
       {info && (
         <p style={{ color: "var(--tt-green)", fontSize: 12, margin: 0 }}>
@@ -519,10 +537,8 @@ function explainCron(
   days: number[],
 ): string {
   if (mode === "interval") return `Elke ${intervalMinutes} minuten.`;
-  if (mode === "hourly")
-    return `Elk uur, op minuut ${pad(minute)}.`;
-  if (mode === "daily")
-    return `Dagelijks om ${pad(hour)}:${pad(minute)}.`;
+  if (mode === "hourly") return `Elk uur, op minuut ${pad(minute)}.`;
+  if (mode === "daily") return `Dagelijks om ${pad(hour)}:${pad(minute)}.`;
   if (mode === "weekly") {
     if (days.length === 0) return "Geen dagen geselecteerd.";
     const labels = days.map((d) => DAYS[d]?.label ?? "?").join(", ");

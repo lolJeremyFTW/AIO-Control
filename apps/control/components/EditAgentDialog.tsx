@@ -22,6 +22,10 @@ import { translate } from "../lib/i18n/dict";
 import { useLocale } from "../lib/i18n/client";
 import { AgentTopicsField } from "./AgentTopicsField";
 import { McpServersField } from "./McpServersField";
+import {
+  NotificationBindingsField,
+  type NotificationTargetChoice,
+} from "./NotificationBindingsField";
 import { ProviderModelPicker } from "./ProviderModelPicker";
 import { SkillsPickerField } from "./SkillsPickerField";
 import { WorkflowGraph } from "./WorkflowGraph";
@@ -33,6 +37,7 @@ type Target = { id: string; name: string };
 
 type Props = {
   workspaceSlug: string;
+  workspaceId: string;
   /** null = workspace-global agent (business_id IS NULL). */
   businessId: string | null;
   agent: AgentRow & {
@@ -53,6 +58,8 @@ type Props = {
   availableSkills?: { id: string; name: string; description: string }[];
   telegramTargets?: Target[];
   customIntegrations?: Target[];
+  notificationTargets?: NotificationTargetChoice[];
+  selectedNotificationTargetIds?: string[];
   /** Other agents in the same workspace — used as options for the
    *  "next agent on done / fail" chain dropdowns. */
   siblingAgents?: { id: string; name: string }[];
@@ -65,12 +72,28 @@ type Props = {
 };
 
 const PROVIDERS: { id: Provider; label: string; defaultModel?: string }[] = [
-  { id: "claude", label: "Claude (Anthropic API key)", defaultModel: "claude-sonnet-4-6" },
-  { id: "claude_cli", label: "Claude CLI (subscription, geen API key)", defaultModel: "sonnet" },
+  {
+    id: "claude",
+    label: "Claude (Anthropic API key)",
+    defaultModel: "claude-sonnet-4-6",
+  },
+  {
+    id: "claude_cli",
+    label: "Claude CLI (subscription, geen API key)",
+    defaultModel: "sonnet",
+  },
   { id: "openrouter", label: "OpenRouter", defaultModel: "openrouter/auto" },
-  { id: "minimax", label: "MiniMax (Coder Plan)", defaultModel: "MiniMax-M2.7-Highspeed" },
+  {
+    id: "minimax",
+    label: "MiniMax (Coder Plan)",
+    defaultModel: "MiniMax-M2.7-Highspeed",
+  },
   { id: "ollama", label: "Ollama (lokaal/VPS)", defaultModel: "llama3" },
-  { id: "openai_codex", label: "OpenAI Codex (ChatGPT login)", defaultModel: "openai_codex/gpt-5.5" },
+  {
+    id: "openai_codex",
+    label: "OpenAI Codex (ChatGPT login)",
+    defaultModel: "openai_codex/gpt-5.5",
+  },
   { id: "openclaw", label: "OpenClaw (CLI subprocess op VPS)" },
   { id: "hermes", label: "Hermes-agent (CLI subprocess op VPS)" },
   { id: "codex", label: "Codex / OpenAI" },
@@ -86,10 +109,13 @@ const KINDS: { id: Kind; labelKey: string }[] = [
 
 export function EditAgentDialog({
   workspaceSlug,
+  workspaceId,
   businessId,
   agent,
   telegramTargets = [],
   customIntegrations = [],
+  notificationTargets = [],
+  selectedNotificationTargetIds = [],
   siblingAgents = [],
   navOptions = [],
   availableSkills = [],
@@ -105,7 +131,10 @@ export function EditAgentDialog({
     systemPrompt?: string | null;
     endpoint?: string | null;
     mcpServers?: string[] | null;
-    mcpPermissions?: { filesystem?: "off" | "ro" | "rw"; aio?: "off" | "ro" | "rw" } | null;
+    mcpPermissions?: {
+      filesystem?: "off" | "ro" | "rw";
+      aio?: "off" | "ro" | "rw";
+    } | null;
     maxHops?: number | null;
   };
 
@@ -138,6 +167,12 @@ export function EditAgentDialog({
   );
   const [customIntegrationId, setCustomIntegrationId] = useState(
     agent.custom_integration_id ?? "",
+  );
+  const [notificationTargetIds, setNotificationTargetIds] = useState<string[]>(
+    () => {
+      const available = new Set(notificationTargets.map((target) => target.id));
+      return selectedNotificationTargetIds.filter((id) => available.has(id));
+    },
   );
   const [nextOnDone, setNextOnDone] = useState(agent.next_agent_on_done ?? "");
   const [nextOnFail, setNextOnFail] = useState(agent.next_agent_on_fail ?? "");
@@ -184,6 +219,7 @@ export function EditAgentDialog({
     setPending(true);
     const res = await updateAgent({
       workspace_slug: workspaceSlug,
+      workspace_id: workspaceId,
       business_id: businessId,
       id: agent.id,
       patch: {
@@ -195,6 +231,7 @@ export function EditAgentDialog({
         endpoint: needsEndpoint ? endpoint || null : null,
         telegram_target_id: telegramTargetId || null,
         custom_integration_id: customIntegrationId || null,
+        notification_target_ids: notificationTargetIds,
         next_agent_on_done: nextOnDone || null,
         next_agent_on_fail: nextOnFail || null,
         notify_email: notifyEmail || null,
@@ -277,7 +314,9 @@ export function EditAgentDialog({
           />
         </Field>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div
+          style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}
+        >
           <Field label={t("agent.field.kind")}>
             <select
               value={kind}
@@ -315,7 +354,9 @@ export function EditAgentDialog({
               : t("agent.field.model")
           }
         >
-          {provider === "openclaw" || provider === "hermes" || provider === "openai_codex" ? (
+          {provider === "openclaw" ||
+          provider === "hermes" ||
+          provider === "openai_codex" ? (
             <ProviderModelPicker
               provider={provider}
               value={model}
@@ -467,7 +508,13 @@ export function EditAgentDialog({
             >
               {t("agent.chain.title")}
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 10,
+              }}
+            >
               <Field label={t("agent.chain.onDone")}>
                 <select
                   value={nextOnDone}
@@ -501,7 +548,13 @@ export function EditAgentDialog({
                 </select>
               </Field>
             </div>
-            <p style={{ fontSize: 11, color: "var(--app-fg-3)", margin: "8px 0 8px" }}>
+            <p
+              style={{
+                fontSize: 11,
+                color: "var(--app-fg-3)",
+                margin: "8px 0 8px",
+              }}
+            >
               {t("agent.chain.note")}
             </p>
             <WorkflowGraph
@@ -525,7 +578,9 @@ export function EditAgentDialog({
         )}
 
         {(telegramTargets.length > 0 || customIntegrations.length > 0) && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div
+            style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}
+          >
             {telegramTargets.length > 0 && (
               <Field label={t("agent.field.telegramTarget")}>
                 <select
@@ -560,6 +615,12 @@ export function EditAgentDialog({
             )}
           </div>
         )}
+
+        <NotificationBindingsField
+          targets={notificationTargets}
+          selectedIds={notificationTargetIds}
+          onChange={setNotificationTargetIds}
+        />
 
         {error && (
           <p

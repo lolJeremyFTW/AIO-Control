@@ -21,13 +21,20 @@ import {
 import { resolveApiKey } from "../../../../../../lib/api-keys/resolve";
 import { getDict } from "../../../../../../lib/i18n/server";
 import { listAgentsForWorkspace } from "../../../../../../lib/queries/agents";
-import { listBusinesses, findBusiness } from "../../../../../../lib/queries/businesses";
+import {
+  listBusinesses,
+  findBusiness,
+} from "../../../../../../lib/queries/businesses";
 import {
   listNavNodes,
   listFlatNavNodes,
   listDescendantNavNodeIds,
   resolveNavPathBySlugs,
 } from "../../../../../../lib/queries/nav-nodes";
+import {
+  listNotificationBindingsForOwners,
+  listSlackDiscordNotificationTargets,
+} from "../../../../../../lib/queries/notification-targets";
 import { listSkillsForWorkspace } from "../../../../../../lib/queries/skills";
 import type {
   RunRow,
@@ -89,11 +96,10 @@ export default async function NavNodePage({ params, searchParams }: Props) {
   const lastSeg = path[path.length - 1] ?? "";
   const customTabId =
     path.length >= 3 && path[path.length - 2] === "tab" ? lastSeg : null;
-  const subRoute: TopicSubroute | null = (
-    TOPIC_SUBROUTES as readonly string[]
-  ).includes(lastSeg) && !customTabId
-    ? (lastSeg as TopicSubroute)
-    : null;
+  const subRoute: TopicSubroute | null =
+    (TOPIC_SUBROUTES as readonly string[]).includes(lastSeg) && !customTabId
+      ? (lastSeg as TopicSubroute)
+      : null;
   const navPath = customTabId
     ? path.slice(0, -2)
     : subRoute
@@ -128,27 +134,35 @@ export default async function NavNodePage({ params, searchParams }: Props) {
   // ── Agents sub-route ────────────────────────────────────────────────
   if (subRoute === "agents") {
     const supabase = await createSupabaseServerClient();
-    const [skills, { data: telegramRows }, { data: customRows }, { data: wsDefaults }, navOptions, { t }] =
-      await Promise.all([
-        listSkillsForWorkspace(workspace.id),
-        supabase
-          .from("telegram_targets")
-          .select("id, name")
-          .eq("workspace_id", workspace.id)
-          .eq("enabled", true),
-        supabase
-          .from("custom_integrations")
-          .select("id, name")
-          .eq("workspace_id", workspace.id)
-          .eq("enabled", true),
-        supabase
-          .from("workspaces")
-          .select("default_provider, default_model, default_system_prompt")
-          .eq("id", workspace.id)
-          .maybeSingle(),
-        listFlatNavNodes(biz.id),
-        getDict(),
-      ]);
+    const [
+      skills,
+      notificationTargets,
+      { data: telegramRows },
+      { data: customRows },
+      { data: wsDefaults },
+      navOptions,
+      { t },
+    ] = await Promise.all([
+      listSkillsForWorkspace(workspace.id),
+      listSlackDiscordNotificationTargets(workspace.id),
+      supabase
+        .from("telegram_targets")
+        .select("id, name")
+        .eq("workspace_id", workspace.id)
+        .eq("enabled", true),
+      supabase
+        .from("custom_integrations")
+        .select("id, name")
+        .eq("workspace_id", workspace.id)
+        .eq("enabled", true),
+      supabase
+        .from("workspaces")
+        .select("default_provider, default_model, default_system_prompt")
+        .eq("id", workspace.id)
+        .maybeSingle(),
+      listFlatNavNodes(biz.id),
+      getDict(),
+    ]);
 
     const topicAgents = allAgents.filter(
       (a) =>
@@ -156,7 +170,16 @@ export default async function NavNodePage({ params, searchParams }: Props) {
         ((a.topic_ids ?? []).includes(current.id) ||
           a.nav_node_id === current.id),
     );
-    const uniqueProviders = Array.from(new Set(topicAgents.map((a) => a.provider)));
+    const notificationTargetBindings = await listNotificationBindingsForOwners(
+      workspace.id,
+      topicAgents.map((agent) => ({
+        owner_type: "agent",
+        owner_id: agent.id,
+      })),
+    );
+    const uniqueProviders = Array.from(
+      new Set(topicAgents.map((a) => a.provider)),
+    );
     const providerKeyStatus: Record<string, boolean> = {};
     await Promise.all(
       uniqueProviders.map(async (p) => {
@@ -179,34 +202,38 @@ export default async function NavNodePage({ params, searchParams }: Props) {
           routinesCount={routinesCount ?? 0}
         />
         <div className="content">
-        <div className="page-title-row">
-          <h1>Agents — {current.name}</h1>
-          <span className="sub">{t("page.business.agents.sub")}</span>
-        </div>
-        <AgentsList
-          workspaceSlug={workspace.slug}
-          workspaceId={workspace.id}
-          businessId={biz.id}
-          agents={topicAgents}
-          providerKeyStatus={providerKeyStatus}
-          telegramTargets={(telegramRows ?? []) as { id: string; name: string }[]}
-          customIntegrations={
-            (customRows ?? []) as { id: string; name: string }[]
-          }
-          workspaceDefaults={{
-            provider: (wsDefaults?.default_provider as string | null) ?? null,
-            model: (wsDefaults?.default_model as string | null) ?? null,
-            systemPrompt:
-              (wsDefaults?.default_system_prompt as string | null) ?? null,
-          }}
-          navOptions={navOptions}
-          contextNavNodeId={current.id}
-          availableSkills={skills.map((s) => ({
-            id: s.id,
-            name: s.name,
-            description: s.description,
-          }))}
-        />
+          <div className="page-title-row">
+            <h1>Agents — {current.name}</h1>
+            <span className="sub">{t("page.business.agents.sub")}</span>
+          </div>
+          <AgentsList
+            workspaceSlug={workspace.slug}
+            workspaceId={workspace.id}
+            businessId={biz.id}
+            agents={topicAgents}
+            providerKeyStatus={providerKeyStatus}
+            telegramTargets={
+              (telegramRows ?? []) as { id: string; name: string }[]
+            }
+            customIntegrations={
+              (customRows ?? []) as { id: string; name: string }[]
+            }
+            notificationTargets={notificationTargets}
+            notificationTargetBindings={notificationTargetBindings}
+            workspaceDefaults={{
+              provider: (wsDefaults?.default_provider as string | null) ?? null,
+              model: (wsDefaults?.default_model as string | null) ?? null,
+              systemPrompt:
+                (wsDefaults?.default_system_prompt as string | null) ?? null,
+            }}
+            navOptions={navOptions}
+            contextNavNodeId={current.id}
+            availableSkills={skills.map((s) => ({
+              id: s.id,
+              name: s.name,
+              description: s.description,
+            }))}
+          />
         </div>
       </>
     );
@@ -225,21 +252,23 @@ export default async function NavNodePage({ params, searchParams }: Props) {
           routinesCount={routinesCount ?? 0}
         />
         <div className="content">
-        <div className="page-title-row">
-          <h1>Runs — {current.name}</h1>
-          <span className="sub">Alle runs gekoppeld aan dit topic</span>
-        </div>
-        <RunsPage
-          workspaceSlug={workspace.slug}
-          workspaceId={workspace.id}
-          businessId={biz.id}
-          agents={businessAgents}
-          businessName={Object.fromEntries(businesses.map((b) => [b.id, b.name]))}
-          statusFilter={sp.status ?? null}
-          agentFilter={sp.agent ?? null}
-          offset={Number(sp.offset ?? 0)}
-          navNodeId={current.id}
-        />
+          <div className="page-title-row">
+            <h1>Runs — {current.name}</h1>
+            <span className="sub">Alle runs gekoppeld aan dit topic</span>
+          </div>
+          <RunsPage
+            workspaceSlug={workspace.slug}
+            workspaceId={workspace.id}
+            businessId={biz.id}
+            agents={businessAgents}
+            businessName={Object.fromEntries(
+              businesses.map((b) => [b.id, b.name]),
+            )}
+            statusFilter={sp.status ?? null}
+            agentFilter={sp.agent ?? null}
+            offset={Number(sp.offset ?? 0)}
+            navNodeId={current.id}
+          />
         </div>
       </>
     );
@@ -253,6 +282,7 @@ export default async function NavNodePage({ params, searchParams }: Props) {
       navNodes,
       { data: rows },
       { data: recentRuns },
+      notificationTargets,
       { data: telegramRows },
       { data: customRows },
       { t },
@@ -277,6 +307,7 @@ export default async function NavNodePage({ params, searchParams }: Props) {
         .in("nav_node_id", scopeIds)
         .order("created_at", { ascending: false })
         .limit(10),
+      listSlackDiscordNotificationTargets(workspace.id),
       supabase
         .from("telegram_targets")
         .select("id, name")
@@ -291,6 +322,14 @@ export default async function NavNodePage({ params, searchParams }: Props) {
     ]);
     const agents = allAgents.filter(
       (a) => a.business_id === biz.id || a.business_id === null,
+    );
+    const schedules = (rows ?? []) as ScheduleRow[];
+    const notificationTargetBindings = await listNotificationBindingsForOwners(
+      workspace.id,
+      schedules.map((schedule) => ({
+        owner_type: "schedule",
+        owner_id: schedule.id,
+      })),
     );
     const proto = hdrs.get("x-forwarded-proto") ?? "http";
     const host =
@@ -325,6 +364,7 @@ export default async function NavNodePage({ params, searchParams }: Props) {
                 customIntegrations={
                   (customRows ?? []) as { id: string; name: string }[]
                 }
+                notificationTargets={notificationTargets}
                 navNodes={navNodes}
                 initialNavNodeId={current.id}
               />
@@ -335,9 +375,17 @@ export default async function NavNodePage({ params, searchParams }: Props) {
             workspaceId={workspace.id}
             businessId={biz.id}
             agents={agents}
-            schedules={(rows ?? []) as ScheduleRow[]}
+            schedules={schedules}
             triggerOrigin={triggerOrigin}
             navNodes={navNodes}
+            telegramTargets={
+              (telegramRows ?? []) as { id: string; name: string }[]
+            }
+            customIntegrations={
+              (customRows ?? []) as { id: string; name: string }[]
+            }
+            notificationTargets={notificationTargets}
+            notificationTargetBindings={notificationTargetBindings}
             hideCreateForm={agents.length > 0}
           />
           <section style={{ marginTop: 28 }}>
@@ -379,7 +427,7 @@ export default async function NavNodePage({ params, searchParams }: Props) {
             <RunsTimeline
               runs={(recentRuns ?? []) as unknown as RunRow[]}
               agents={agents}
-              schedules={(rows ?? []) as ScheduleRow[]}
+              schedules={schedules}
               businessId={biz.id}
               workspaceId={workspace.id}
             />
@@ -453,161 +501,157 @@ export default async function NavNodePage({ params, searchParams }: Props) {
         routinesCount={routinesCount ?? 0}
       />
       <div className="content">
-
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          flexWrap: "wrap",
-          fontSize: 13,
-          color: "var(--app-fg-3)",
-          marginBottom: 12,
-        }}
-      >
-        {breadcrumb.map((b, i) => (
-          <span
-            key={i}
-            style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
-          >
-            {i > 0 && <span>›</span>}
-            {i < breadcrumb.length - 1 ? (
-              <Link
-                href={b.href}
-                style={{ color: "var(--app-fg-2)", fontWeight: 600 }}
-              >
-                {b.name}
-              </Link>
-            ) : (
-              <span style={{ color: "var(--app-fg)", fontWeight: 700 }}>
-                {b.name}
-              </span>
-            )}
-          </span>
-        ))}
-      </div>
-
-      <div className="page-title-row">
-        <h1>{current?.name}</h1>
-        <span className="sub">{current?.sub ?? "Sub-navigation"}</span>
-      </div>
-
-      {current?.href && (
-        <a
-          href={current.href}
-          target="_blank"
-          rel="noopener noreferrer"
+        <div
           style={{
-            display: "inline-block",
-            padding: "8px 14px",
-            border: "1.5px solid var(--tt-green)",
-            background: "var(--tt-green)",
-            color: "#fff",
-            borderRadius: 10,
-            fontWeight: 700,
-            fontSize: 12.5,
-            marginBottom: 18,
-            textDecoration: "none",
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            flexWrap: "wrap",
+            fontSize: 13,
+            color: "var(--app-fg-3)",
+            marginBottom: 12,
           }}
         >
-          Open externe app → {current.href}
-        </a>
-      )}
+          {breadcrumb.map((b, i) => (
+            <span
+              key={i}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+            >
+              {i > 0 && <span>›</span>}
+              {i < breadcrumb.length - 1 ? (
+                <Link
+                  href={b.href}
+                  style={{ color: "var(--app-fg-2)", fontWeight: 600 }}
+                >
+                  {b.name}
+                </Link>
+              ) : (
+                <span style={{ color: "var(--app-fg)", fontWeight: 700 }}>
+                  {b.name}
+                </span>
+              )}
+            </span>
+          ))}
+        </div>
 
-      {current && (
-        <>
-          <TopicDashboard
-            workspaceSlug={workspace.slug}
-            workspaceId={workspace.id}
-            businessId={biz.id}
-            navNodeId={current.id}
-            includeDescendants
-          />
-          {savedDashboard && (
-            <SavedModuleDashboard
+        <div className="page-title-row">
+          <h1>{current?.name}</h1>
+          <span className="sub">{current?.sub ?? "Sub-navigation"}</span>
+        </div>
+
+        {current?.href && (
+          <a
+            href={current.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: "inline-block",
+              padding: "8px 14px",
+              border: "1.5px solid var(--tt-green)",
+              background: "var(--tt-green)",
+              color: "#fff",
+              borderRadius: 10,
+              fontWeight: 700,
+              fontSize: 12.5,
+              marginBottom: 18,
+              textDecoration: "none",
+            }}
+          >
+            Open externe app → {current.href}
+          </a>
+        )}
+
+        {current && (
+          <>
+            <TopicDashboard
               workspaceSlug={workspace.slug}
               workspaceId={workspace.id}
               businessId={biz.id}
-              dashboard={savedDashboard}
+              navNodeId={current.id}
+              includeDescendants
             />
-          )}
-          <GenerateDashboardCard
-            workspaceSlug={workspace.slug}
-            workspaceId={workspace.id}
-            businessId={biz.id}
-            navNodeId={current.id}
-            navNodeName={current.name}
-            agents={allAgents.filter(
-              (a) => a.business_id === biz.id || a.business_id === null,
+            {savedDashboard && (
+              <SavedModuleDashboard
+                workspaceSlug={workspace.slug}
+                workspaceId={workspace.id}
+                businessId={biz.id}
+                dashboard={savedDashboard}
+              />
             )}
-          />
-          <TopicRoutinesList
-            workspaceSlug={workspace.slug}
-            workspaceId={workspace.id}
-            businessId={biz.id}
-            navNodeId={current.id}
-            includeDescendants
-          />
-        </>
-      )}
+            <GenerateDashboardCard
+              workspaceSlug={workspace.slug}
+              workspaceId={workspace.id}
+              businessId={biz.id}
+              navNodeId={current.id}
+              navNodeName={current.name}
+              agents={allAgents.filter(
+                (a) => a.business_id === biz.id || a.business_id === null,
+              )}
+            />
+            <TopicRoutinesList
+              workspaceSlug={workspace.slug}
+              workspaceId={workspace.id}
+              businessId={biz.id}
+              navNodeId={current.id}
+              includeDescendants
+            />
+          </>
+        )}
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
-          gap: 12,
-          marginBottom: 18,
-        }}
-      >
-        {children.map((c) => (
-          <Link
-            key={c.id}
-            href={`${baseHref}/n/${[...navPath, c.slug].join("/")}`}
-            style={{
-              border: "1.5px solid var(--app-border)",
-              borderRadius: 14,
-              padding: 14,
-              background: "var(--app-card)",
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              color: "var(--app-fg)",
-            }}
-          >
-            <span
-              className={`node ${c.variant}`}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+            gap: 12,
+            marginBottom: 18,
+          }}
+        >
+          {children.map((c) => (
+            <Link
+              key={c.id}
+              href={`${baseHref}/n/${[...navPath, c.slug].join("/")}`}
               style={{
-                ["--size" as string]: "36px",
-                fontSize: c.icon ? 18 : 14,
+                border: "1.5px solid var(--app-border)",
+                borderRadius: 14,
+                padding: 14,
+                background: "var(--app-card)",
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                color: "var(--app-fg)",
               }}
             >
-              {getAppIcon(c.icon, 20) ?? c.letter}
-            </span>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 700, fontSize: 14 }}>{c.name}</div>
-              {c.sub && (
-                <div style={{ fontSize: 11, color: "var(--app-fg-3)" }}>
-                  {c.sub}
-                </div>
-              )}
-            </div>
-          </Link>
-        ))}
-      </div>
+              <span
+                className={`node ${c.variant}`}
+                style={{
+                  ["--size" as string]: "36px",
+                  fontSize: c.icon ? 18 : 14,
+                }}
+              >
+                {getAppIcon(c.icon, 20) ?? c.letter}
+              </span>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 14 }}>{c.name}</div>
+                {c.sub && (
+                  <div style={{ fontSize: 11, color: "var(--app-fg-3)" }}>
+                    {c.sub}
+                  </div>
+                )}
+              </div>
+            </Link>
+          ))}
+        </div>
 
-      <NewNavNodeButton
-        workspaceSlug={workspace.slug}
-        workspaceId={workspace.id}
-        businessId={biz.id}
-        parentId={current?.id ?? null}
-        label={
-          navPath.length === 1
-            ? "+ Nieuwe module"
-            : "+ Nieuwe sub-module"
-        }
-      />
+        <NewNavNodeButton
+          workspaceSlug={workspace.slug}
+          workspaceId={workspace.id}
+          businessId={biz.id}
+          parentId={current?.id ?? null}
+          label={
+            navPath.length === 1 ? "+ Nieuwe module" : "+ Nieuwe sub-module"
+          }
+        />
       </div>
     </>
   );
 }
-

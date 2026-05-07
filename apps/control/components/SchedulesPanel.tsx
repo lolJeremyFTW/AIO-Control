@@ -12,6 +12,7 @@ import type { AgentRow } from "../lib/queries/agents";
 import type { ScheduleRow } from "../lib/queries/schedules";
 import { CronBuilder } from "./CronBuilder";
 import { EditScheduleDialog } from "./EditScheduleDialog";
+import type { NotificationTargetChoice } from "./NotificationBindingsField";
 import {
   createCronSchedule,
   createWebhookSchedule,
@@ -21,6 +22,8 @@ import {
   toggleSchedule,
 } from "../app/actions/schedules";
 
+type Target = { id: string; name: string };
+
 type Props = {
   workspaceSlug: string;
   workspaceId: string;
@@ -29,6 +32,10 @@ type Props = {
   schedules: ScheduleRow[];
   triggerOrigin: string; // e.g. https://tromptech.life — used to render webhook URLs
   navNodes?: { id: string; name: string; depth: number }[];
+  telegramTargets?: Target[];
+  customIntegrations?: Target[];
+  notificationTargets?: NotificationTargetChoice[];
+  notificationTargetBindings?: Record<string, string[]>;
   /** When true, the panel only renders the "Bestaande schedules" list
    *  (and edit/delete/run-now actions per card) — the inline create
    *  form at the top is suppressed. Used by /business/[id]/schedules
@@ -45,6 +52,10 @@ export function SchedulesPanel({
   schedules,
   triggerOrigin,
   navNodes = [],
+  telegramTargets = [],
+  customIntegrations = [],
+  notificationTargets = [],
+  notificationTargetBindings = {},
   hideCreateForm = false,
 }: Props) {
   const router = useRouter();
@@ -198,8 +209,8 @@ export function SchedulesPanel({
       <div className="empty-state">
         <h2>Eerst een agent aanmaken</h2>
         <p>
-          Schedules vuren een agent af. Maak eerst minstens één agent in
-          deze business aan.
+          Schedules vuren een agent af. Maak eerst minstens één agent in deze
+          business aan.
         </p>
       </div>
     );
@@ -208,201 +219,219 @@ export function SchedulesPanel({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
       {!hideCreateForm && (
-      <section
-        style={{
-          border: "1.5px solid var(--app-border)",
-          borderRadius: 14,
-          padding: 16,
-          background: "var(--app-card)",
-        }}
-      >
-        <h2
+        <section
           style={{
-            fontFamily: "var(--hand)",
-            fontSize: 22,
-            fontWeight: 700,
-            margin: "0 0 12px",
+            border: "1.5px solid var(--app-border)",
+            borderRadius: 14,
+            padding: 16,
+            background: "var(--app-card)",
           }}
         >
-          Nieuwe schedule
-        </h2>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr auto",
-            gap: 12,
-            alignItems: "end",
-          }}
-        >
-          <label style={{ fontSize: 12, fontWeight: 600 }}>
-            <span style={{ display: "block", marginBottom: 4 }}>Agent</span>
-            <select
-              value={agentId}
-              onChange={(e) => setAgentId(e.target.value)}
-              style={inputStyle}
-            >
-              {agents.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name} · {a.provider}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button
-              type="button"
-              disabled={pending || isSubscription}
-              onClick={() => triggerNow(agentId)}
-              style={btnSecondary(pending || isSubscription)}
-              title={
-                isSubscription
-                  ? "Subscription-Claude mag niet via Run now — alleen via chat of cron-schedule (Anthropic Routines)."
-                  : undefined
-              }
-            >
-              ▶ Run now
-            </button>
-            <button
-              type="button"
-              disabled={pending || isSubscription}
-              onClick={createWebhook}
-              style={btnPrimary(pending || isSubscription)}
-              title={
-                isSubscription
-                  ? "Subscription-Claude mag niet via webhook — alleen via chat of cron-schedule (Anthropic Routines)."
-                  : undefined
-              }
-            >
-              + Webhook URL
-            </button>
-            <button
-              type="button"
-              disabled={pending}
-              onClick={() => setCronOpen((v) => !v)}
-              style={btnSecondary(pending)}
-            >
-              + Cron
-            </button>
+          <h2
+            style={{
+              fontFamily: "var(--hand)",
+              fontSize: 22,
+              fontWeight: 700,
+              margin: "0 0 12px",
+            }}
+          >
+            Nieuwe schedule
+          </h2>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr auto",
+              gap: 12,
+              alignItems: "end",
+            }}
+          >
+            <label style={{ fontSize: 12, fontWeight: 600 }}>
+              <span style={{ display: "block", marginBottom: 4 }}>Agent</span>
+              <select
+                value={agentId}
+                onChange={(e) => setAgentId(e.target.value)}
+                style={inputStyle}
+              >
+                {agents.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name} · {a.provider}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                disabled={pending || isSubscription}
+                onClick={() => triggerNow(agentId)}
+                style={btnSecondary(pending || isSubscription)}
+                title={
+                  isSubscription
+                    ? "Subscription-Claude mag niet via Run now — alleen via chat of cron-schedule (Anthropic Routines)."
+                    : undefined
+                }
+              >
+                ▶ Run now
+              </button>
+              <button
+                type="button"
+                disabled={pending || isSubscription}
+                onClick={createWebhook}
+                style={btnPrimary(pending || isSubscription)}
+                title={
+                  isSubscription
+                    ? "Subscription-Claude mag niet via webhook — alleen via chat of cron-schedule (Anthropic Routines)."
+                    : undefined
+                }
+              >
+                + Webhook URL
+              </button>
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => setCronOpen((v) => !v)}
+                style={btnSecondary(pending)}
+              >
+                + Cron
+              </button>
+            </div>
           </div>
-        </div>
 
-        {/* Single prompt textarea — used by Run now (optional) AND
+          {/* Single prompt textarea — used by Run now (optional) AND
             cron creation (required). Webhook ignores it (the trigger
             POST body becomes the prompt at fire time). Always visible
             so the user doesn't have to dig into the cron form just to
             send a one-shot test prompt. */}
-        <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginTop: 12 }}>
-          <span style={{ display: "block", marginBottom: 4 }}>
-            Prompt — wat moet de agent doen?
-          </span>
-          <textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            rows={3}
-            style={{ ...inputStyle, resize: "vertical", minHeight: 70 }}
-            placeholder="Bijv. 'Vind 10 nieuwe MKB leads in Nederland en schrijf cold-email pitches'."
-          />
-        </label>
-
-        {isSubscription && (
-          <p
+          <label
             style={{
-              marginTop: 10,
-              padding: "8px 10px",
-              background: "rgba(245,158,11,0.10)",
-              border: "1.5px solid rgba(245,158,11,0.4)",
-              borderRadius: 10,
-              fontSize: 11.5,
-              color: "var(--amber)",
-            }}
-          >
-            ⚠ Deze agent gebruikt een Claude-subscription. Alleen{" "}
-            <strong>chat</strong> en <strong>cron</strong> (loopt via
-            Anthropic Routines) zijn toegestaan — webhook en Run now zijn
-            uitgeschakeld om een ban op je Claude-account te voorkomen.
-          </p>
-        )}
-
-        {cronOpen && (
-          <div
-            style={{
-              marginTop: 14,
-              padding: 12,
-              background: "var(--app-card-2)",
-              borderRadius: 10,
-              border: "1.5px dashed var(--app-border)",
-              display: "flex",
-              flexDirection: "column",
-              gap: 10,
-            }}
-          >
-            <label style={{ fontSize: 12, fontWeight: 600 }}>
-              <span style={{ display: "block", marginBottom: 4 }}>
-                Wanneer moet 'ie draaien?
-              </span>
-              <CronBuilder value={cronExpr} onChange={setCronExpr} />
-            </label>
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <button type="button" onClick={() => setCronOpen(false)} style={btnSecondary(pending)}>
-                Annuleer
-              </button>
-              <button type="button" disabled={pending} onClick={createCron} style={btnPrimary(pending)}>
-                Aanmaken
-              </button>
-            </div>
-            <p style={{ fontSize: 11, color: "var(--app-fg-3)", margin: 0 }}>
-              De prompt hierboven wordt gebruikt als de cron afvuurt.
-              Voor subscription-Claude vereist Cron een geconfigureerde
-              ANTHROPIC_API_KEY (Claude Routines).
-            </p>
-          </div>
-        )}
-        <p
-          style={{
-            color: "var(--app-fg-3)",
-            fontSize: 11.5,
-            marginTop: 10,
-          }}
-        >
-          Webhook = externe trigger via een geheime URL. Run now =
-          queue een handmatige run die de dispatcher meteen oppakt.
-          Cron = Claude Routines met cron-expressie (vereist Anthropic key).
-        </p>
-        {error && (
-          <p role="alert" style={errStyle}>
-            {error}
-          </p>
-        )}
-        {revealedSecret && (
-          <div
-            style={{
-              marginTop: 14,
-              padding: 12,
-              background: "rgba(57,178,85,0.08)",
-              border: "1.5px solid var(--tt-green)",
-              borderRadius: 10,
               fontSize: 12,
+              fontWeight: 600,
+              display: "block",
+              marginTop: 12,
             }}
           >
-            <strong style={{ color: "var(--tt-green)" }}>
-              Sla deze URL nu op — wordt niet opnieuw getoond.
-            </strong>
-            <code
+            <span style={{ display: "block", marginBottom: 4 }}>
+              Prompt — wat moet de agent doen?
+            </span>
+            <textarea
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              rows={3}
+              style={{ ...inputStyle, resize: "vertical", minHeight: 70 }}
+              placeholder="Bijv. 'Vind 10 nieuwe MKB leads in Nederland en schrijf cold-email pitches'."
+            />
+          </label>
+
+          {isSubscription && (
+            <p
               style={{
-                display: "block",
-                marginTop: 6,
-                padding: 8,
-                background: "var(--app-card-2)",
-                borderRadius: 6,
-                wordBreak: "break-all",
-                fontSize: 11,
+                marginTop: 10,
+                padding: "8px 10px",
+                background: "rgba(245,158,11,0.10)",
+                border: "1.5px solid rgba(245,158,11,0.4)",
+                borderRadius: 10,
+                fontSize: 11.5,
+                color: "var(--amber)",
               }}
             >
-              {revealedSecret.url}
-            </code>
-          </div>
-        )}
-      </section>
+              ⚠ Deze agent gebruikt een Claude-subscription. Alleen{" "}
+              <strong>chat</strong> en <strong>cron</strong> (loopt via
+              Anthropic Routines) zijn toegestaan — webhook en Run now zijn
+              uitgeschakeld om een ban op je Claude-account te voorkomen.
+            </p>
+          )}
+
+          {cronOpen && (
+            <div
+              style={{
+                marginTop: 14,
+                padding: 12,
+                background: "var(--app-card-2)",
+                borderRadius: 10,
+                border: "1.5px dashed var(--app-border)",
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+              }}
+            >
+              <label style={{ fontSize: 12, fontWeight: 600 }}>
+                <span style={{ display: "block", marginBottom: 4 }}>
+                  Wanneer moet de agent draaien?
+                </span>
+                <CronBuilder value={cronExpr} onChange={setCronExpr} />
+              </label>
+              <div
+                style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setCronOpen(false)}
+                  style={btnSecondary(pending)}
+                >
+                  Annuleer
+                </button>
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={createCron}
+                  style={btnPrimary(pending)}
+                >
+                  Aanmaken
+                </button>
+              </div>
+              <p style={{ fontSize: 11, color: "var(--app-fg-3)", margin: 0 }}>
+                De prompt hierboven wordt gebruikt als de cron afvuurt. Voor
+                subscription-Claude vereist Cron een geconfigureerde
+                ANTHROPIC_API_KEY (Claude Routines).
+              </p>
+            </div>
+          )}
+          <p
+            style={{
+              color: "var(--app-fg-3)",
+              fontSize: 11.5,
+              marginTop: 10,
+            }}
+          >
+            Webhook = externe trigger via een geheime URL. Run now = queue een
+            handmatige run die de dispatcher meteen oppakt. Cron = Claude
+            Routines met cron-expressie (vereist Anthropic key).
+          </p>
+          {error && (
+            <p role="alert" style={errStyle}>
+              {error}
+            </p>
+          )}
+          {revealedSecret && (
+            <div
+              style={{
+                marginTop: 14,
+                padding: 12,
+                background: "rgba(57,178,85,0.08)",
+                border: "1.5px solid var(--tt-green)",
+                borderRadius: 10,
+                fontSize: 12,
+              }}
+            >
+              <strong style={{ color: "var(--tt-green)" }}>
+                Sla deze URL nu op — wordt niet opnieuw getoond.
+              </strong>
+              <code
+                style={{
+                  display: "block",
+                  marginTop: 6,
+                  padding: 8,
+                  background: "var(--app-card-2)",
+                  borderRadius: 6,
+                  wordBreak: "break-all",
+                  fontSize: 11,
+                }}
+              >
+                {revealedSecret.url}
+              </code>
+            </div>
+          )}
+        </section>
       )}
 
       <section>
@@ -486,7 +515,9 @@ export function SchedulesPanel({
                         cursor: pending ? "wait" : "pointer",
                         fontSize: 10.5,
                         fontWeight: 700,
-                        color: s.enabled ? "var(--tt-green)" : "var(--app-fg-3)",
+                        color: s.enabled
+                          ? "var(--tt-green)"
+                          : "var(--app-fg-3)",
                       }}
                     >
                       <span
@@ -496,7 +527,9 @@ export function SchedulesPanel({
                           width: 34,
                           height: 19,
                           borderRadius: 10,
-                          background: s.enabled ? "var(--tt-green)" : "var(--app-border)",
+                          background: s.enabled
+                            ? "var(--tt-green)"
+                            : "var(--app-border)",
                           transition: "background 0.2s",
                           flexShrink: 0,
                         }}
@@ -569,47 +602,58 @@ export function SchedulesPanel({
                     const cardIsSubscription =
                       cardAgent?.key_source === "subscription";
                     return (
-                  <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
-                    <button
-                      type="button"
-                      disabled={pending || cardIsSubscription}
-                      onClick={() => triggerNow(s.agent_id, s.id)}
-                      style={btnSecondary(pending || cardIsSubscription)}
-                      title={
-                        cardIsSubscription
-                          ? "Subscription-Claude mag alleen via chat of cron-schedule (Anthropic Routines)."
-                          : "Voert deze schedule's prompt nu uit (of de Prompt-textarea bovenaan als die ingevuld is)"
-                      }
-                    >
-                      ▶ Run now
-                    </button>
-                    <button
-                      type="button"
-                      disabled={pending}
-                      onClick={() => setEditingSchedule(s)}
-                      style={btnSecondary(pending)}
-                    >
-                      Bewerken
-                    </button>
-                    {s.kind === "webhook" && (
-                      <button
-                        type="button"
-                        disabled={pending}
-                        onClick={() => rotate(s.id)}
-                        style={btnSecondary(pending)}
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 6,
+                          marginTop: 10,
+                          flexWrap: "wrap",
+                        }}
                       >
-                        Roteer secret
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      disabled={pending}
-                      onClick={() => remove(s.id)}
-                      style={{ ...btnSecondary(pending), borderColor: "var(--rose)", color: "var(--rose)" }}
-                    >
-                      Verwijderen
-                    </button>
-                  </div>
+                        <button
+                          type="button"
+                          disabled={pending || cardIsSubscription}
+                          onClick={() => triggerNow(s.agent_id, s.id)}
+                          style={btnSecondary(pending || cardIsSubscription)}
+                          title={
+                            cardIsSubscription
+                              ? "Subscription-Claude mag alleen via chat of cron-schedule (Anthropic Routines)."
+                              : "Voert deze schedule's prompt nu uit (of de Prompt-textarea bovenaan als die ingevuld is)"
+                          }
+                        >
+                          ▶ Run now
+                        </button>
+                        <button
+                          type="button"
+                          disabled={pending}
+                          onClick={() => setEditingSchedule(s)}
+                          style={btnSecondary(pending)}
+                        >
+                          Bewerken
+                        </button>
+                        {s.kind === "webhook" && (
+                          <button
+                            type="button"
+                            disabled={pending}
+                            onClick={() => rotate(s.id)}
+                            style={btnSecondary(pending)}
+                          >
+                            Roteer secret
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          disabled={pending}
+                          onClick={() => remove(s.id)}
+                          style={{
+                            ...btnSecondary(pending),
+                            borderColor: "var(--rose)",
+                            color: "var(--rose)",
+                          }}
+                        >
+                          Verwijderen
+                        </button>
+                      </div>
                     );
                   })()}
                 </div>
@@ -629,6 +673,12 @@ export function SchedulesPanel({
             provider: a.provider,
           }))}
           navNodes={navNodes}
+          telegramTargets={telegramTargets}
+          customIntegrations={customIntegrations}
+          notificationTargets={notificationTargets}
+          selectedNotificationTargetIds={
+            notificationTargetBindings[editingSchedule.id] ?? []
+          }
           onClose={closeEditingSchedule}
         />
       )}

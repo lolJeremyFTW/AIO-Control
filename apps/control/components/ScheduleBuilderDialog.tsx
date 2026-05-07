@@ -5,6 +5,7 @@ import type React from "react";
 import { useEffect, useRef, useState } from "react";
 
 import type { AgentRow } from "../lib/queries/agents";
+import type { NotificationTargetChoice } from "./NotificationBindingsField";
 import { ScheduleBuilder } from "./ScheduleBuilder";
 
 type Target = { id: string; name: string };
@@ -17,6 +18,7 @@ type Props = {
   triggerOrigin: string;
   telegramTargets: Target[];
   customIntegrations: Target[];
+  notificationTargets?: NotificationTargetChoice[];
   navNodes: { id: string; name: string; depth: number }[];
   initialNavNodeId?: string | null;
 };
@@ -29,6 +31,7 @@ export function ScheduleBuilderDialog({
   triggerOrigin,
   telegramTargets,
   customIntegrations,
+  notificationTargets = [],
   navNodes,
   initialNavNodeId = null,
 }: Props) {
@@ -74,6 +77,7 @@ export function ScheduleBuilderDialog({
               triggerOrigin={triggerOrigin}
               telegramTargets={telegramTargets}
               customIntegrations={customIntegrations}
+              notificationTargets={notificationTargets}
               navNodes={navNodes}
               initialNavNodeId={initialNavNodeId}
               onCreated={() => {

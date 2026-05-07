@@ -12,6 +12,10 @@ import { translate, type Locale } from "../lib/i18n/dict";
 import { useLocale } from "../lib/i18n/client";
 import { AgentTopicsField } from "./AgentTopicsField";
 import { McpServersField } from "./McpServersField";
+import {
+  NotificationBindingsField,
+  type NotificationTargetChoice,
+} from "./NotificationBindingsField";
 import { ProviderModelPicker } from "./ProviderModelPicker";
 import { RoutingRulesEditor } from "./RoutingRulesEditor";
 
@@ -27,6 +31,7 @@ type Props = {
   businessId: string | null;
   telegramTargets?: Target[];
   customIntegrations?: Target[];
+  notificationTargets?: NotificationTargetChoice[];
   /** Workspace-level defaults applied when the user opens a fresh
    *  agent dialog (he can still override). */
   defaults?: {
@@ -46,12 +51,28 @@ type Props = {
 };
 
 const PROVIDERS: { id: Provider; label: string; defaultModel?: string }[] = [
-  { id: "claude", label: "Claude (Anthropic API key)", defaultModel: "claude-sonnet-4-6" },
-  { id: "claude_cli", label: "Claude CLI (subscription, geen API key)", defaultModel: "sonnet" },
+  {
+    id: "claude",
+    label: "Claude (Anthropic API key)",
+    defaultModel: "claude-sonnet-4-6",
+  },
+  {
+    id: "claude_cli",
+    label: "Claude CLI (subscription, geen API key)",
+    defaultModel: "sonnet",
+  },
   { id: "openrouter", label: "OpenRouter", defaultModel: "openrouter/auto" },
-  { id: "minimax", label: "MiniMax (Coder Plan)", defaultModel: "MiniMax-M2.7-Highspeed" },
+  {
+    id: "minimax",
+    label: "MiniMax (Coder Plan)",
+    defaultModel: "MiniMax-M2.7-Highspeed",
+  },
   { id: "ollama", label: "Ollama (lokaal/VPS)", defaultModel: "llama3" },
-  { id: "openai_codex", label: "OpenAI Codex (ChatGPT login)", defaultModel: "openai_codex/gpt-5.5" },
+  {
+    id: "openai_codex",
+    label: "OpenAI Codex (ChatGPT login)",
+    defaultModel: "openai_codex/gpt-5.5",
+  },
   { id: "openclaw", label: "OpenClaw (CLI subprocess op VPS)" },
   { id: "hermes", label: "Hermes-agent (CLI subprocess op VPS)" },
   { id: "codex", label: "Codex / OpenAI" },
@@ -71,6 +92,7 @@ export function NewAgentDialog({
   businessId,
   telegramTargets = [],
   customIntegrations = [],
+  notificationTargets = [],
   defaults,
   navOptions = [],
   initialTopicIds = [],
@@ -88,11 +110,16 @@ export function NewAgentDialog({
     (defaults?.provider as Provider) || "claude",
   );
   const [model, setModel] = useState(defaults?.model ?? "");
-  const [systemPrompt, setSystemPrompt] = useState(defaults?.systemPrompt ?? "");
+  const [systemPrompt, setSystemPrompt] = useState(
+    defaults?.systemPrompt ?? "",
+  );
   const [endpoint, setEndpoint] = useState("");
   const [routingRulesJson, setRoutingRulesJson] = useState("");
   const [telegramTargetId, setTelegramTargetId] = useState("");
   const [customIntegrationId, setCustomIntegrationId] = useState("");
+  const [notificationTargetIds, setNotificationTargetIds] = useState<string[]>(
+    [],
+  );
   const [topicIds, setTopicIds] = useState<string[]>(() => {
     const available = new Set(navOptions.map((option) => option.id));
     return initialTopicIds.filter((id) => available.has(id));
@@ -146,11 +173,13 @@ export function NewAgentDialog({
       routingRulesJson: routingRulesJson || undefined,
       telegram_target_id: telegramTargetId || null,
       custom_integration_id: customIntegrationId || null,
+      notification_target_ids: notificationTargetIds,
       key_source: keySource,
       nav_node_id: topicIds[0] ?? null,
       nav_node_ids: topicIds,
       mcpServers: mcpServers.length > 0 ? mcpServers : undefined,
-      mcpPermissions: Object.keys(mcpPermissions).length > 0 ? mcpPermissions : undefined,
+      mcpPermissions:
+        Object.keys(mcpPermissions).length > 0 ? mcpPermissions : undefined,
     });
     setPending(false);
     if (!res.ok) {
@@ -221,7 +250,9 @@ export function NewAgentDialog({
           />
         </Field>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div
+          style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}
+        >
           <Field label={t("agent.field.kind")}>
             <select
               value={kind}
@@ -263,7 +294,9 @@ export function NewAgentDialog({
               : t("agent.field.model")
           }
         >
-          {provider === "openclaw" || provider === "hermes" || provider === "openai_codex" ? (
+          {provider === "openclaw" ||
+          provider === "hermes" ||
+          provider === "openai_codex" ? (
             <ProviderModelPicker
               provider={provider}
               value={model}
@@ -297,8 +330,8 @@ export function NewAgentDialog({
 
         {provider === "claude_cli" && (
           <Hint>
-            Gebruikt de <code>claude</code> CLI op de VPS. Geen API key nodig
-            — quotum komt uit je Claude Pro/Max/Team abonnement. Model-veld
+            Gebruikt de <code>claude</code> CLI op de VPS. Geen API key nodig —
+            quotum komt uit je Claude Pro/Max/Team abonnement. Model-veld
             accepteert <code>sonnet</code>, <code>opus</code>,{" "}
             <code>haiku</code> of een full model id.
           </Hint>
@@ -336,16 +369,16 @@ export function NewAgentDialog({
         )}
         {provider === "openclaw" && (
           <Hint>
-            Roept <code>openclaw agent --local --json -m &lt;prompt&gt;</code> aan op de
-            VPS. Override binary via <code>OPENCLAW_BIN</code> env als{" "}
-            <code>openclaw</code> niet in PATH staat. Geen API key nodig in
-            AIO Control — OpenClaw regelt zijn eigen provider keys.
+            Roept <code>openclaw agent --local --json -m &lt;prompt&gt;</code>{" "}
+            aan op de VPS. Override binary via <code>OPENCLAW_BIN</code> env als{" "}
+            <code>openclaw</code> niet in PATH staat. Geen API key nodig in AIO
+            Control — OpenClaw regelt zijn eigen provider keys.
           </Hint>
         )}
         {provider === "hermes" && (
           <Hint>
-            Roept <code>hermes chat --json --message &lt;prompt&gt;</code> aan op de
-            VPS. Set <code>HERMES_BIN</code> in env naar het absolute pad
+            Roept <code>hermes chat --json --message &lt;prompt&gt;</code> aan
+            op de VPS. Set <code>HERMES_BIN</code> in env naar het absolute pad
             (b.v. <code>/root/.hermes/hermes-agent/hermes</code>). Let op
             user-permissies — de aio-control service draait als{" "}
             <code>jeremy</code>.
@@ -430,6 +463,12 @@ export function NewAgentDialog({
           </div>
         )}
 
+        <NotificationBindingsField
+          targets={notificationTargets}
+          selectedIds={notificationTargetIds}
+          onChange={setNotificationTargetIds}
+        />
+
         <details style={{ marginBottom: 12 }}>
           <summary
             style={{
@@ -483,11 +522,7 @@ export function NewAgentDialog({
             justifyContent: "flex-end",
           }}
         >
-          <button
-            type="button"
-            onClick={onClose}
-            style={btnSecondary}
-          >
+          <button type="button" onClick={onClose} style={btnSecondary}>
             {t("common.cancel")}
           </button>
           <button type="submit" disabled={pending} style={btnPrimary(pending)}>

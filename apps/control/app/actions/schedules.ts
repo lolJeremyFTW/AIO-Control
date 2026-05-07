@@ -11,12 +11,18 @@ import { revalidatePath } from "next/cache";
 import { createRoutine, deleteRoutine } from "@aio/ai/routines";
 
 import { dispatchRun } from "../../lib/dispatch/runs";
+import {
+  getValidNotificationTargetIds,
+  replaceNotificationBindings,
+} from "../../lib/notify/bindings";
 import { mergeScheduleSnapshotIntoInput } from "../../lib/runs/schedule-label";
 import { createSupabaseServerClient } from "../../lib/supabase/server";
 
 export type ScheduleKind = "cron" | "webhook" | "manual";
 
-export type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string };
+export type ActionResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: string };
 
 function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
@@ -45,8 +51,15 @@ export async function createCronSchedule(input: {
   timezone?: string;
   telegram_target_id?: string | null;
   custom_integration_id?: string | null;
+  notification_target_ids?: string[];
 }): Promise<ActionResult<{ id: string; routine_id: string | null }>> {
   const supabase = await createSupabaseServerClient();
+  const notificationTargetIds = await getValidNotificationTargetIds(
+    supabase,
+    input.workspace_id,
+    input.notification_target_ids,
+  );
+  if (!notificationTargetIds.ok) return notificationTargetIds;
 
   // Look up the agent so we know whether to route this through Claude
   // Routines (subscription Claude — runs on Claude's own infra) or
@@ -120,6 +133,19 @@ export async function createCronSchedule(input: {
         error: error?.message ?? "Failed to persist schedule.",
       };
     }
+    if (notificationTargetIds.data.length > 0) {
+      const bindingRes = await replaceNotificationBindings(supabase, {
+        workspaceId: input.workspace_id,
+        ownerType: "schedule",
+        ownerId: data.id,
+        targetIds: notificationTargetIds.data,
+      });
+      if (!bindingRes.ok) {
+        await deleteRoutine(routine.id).catch(() => {});
+        await supabase.from("schedules").delete().eq("id", data.id);
+        return { ok: false, error: bindingRes.error };
+      }
+    }
     revalidatePath(
       `/${input.workspace_slug}/business/${input.business_id ?? ""}`,
     );
@@ -157,6 +183,18 @@ export async function createCronSchedule(input: {
       ok: false,
       error: error?.message ?? "Failed to persist schedule.",
     };
+  }
+  if (notificationTargetIds.data.length > 0) {
+    const bindingRes = await replaceNotificationBindings(supabase, {
+      workspaceId: input.workspace_id,
+      ownerType: "schedule",
+      ownerId: data.id,
+      targetIds: notificationTargetIds.data,
+    });
+    if (!bindingRes.ok) {
+      await supabase.from("schedules").delete().eq("id", data.id);
+      return { ok: false, error: bindingRes.error };
+    }
   }
   revalidatePath(
     `/${input.workspace_slug}/business/${input.business_id ?? ""}`,
@@ -213,7 +251,9 @@ export async function createWebhookSchedule(input: {
   if (error || !data) {
     return { ok: false, error: error?.message ?? "Insert failed." };
   }
-  revalidatePath(`/${input.workspace_slug}/business/${input.business_id ?? ""}`);
+  revalidatePath(
+    `/${input.workspace_slug}/business/${input.business_id ?? ""}`,
+  );
   return { ok: true, data: { id: data.id, secret } };
 }
 
@@ -390,6 +430,7 @@ export async function toggleSchedule(input: {
 
 export async function updateSchedule(input: {
   workspace_slug: string;
+  workspace_id?: string;
   schedule_id: string;
   patch: {
     /** Repoint the schedule at a different agent. Useful when the
@@ -403,6 +444,7 @@ export async function updateSchedule(input: {
     timezone?: string;
     telegram_target_id?: string | null;
     custom_integration_id?: string | null;
+    notification_target_ids?: string[] | null;
     nav_node_id?: string | null;
     enabled?: boolean;
   };
@@ -414,23 +456,64 @@ export async function updateSchedule(input: {
     patch.description = input.patch.description;
   if (input.patch.instructions !== undefined)
     patch.instructions = input.patch.instructions;
-  if (input.patch.cron_expr !== undefined) patch.cron_expr = input.patch.cron_expr;
+  if (input.patch.cron_expr !== undefined)
+    patch.cron_expr = input.patch.cron_expr;
   if (input.patch.timezone !== undefined) patch.timezone = input.patch.timezone;
   if (input.patch.telegram_target_id !== undefined)
     patch.telegram_target_id = input.patch.telegram_target_id;
   if (input.patch.custom_integration_id !== undefined)
     patch.custom_integration_id = input.patch.custom_integration_id;
-  if (input.patch.nav_node_id !== undefined) patch.nav_node_id = input.patch.nav_node_id;
+  if (input.patch.nav_node_id !== undefined)
+    patch.nav_node_id = input.patch.nav_node_id;
   if (input.patch.enabled !== undefined) patch.enabled = input.patch.enabled;
 
-  if (Object.keys(patch).length === 0) return { ok: true, data: null };
-
   const supabase = await createSupabaseServerClient();
-  const { error } = await supabase
-    .from("schedules")
-    .update(patch)
-    .eq("id", input.schedule_id);
-  if (error) return { ok: false, error: error.message };
+  const hasNotificationBindingPatch =
+    input.patch.notification_target_ids !== undefined;
+  let notificationWorkspaceId: string | null = null;
+  let notificationTargetIds: string[] | null = null;
+  if (hasNotificationBindingPatch) {
+    notificationWorkspaceId = input.workspace_id ?? null;
+    if (!notificationWorkspaceId) {
+      const { data: scheduleRow, error: scheduleError } = await supabase
+        .from("schedules")
+        .select("workspace_id")
+        .eq("id", input.schedule_id)
+        .maybeSingle();
+      if (scheduleError || !scheduleRow?.workspace_id) {
+        return { ok: false, error: "Schedule niet gevonden." };
+      }
+      notificationWorkspaceId = scheduleRow.workspace_id as string;
+    }
+    const validTargetIds = await getValidNotificationTargetIds(
+      supabase,
+      notificationWorkspaceId,
+      input.patch.notification_target_ids,
+    );
+    if (!validTargetIds.ok) return validTargetIds;
+    notificationTargetIds = validTargetIds.data;
+  }
+
+  if (Object.keys(patch).length === 0 && !hasNotificationBindingPatch) {
+    return { ok: true, data: null };
+  }
+
+  if (Object.keys(patch).length > 0) {
+    const { error } = await supabase
+      .from("schedules")
+      .update(patch)
+      .eq("id", input.schedule_id);
+    if (error) return { ok: false, error: error.message };
+  }
+  if (hasNotificationBindingPatch && notificationWorkspaceId) {
+    const bindingRes = await replaceNotificationBindings(supabase, {
+      workspaceId: notificationWorkspaceId,
+      ownerType: "schedule",
+      ownerId: input.schedule_id,
+      targetIds: notificationTargetIds ?? [],
+    });
+    if (!bindingRes.ok) return { ok: false, error: bindingRes.error };
+  }
   revalidatePath(`/${input.workspace_slug}`);
   return { ok: true, data: null };
 }

@@ -6,6 +6,10 @@
 
 import { revalidatePath } from "next/cache";
 
+import {
+  getValidNotificationTargetIds,
+  replaceNotificationBindings,
+} from "../../lib/notify/bindings";
 import { createSupabaseServerClient } from "../../lib/supabase/server";
 
 export type AgentKeySource = "subscription" | "api_key" | "env";
@@ -38,6 +42,7 @@ export type AgentInput = {
   /** Optional notification routing — falls back to workspace defaults. */
   telegram_target_id?: string | null;
   custom_integration_id?: string | null;
+  notification_target_ids?: string[];
   /** Chain hooks: when this agent's run finishes, queue the next one. */
   next_agent_on_done?: string | null;
   next_agent_on_fail?: string | null;
@@ -87,7 +92,8 @@ async function getValidAgentTopicIds(
   if (!input.businessId) {
     return {
       ok: false,
-      error: "Workspace-globale agents kunnen niet aan business-topics worden gekoppeld.",
+      error:
+        "Workspace-globale agents kunnen niet aan business-topics worden gekoppeld.",
     };
   }
 
@@ -101,7 +107,7 @@ async function getValidAgentTopicIds(
   if (error) return { ok: false, error: error.message };
 
   const valid = new Set(
-    ((data ?? []) as Array<{ id: string }>).map((row) => row.id),
+    ((data ?? []) as Array<{ id: string }>).map((r) => r.id),
   );
   const missing = ids.filter((id) => !valid.has(id));
   if (missing.length > 0) {
@@ -203,6 +209,13 @@ export async function createAgent(
   });
   if (!topicIds.ok) return topicIds;
 
+  const notificationTargetIds = await getValidNotificationTargetIds(
+    supabase,
+    input.workspace_id,
+    input.notification_target_ids,
+  );
+  if (!notificationTargetIds.ok) return notificationTargetIds;
+
   const { data, error } = await supabase
     .from("agents")
     .insert({
@@ -220,8 +233,7 @@ export async function createAgent(
         ...(input.mcpServers && input.mcpServers.length > 0
           ? { mcpServers: input.mcpServers }
           : {}),
-        ...(input.mcpPermissions &&
-        Object.keys(input.mcpPermissions).length > 0
+        ...(input.mcpPermissions && Object.keys(input.mcpPermissions).length > 0
           ? { mcpPermissions: input.mcpPermissions }
           : {}),
         routingRules,
@@ -248,6 +260,18 @@ export async function createAgent(
     await supabase.from("agents").delete().eq("id", data.id);
     return { ok: false, error: topicLinkRes.error };
   }
+  if (notificationTargetIds.data.length > 0) {
+    const bindingRes = await replaceNotificationBindings(supabase, {
+      workspaceId: input.workspace_id,
+      ownerType: "agent",
+      ownerId: data.id,
+      targetIds: notificationTargetIds.data,
+    });
+    if (!bindingRes.ok) {
+      await supabase.from("agents").delete().eq("id", data.id);
+      return { ok: false, error: bindingRes.error };
+    }
+  }
   revalidatePath(
     `/${input.workspace_slug}/business/${input.business_id ?? ""}`,
   );
@@ -261,6 +285,7 @@ export async function createAgent(
 
 export async function updateAgent(input: {
   workspace_slug: string;
+  workspace_id?: string;
   /** null = workspace-global agent (revalidates the global page). */
   business_id: string | null;
   id: string;
@@ -273,6 +298,7 @@ export async function updateAgent(input: {
     endpoint?: string | null;
     telegram_target_id?: string | null;
     custom_integration_id?: string | null;
+    notification_target_ids?: string[] | null;
     next_agent_on_done?: string | null;
     next_agent_on_fail?: string | null;
     notify_email?: string | null;
@@ -286,6 +312,8 @@ export async function updateAgent(input: {
      *  business as a whole). Powers the per-topic dashboards via
      *  migration 043. */
     nav_node_id?: string | null;
+    /** Full topic link set. nav_node_id is derived from the first
+     *  selected topic for backwards-compatible run attribution. */
     nav_node_ids?: string[] | null;
     /** Names of MCP servers the agent should host (provider-specific).
      *  For provider="minimax" the known servers are "minimax",
@@ -331,14 +359,18 @@ export async function updateAgent(input: {
     const v = input.patch.allowed_skills;
     patch.allowed_skills = !v || v.length === 0 ? null : v;
   }
+  const hasNotificationBindingPatch =
+    input.patch.notification_target_ids !== undefined;
   const hasTopicLinkPatch =
     input.patch.nav_node_ids !== undefined ||
     input.patch.nav_node_id !== undefined;
   const supabase = await createSupabaseServerClient();
   let agentScope: { workspace_id: string; business_id: string | null } | null =
     null;
-  let topicIds: string[] | null = null;
-  if (hasTopicLinkPatch) {
+  if (
+    hasTopicLinkPatch ||
+    (hasNotificationBindingPatch && !input.workspace_id)
+  ) {
     const { data: agentRow, error: agentError } = await supabase
       .from("agents")
       .select("workspace_id, business_id")
@@ -347,10 +379,23 @@ export async function updateAgent(input: {
     if (agentError || !agentRow?.workspace_id) {
       return { ok: false, error: "Agent niet gevonden." };
     }
-    agentScope = agentRow as { workspace_id: string; business_id: string | null };
+    agentScope = agentRow as {
+      workspace_id: string;
+      business_id: string | null;
+    };
+  }
+
+  const agentWorkspaceId =
+    agentScope?.workspace_id ?? input.workspace_id ?? null;
+  const agentBusinessId = agentScope?.business_id ?? input.business_id;
+  let topicIds: string[] | null = null;
+  if (hasTopicLinkPatch) {
+    if (!agentWorkspaceId) {
+      return { ok: false, error: "Agent niet gevonden." };
+    }
     const validTopicIds = await getValidAgentTopicIds(supabase, {
-      workspaceId: agentScope.workspace_id,
-      businessId: agentScope.business_id,
+      workspaceId: agentWorkspaceId,
+      businessId: agentBusinessId,
       topicIds:
         input.patch.nav_node_ids !== undefined
           ? (input.patch.nav_node_ids ?? [])
@@ -359,6 +404,21 @@ export async function updateAgent(input: {
     if (!validTopicIds.ok) return validTopicIds;
     topicIds = validTopicIds.data;
     patch.nav_node_id = topicIds[0] ?? null;
+  }
+
+  let notificationWorkspaceId: string | null = null;
+  let notificationTargetIds: string[] | null = null;
+  if (hasNotificationBindingPatch) {
+    notificationWorkspaceId = agentWorkspaceId;
+    if (!notificationWorkspaceId)
+      return { ok: false, error: "Agent niet gevonden." };
+    const validTargetIds = await getValidNotificationTargetIds(
+      supabase,
+      notificationWorkspaceId,
+      input.patch.notification_target_ids,
+    );
+    if (!validTargetIds.ok) return validTargetIds;
+    notificationTargetIds = validTargetIds.data;
   }
 
   // Config fields are merged into the existing jsonb so we don't
@@ -407,7 +467,11 @@ export async function updateAgent(input: {
     patch.config = config;
   }
 
-  if (Object.keys(patch).length === 0 && !hasTopicLinkPatch) {
+  if (
+    Object.keys(patch).length === 0 &&
+    !hasNotificationBindingPatch &&
+    !hasTopicLinkPatch
+  ) {
     return { ok: true, data: null };
   }
 
@@ -418,14 +482,23 @@ export async function updateAgent(input: {
       .eq("id", input.id);
     if (error) return { ok: false, error: error.message };
   }
-  if (hasTopicLinkPatch && agentScope) {
+  if (hasTopicLinkPatch && agentWorkspaceId) {
     const topicLinkRes = await replaceAgentTopicLinks(supabase, {
-      workspaceId: agentScope.workspace_id,
-      businessId: agentScope.business_id,
+      workspaceId: agentWorkspaceId,
+      businessId: agentBusinessId,
       agentId: input.id,
       topicIds: topicIds ?? [],
     });
     if (!topicLinkRes.ok) return { ok: false, error: topicLinkRes.error };
+  }
+  if (hasNotificationBindingPatch && notificationWorkspaceId) {
+    const bindingRes = await replaceNotificationBindings(supabase, {
+      workspaceId: notificationWorkspaceId,
+      ownerType: "agent",
+      ownerId: input.id,
+      targetIds: notificationTargetIds ?? [],
+    });
+    if (!bindingRes.ok) return { ok: false, error: bindingRes.error };
   }
   if (input.business_id) {
     revalidatePath(`/${input.workspace_slug}/business/${input.business_id}`);
@@ -467,7 +540,8 @@ export async function duplicateAgent(input: {
     })
     .select("id")
     .single();
-  if (error || !data) return { ok: false, error: error?.message ?? "Insert faalde." };
+  if (error || !data)
+    return { ok: false, error: error?.message ?? "Insert faalde." };
 
   const { data: sourceTopicLinks } = await supabase
     .from("agent_topic_links")
@@ -490,6 +564,28 @@ export async function duplicateAgent(input: {
       source_id: input.source_id,
       agent_id: data.id,
       error: topicLinkRes.error,
+    });
+  }
+
+  const { data: sourceBindings } = await supabase
+    .from("notification_bindings")
+    .select("target_id")
+    .eq("workspace_id", input.workspace_id)
+    .eq("owner_type", "agent")
+    .eq("owner_id", input.source_id);
+  const bindingRes = await replaceNotificationBindings(supabase, {
+    workspaceId: input.workspace_id,
+    ownerType: "agent",
+    ownerId: data.id,
+    targetIds: ((sourceBindings ?? []) as Array<{ target_id: string }>).map(
+      (binding) => binding.target_id,
+    ),
+  });
+  if (!bindingRes.ok) {
+    console.error("duplicateAgent notification binding copy failed", {
+      source_id: input.source_id,
+      agent_id: data.id,
+      error: bindingRes.error,
     });
   }
 

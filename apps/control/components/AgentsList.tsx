@@ -10,15 +10,13 @@ import { useEffect, useState, useTransition } from "react";
 import { ContextMenu, type ContextMenuItem } from "@aio/ui/context-menu";
 import { ChatIcon, EditPenIcon, PlusIcon } from "@aio/ui/icon";
 
-import {
-  archiveAgent,
-  duplicateAgent,
-} from "../app/actions/agents";
+import { archiveAgent, duplicateAgent } from "../app/actions/agents";
 import { runAgentNow } from "../app/actions/schedules";
 import type { AgentRow } from "../lib/queries/agents";
 import { AgentRunsPanel } from "./AgentRunsPanel";
 import { EditAgentDialog } from "./EditAgentDialog";
 import { NewAgentDialog } from "./NewAgentDialog";
+import type { NotificationTargetChoice } from "./NotificationBindingsField";
 
 type Target = { id: string; name: string };
 
@@ -36,6 +34,8 @@ type Props = {
   providerKeyStatus?: Record<string, boolean>;
   telegramTargets?: Target[];
   customIntegrations?: Target[];
+  notificationTargets?: NotificationTargetChoice[];
+  notificationTargetBindings?: Record<string, string[]>;
   /** Workspace defaults that pre-fill NewAgentDialog. */
   workspaceDefaults?: {
     provider?: string | null;
@@ -61,6 +61,8 @@ export function AgentsList({
   providerKeyStatus = {},
   telegramTargets = [],
   customIntegrations = [],
+  notificationTargets = [],
+  notificationTargetBindings = {},
   workspaceDefaults,
   navOptions = [],
   contextNavNodeId = null,
@@ -125,9 +127,7 @@ export function AgentsList({
     {
       label: "Schedules…",
       onClick: () =>
-        router.push(
-          `/${workspaceSlug}/business/${businessId}/schedules`,
-        ),
+        router.push(`/${workspaceSlug}/business/${businessId}/schedules`),
     },
     { kind: "separator" },
     {
@@ -191,9 +191,9 @@ export function AgentsList({
         <div className="empty-state">
           <h2>Nog geen agents</h2>
           <p>
-            Een agent koppelt een provider (Claude / MiniMax / Ollama / je
-            eigen Hermes-agent) aan deze business. Maak er één aan om te
-            kunnen chatten en straks runs te schedulen.
+            Een agent koppelt een provider (Claude / MiniMax / Ollama / je eigen
+            Hermes-agent) aan deze business. Maak er één aan om te kunnen
+            chatten en straks runs te schedulen.
           </p>
           <button className="cta" onClick={() => setOpen(true)}>
             <PlusIcon /> Nieuwe agent
@@ -229,6 +229,7 @@ export function AgentsList({
           businessId={businessId}
           telegramTargets={telegramTargets}
           customIntegrations={customIntegrations}
+          notificationTargets={notificationTargets}
           defaults={workspaceDefaults}
           navOptions={navOptions}
           initialTopicIds={contextNavNodeId ? [contextNavNodeId] : []}
@@ -239,10 +240,15 @@ export function AgentsList({
       {editing && (
         <EditAgentDialog
           workspaceSlug={workspaceSlug}
+          workspaceId={workspaceId}
           businessId={businessId}
           agent={editing}
           telegramTargets={telegramTargets}
           customIntegrations={customIntegrations}
+          notificationTargets={notificationTargets}
+          selectedNotificationTargetIds={
+            notificationTargetBindings[editing.id] ?? []
+          }
           siblingAgents={agents.map((a) => ({ id: a.id, name: a.name }))}
           navOptions={navOptions}
           availableSkills={availableSkills}
@@ -278,11 +284,12 @@ function AgentCard({
   const [isMac, setIsMac] = useState(false);
   useEffect(() => {
     if (typeof navigator !== "undefined") {
-      setIsMac(/Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent));
+      setIsMac(
+        /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent),
+      );
     }
   }, []);
-  const topicCount =
-    agent.topic_ids?.length ?? (agent.nav_node_id ? 1 : 0);
+  const topicCount = agent.topic_ids?.length ?? (agent.nav_node_id ? 1 : 0);
 
   return (
     <div
@@ -322,7 +329,13 @@ function AgentCard({
         e.currentTarget.style.borderColor = "var(--app-border)";
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}
+      >
         <div style={{ fontWeight: 700, fontSize: 14 }}>{agent.name}</div>
         <span
           style={{

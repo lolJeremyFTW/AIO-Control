@@ -9,6 +9,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { updateSchedule } from "../app/actions/schedules";
 import type { ScheduleRow } from "../lib/queries/schedules";
+import {
+  NotificationBindingsField,
+  type NotificationTargetChoice,
+} from "./NotificationBindingsField";
 
 const DAYS = [
   { id: 0, label: "Zon" },
@@ -31,6 +35,8 @@ type Props = {
   schedule: ScheduleRow;
   telegramTargets?: Target[];
   customIntegrations?: Target[];
+  notificationTargets?: NotificationTargetChoice[];
+  selectedNotificationTargetIds?: string[];
   /** Agents in this business — used to repoint the schedule at a
    *  different agent without recreating the cron + Routine. */
   agents?: AgentChoice[];
@@ -45,13 +51,18 @@ export function EditScheduleDialog({
   schedule,
   telegramTargets = [],
   customIntegrations = [],
+  notificationTargets = [],
+  selectedNotificationTargetIds = [],
   agents = [],
   navNodes = [],
   onClose,
 }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
 
-  const initial = useMemo(() => parseCron(schedule.cron_expr ?? ""), [schedule]);
+  const initial = useMemo(
+    () => parseCron(schedule.cron_expr ?? ""),
+    [schedule],
+  );
 
   const [title, setTitle] = useState(schedule.title ?? "");
   const [description, setDescription] = useState(schedule.description ?? "");
@@ -69,6 +80,12 @@ export function EditScheduleDialog({
   );
   const [customIntegrationId, setCustomIntegrationId] = useState(
     schedule.custom_integration_id ?? "",
+  );
+  const [notificationTargetIds, setNotificationTargetIds] = useState<string[]>(
+    () => {
+      const available = new Set(notificationTargets.map((target) => target.id));
+      return selectedNotificationTargetIds.filter((id) => available.has(id));
+    },
   );
   const [enabled, setEnabled] = useState(schedule.enabled);
   const [agentId, setAgentId] = useState(schedule.agent_id);
@@ -98,6 +115,7 @@ export function EditScheduleDialog({
     setPending(true);
     const res = await updateSchedule({
       workspace_slug: workspaceSlug,
+      workspace_id: schedule.workspace_id,
       schedule_id: schedule.id,
       patch: {
         agent_id: agentId,
@@ -107,6 +125,7 @@ export function EditScheduleDialog({
         cron_expr: cronExpr,
         telegram_target_id: telegramTargetId || null,
         custom_integration_id: customIntegrationId || null,
+        notification_target_ids: notificationTargetIds,
         nav_node_id: navNodeId || null,
         enabled,
       },
@@ -226,27 +245,34 @@ export function EditScheduleDialog({
             <div style={{ fontSize: 11.5, fontWeight: 700, marginBottom: 8 }}>
               Wanneer?
             </div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
-              {(["interval", "hourly", "daily", "weekly", "custom"] as Mode[]).map(
-                (m) => (
-                  <button
-                    type="button"
-                    key={m}
-                    onClick={() => setMode(m)}
-                    style={pill(mode === m)}
-                  >
-                    {m === "interval"
-                      ? "Interval"
-                      : m === "hourly"
-                        ? "Elk uur"
-                        : m === "daily"
-                          ? "Dagelijks"
-                          : m === "weekly"
-                            ? "Wekelijks"
-                            : "Custom"}
-                  </button>
-                ),
-              )}
+            <div
+              style={{
+                display: "flex",
+                gap: 6,
+                flexWrap: "wrap",
+                marginBottom: 10,
+              }}
+            >
+              {(
+                ["interval", "hourly", "daily", "weekly", "custom"] as Mode[]
+              ).map((m) => (
+                <button
+                  type="button"
+                  key={m}
+                  onClick={() => setMode(m)}
+                  style={pill(mode === m)}
+                >
+                  {m === "interval"
+                    ? "Interval"
+                    : m === "hourly"
+                      ? "Elk uur"
+                      : m === "daily"
+                        ? "Dagelijks"
+                        : m === "weekly"
+                          ? "Wekelijks"
+                          : "Custom"}
+                </button>
+              ))}
             </div>
 
             {mode === "interval" && (
@@ -264,7 +290,13 @@ export function EditScheduleDialog({
             )}
 
             {(mode === "daily" || mode === "weekly") && (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 10,
+                }}
+              >
                 <Field label="Uur">
                   <input
                     type="number"
@@ -289,7 +321,14 @@ export function EditScheduleDialog({
             )}
 
             {mode === "weekly" && (
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 6,
+                  flexWrap: "wrap",
+                  marginTop: 8,
+                }}
+              >
                 {DAYS.map((d) => {
                   const on = days.includes(d.id);
                   return (
@@ -334,7 +373,9 @@ export function EditScheduleDialog({
         )}
 
         {(telegramTargets.length > 0 || customIntegrations.length > 0) && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div
+            style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}
+          >
             {telegramTargets.length > 0 && (
               <Field label="Telegram channel">
                 <select
@@ -369,6 +410,12 @@ export function EditScheduleDialog({
             )}
           </div>
         )}
+
+        <NotificationBindingsField
+          targets={notificationTargets}
+          selectedIds={notificationTargetIds}
+          onChange={setNotificationTargetIds}
+        />
 
         <label
           style={{
@@ -406,7 +453,14 @@ export function EditScheduleDialog({
           </p>
         )}
 
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            gap: 8,
+            marginTop: 12,
+          }}
+        >
           <button type="button" onClick={onClose} style={btnSecondary}>
             Annuleer
           </button>
@@ -441,13 +495,27 @@ function parseCron(expr: string): {
   if (parts.length !== 5) return def;
   const [m, h, dom, mon, dow] = parts;
   // Interval: */N * * * *
-  if (m && m.startsWith("*/") && h === "*" && dom === "*" && mon === "*" && dow === "*") {
+  if (
+    m &&
+    m.startsWith("*/") &&
+    h === "*" &&
+    dom === "*" &&
+    mon === "*" &&
+    dow === "*"
+  ) {
     const n = Number(m.slice(2));
     if (!Number.isNaN(n))
       return { ...def, mode: "interval", intervalMinutes: n };
   }
   // Hourly: M * * * *
-  if (m && /^\d+$/.test(m) && h === "*" && dom === "*" && mon === "*" && dow === "*") {
+  if (
+    m &&
+    /^\d+$/.test(m) &&
+    h === "*" &&
+    dom === "*" &&
+    mon === "*" &&
+    dow === "*"
+  ) {
     return { ...def, mode: "hourly", minute: Number(m) };
   }
   // Daily: M H * * *
@@ -559,10 +627,25 @@ const btnPrimary = (pending: boolean): React.CSSProperties => ({
   opacity: pending ? 0.8 : 1,
 });
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
-    <label style={{ display: "block", fontSize: 11, fontWeight: 600, marginBottom: 10 }}>
-      <span style={{ display: "block", marginBottom: 4, color: "var(--app-fg-2)" }}>
+    <label
+      style={{
+        display: "block",
+        fontSize: 11,
+        fontWeight: 600,
+        marginBottom: 10,
+      }}
+    >
+      <span
+        style={{ display: "block", marginBottom: 4, color: "var(--app-fg-2)" }}
+      >
         {label}
       </span>
       {children}
