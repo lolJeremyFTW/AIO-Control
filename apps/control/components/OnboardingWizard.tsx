@@ -134,7 +134,7 @@ export function OnboardingWizard({
         >
           {!stepDone(3) && businesses.length > 0 && (
             <Link
-              href={`/${workspaceSlug}/business/${businesses[0]!.id}/agents`}
+              href={`/${workspaceSlug}/business/${businesses[0]!.slug}/agents`}
               style={btn}
             >
               → Open Agents van {businesses[0]!.name}

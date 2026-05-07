@@ -222,7 +222,7 @@ function Card({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  const install = (businessId: string) =>
+  const install = (businessId: string, businessSlug: string) =>
     startTransition(async () => {
       setError(null);
       const res = await installMarketplaceAgent({
@@ -236,7 +236,7 @@ function Card({
         return;
       }
       router.push(
-        `/${workspaceSlug}/business/${businessId}/agents`,
+        `/${workspaceSlug}/business/${businessSlug}/agents`,
       );
     });
 
@@ -403,7 +403,7 @@ function Card({
                   {businesses.map((b) => (
                     <button
                       key={b.id}
-                      onClick={() => install(b.id)}
+                      onClick={() => install(b.id, b.slug)}
                       disabled={pending}
                       style={{
                         padding: "5px 10px",

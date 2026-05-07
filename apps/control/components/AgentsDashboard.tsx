@@ -384,7 +384,7 @@ export function AgentsDashboard({
             {perBiz.map((p) => (
               <a
                 key={p.biz.id}
-                href={`/${workspaceSlug}/business/${p.biz.id}`}
+                href={`/${workspaceSlug}/business/${p.biz.slug}`}
                 style={{
                   display: "block",
                   padding: 14,
