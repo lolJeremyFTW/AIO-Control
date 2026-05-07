@@ -14,12 +14,14 @@ type Props = {
   /** UUID of the nav_node, used to load and create custom dashboard tabs. */
   navNodeId: string;
   workspaceId: string;
+  routinesCount?: number;
 };
 
 const BUILT_IN_TABS = [
   { label: "Overzicht", suffix: "" },
   { label: "Agents", suffix: "/agents" },
   { label: "Runs", suffix: "/runs" },
+  { label: "Routines", suffix: "/routines" },
 ] as const;
 
 export function TopicTabs({
@@ -27,6 +29,7 @@ export function TopicTabs({
   topicName,
   navNodeId,
   workspaceId,
+  routinesCount = 0,
 }: Props) {
   const path = usePathname() ?? "";
 
@@ -139,6 +142,7 @@ export function TopicTabs({
             suffix === ""
               ? path === baseHref || path === `${baseHref}/`
               : path === href || path.startsWith(`${href}/`);
+          const badge = suffix === "/routines" ? routinesCount : undefined;
           return (
             <span
               key={label}
@@ -156,6 +160,7 @@ export function TopicTabs({
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
+                  gap: 6,
                   padding: "8px 10px 8px 14px",
                   fontSize: 12.5,
                   fontWeight: 700,
@@ -164,6 +169,27 @@ export function TopicTabs({
                 }}
               >
                 {label}
+                {typeof badge === "number" && badge > 0 && (
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 800,
+                      letterSpacing: 0.4,
+                      padding: "1px 6px",
+                      borderRadius: 999,
+                      background: active
+                        ? "var(--tt-green)"
+                        : "var(--app-card-2)",
+                      color: active ? "#fff" : "var(--app-fg-2)",
+                      border: active
+                        ? "1px solid var(--tt-green)"
+                        : "1px solid var(--app-border)",
+                      fontVariantNumeric: "tabular-nums",
+                    }}
+                  >
+                    {badge}
+                  </span>
+                )}
               </Link>
             </span>
           );

@@ -37,6 +37,7 @@ type Props = {
   telegramTargets: Target[];
   customIntegrations: Target[];
   navNodes?: { id: string; name: string; depth: number }[];
+  initialNavNodeId?: string | null;
   onCreated?: () => void;
 };
 
@@ -49,13 +50,14 @@ export function ScheduleBuilder({
   telegramTargets,
   customIntegrations,
   navNodes = [],
+  initialNavNodeId = null,
   onCreated,
 }: Props) {
   const [agentId, setAgentId] = useState(agents[0]?.id ?? "");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [instructions, setInstructions] = useState("");
-  const [navNodeId, setNavNodeId] = useState<string>("");
+  const [navNodeId, setNavNodeId] = useState<string>(initialNavNodeId ?? "");
 
   const [mode, setMode] = useState<Mode>("daily");
   const [intervalMinutes, setIntervalMinutes] = useState(30);

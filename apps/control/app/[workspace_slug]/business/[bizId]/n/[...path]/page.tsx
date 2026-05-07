@@ -9,6 +9,7 @@
 //   /runs    → runs tagged with this topic
 
 import Link from "next/link";
+import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 
 import { getAppIcon } from "@aio/ui/icon";
@@ -24,21 +25,25 @@ import { listBusinesses, findBusiness } from "../../../../../../lib/queries/busi
 import {
   listNavNodes,
   listFlatNavNodes,
+  listDescendantNavNodeIds,
   resolveNavPathBySlugs,
 } from "../../../../../../lib/queries/nav-nodes";
 import { listSkillsForWorkspace } from "../../../../../../lib/queries/skills";
+import type { ScheduleRow } from "../../../../../../lib/queries/schedules";
 import { AgentsList } from "../../../../../../components/AgentsList";
 import { GenerateDashboardCard } from "../../../../../../components/GenerateDashboardCard";
 import { NewNavNodeButton } from "../../../../../../components/NewNavNodeButton";
 import { RunsPage } from "../../../../../../components/RunsPage";
 import { SavedModuleDashboard } from "../../../../../../components/SavedModuleDashboard";
+import { ScheduleBuilderDialog } from "../../../../../../components/ScheduleBuilderDialog";
+import { SchedulesPanel } from "../../../../../../components/SchedulesPanel";
 import { TopicDashboard } from "../../../../../../components/TopicDashboard";
 import { TopicRoutinesList } from "../../../../../../components/TopicRoutinesList";
 import { TopicTabs } from "../../../../../../components/TopicTabs";
 import { getModuleDashboard } from "../../../../../../lib/queries/dashboards";
 import { createSupabaseServerClient } from "../../../../../../lib/supabase/server";
 
-const TOPIC_SUBROUTES = ["agents", "runs"] as const;
+const TOPIC_SUBROUTES = ["agents", "runs", "routines"] as const;
 type TopicSubroute = (typeof TOPIC_SUBROUTES)[number];
 
 type Props = {
@@ -92,7 +97,19 @@ export default async function NavNodePage({ params, searchParams }: Props) {
 
   const baseHref = `/${workspace.slug}/business/${biz.slug}`;
   const topicBaseHref = `${baseHref}/n/${navPath.join("/")}`;
-  const savedDashboardForTabs = await getModuleDashboard(current.id);
+  const scopeIds = await listDescendantNavNodeIds(current.id);
+  const supabaseForTopicTabs = await createSupabaseServerClient();
+  const [{ count: routinesCount }, savedDashboardForTabs] = await Promise.all([
+    supabaseForTopicTabs
+      .from("schedules")
+      .select("id", { count: "exact", head: true })
+      .eq("workspace_id", workspace.id)
+      .eq("business_id", biz.id)
+      .in("nav_node_id", scopeIds)
+      .in("kind", ["cron", "webhook"])
+      .eq("enabled", true),
+    getModuleDashboard(current.id),
+  ]);
 
   // ── Agents sub-route ────────────────────────────────────────────────
   if (subRoute === "agents") {
@@ -140,6 +157,7 @@ export default async function NavNodePage({ params, searchParams }: Props) {
           topicName={current.name}
           navNodeId={current.id}
           workspaceId={workspace.id}
+          routinesCount={routinesCount ?? 0}
         />
         <div className="content">
         <div className="page-title-row">
@@ -184,6 +202,7 @@ export default async function NavNodePage({ params, searchParams }: Props) {
           topicName={current.name}
           navNodeId={current.id}
           workspaceId={workspace.id}
+          routinesCount={routinesCount ?? 0}
         />
         <div className="content">
         <div className="page-title-row">
@@ -207,6 +226,94 @@ export default async function NavNodePage({ params, searchParams }: Props) {
   }
 
   // ── Overview (default) ──────────────────────────────────────────────
+  if (subRoute === "routines") {
+    const supabase = await createSupabaseServerClient();
+    const hdrs = await headers();
+    const [
+      navNodes,
+      { data: rows },
+      { data: telegramRows },
+      { data: customRows },
+      { t },
+    ] = await Promise.all([
+      listFlatNavNodes(biz.id),
+      supabase
+        .from("schedules_safe")
+        .select(
+          "id, workspace_id, agent_id, business_id, kind, cron_expr, provider_routine_id, enabled, last_fired_at, created_at, title, description, instructions, timezone, telegram_target_id, custom_integration_id, nav_node_id",
+        )
+        .eq("workspace_id", workspace.id)
+        .eq("business_id", biz.id)
+        .in("nav_node_id", scopeIds)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("telegram_targets")
+        .select("id, name")
+        .eq("workspace_id", workspace.id)
+        .eq("enabled", true),
+      supabase
+        .from("custom_integrations")
+        .select("id, name")
+        .eq("workspace_id", workspace.id)
+        .eq("enabled", true),
+      getDict(),
+    ]);
+    const agents = allAgents.filter(
+      (a) => a.business_id === biz.id || a.business_id === null,
+    );
+    const proto = hdrs.get("x-forwarded-proto") ?? "http";
+    const host =
+      hdrs.get("x-forwarded-host") ?? hdrs.get("host") ?? "localhost:3010";
+    const triggerOrigin =
+      process.env.NEXT_PUBLIC_TRIGGER_ORIGIN ?? `${proto}://${host}`;
+
+    return (
+      <>
+        <TopicTabs
+          baseHref={topicBaseHref}
+          topicName={current.name}
+          navNodeId={current.id}
+          workspaceId={workspace.id}
+          routinesCount={routinesCount ?? 0}
+        />
+        <div className="content">
+          <div className="page-title-row">
+            <h1>
+              {t("topic.routines")} — {current.name}
+            </h1>
+            {agents.length > 0 && (
+              <ScheduleBuilderDialog
+                workspaceSlug={workspace.slug}
+                workspaceId={workspace.id}
+                businessId={biz.id}
+                agents={agents}
+                triggerOrigin={triggerOrigin}
+                telegramTargets={
+                  (telegramRows ?? []) as { id: string; name: string }[]
+                }
+                customIntegrations={
+                  (customRows ?? []) as { id: string; name: string }[]
+                }
+                navNodes={navNodes}
+                initialNavNodeId={current.id}
+              />
+            )}
+          </div>
+          <SchedulesPanel
+            workspaceSlug={workspace.slug}
+            workspaceId={workspace.id}
+            businessId={biz.id}
+            agents={agents}
+            schedules={(rows ?? []) as ScheduleRow[]}
+            triggerOrigin={triggerOrigin}
+            navNodes={navNodes}
+            hideCreateForm={agents.length > 0}
+          />
+        </div>
+      </>
+    );
+  }
+
   if (customTabId) {
     const supabase = await createSupabaseServerClient();
     const { data: tab } = await supabase
@@ -226,6 +333,7 @@ export default async function NavNodePage({ params, searchParams }: Props) {
           topicName={current.name}
           navNodeId={current.id}
           workspaceId={workspace.id}
+          routinesCount={routinesCount ?? 0}
         />
         <div className="content">
           <iframe
@@ -266,6 +374,7 @@ export default async function NavNodePage({ params, searchParams }: Props) {
         topicName={current?.name ?? ""}
         navNodeId={current?.id ?? ""}
         workspaceId={workspace.id}
+        routinesCount={routinesCount ?? 0}
       />
       <div className="content">
 

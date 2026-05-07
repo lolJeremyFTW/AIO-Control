@@ -18,6 +18,7 @@ type Props = {
   telegramTargets: Target[];
   customIntegrations: Target[];
   navNodes: { id: string; name: string; depth: number }[];
+  initialNavNodeId?: string | null;
 };
 
 export function ScheduleBuilderDialog({
@@ -29,6 +30,7 @@ export function ScheduleBuilderDialog({
   telegramTargets,
   customIntegrations,
   navNodes,
+  initialNavNodeId = null,
 }: Props) {
   const router = useRouter();
   const ref = useRef<HTMLDialogElement>(null);
@@ -73,6 +75,7 @@ export function ScheduleBuilderDialog({
               telegramTargets={telegramTargets}
               customIntegrations={customIntegrations}
               navNodes={navNodes}
+              initialNavNodeId={initialNavNodeId}
               onCreated={() => {
                 setOpen(false);
                 router.refresh();
