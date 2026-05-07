@@ -59,6 +59,7 @@ export default async function BusinessLayout({ children, params }: Props) {
         .from("custom_tabs")
         .select("id, label, url")
         .eq("business_id", biz.id)
+        .is("nav_node_id", null)
         .order("sort_order", { ascending: true }),
       getDict(),
     ]);

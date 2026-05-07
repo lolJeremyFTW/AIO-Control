@@ -128,6 +128,16 @@ function internalAioPath(url: string, workspaceSlug: string): string | null {
   return null;
 }
 
+function resolvedTabHref(
+  tab: BusinessTabsTopicEntry,
+  base: string,
+  workspaceSlug: string,
+): string {
+  return tab.href.startsWith(`/${workspaceSlug}/`)
+    ? tab.href
+    : `${base}${tab.href}`;
+}
+
 export function BusinessTabs({
   workspaceSlug,
   businessId,
@@ -278,9 +288,7 @@ export function BusinessTabs({
     ...localTopicTabs.map((t) => {
       // internalAioPath already returns an absolute path starting with
       // /${workspaceSlug}/; prepending ${base} again would double it.
-      const href = t.href.startsWith(`/${workspaceSlug}/`)
-        ? t.href
-        : `${base}${t.href}`;
+      const href = resolvedTabHref(t, base, workspaceSlug);
       return {
         href,
         label: t.label,
@@ -307,7 +315,7 @@ export function BusinessTabs({
           const active = t.match(path);
           // Find matching topicTab entry to get its id for delete button.
           const topicEntry = localTopicTabs.find(
-            (tt) => `${base}${tt.href}` === t.href && tt.id,
+            (tt) => resolvedTabHref(tt, base, workspaceSlug) === t.href && tt.id,
           );
           return (
             <span
