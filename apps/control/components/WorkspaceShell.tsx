@@ -283,7 +283,8 @@ export function WorkspaceShell({
       ? (navMatch[1] ?? "").split("/").filter(Boolean)
       : [];
     const tabIndex = navSegments.indexOf("tab");
-    const navPath = tabIndex >= 0 ? navSegments.slice(0, tabIndex) : navSegments;
+    const navPath =
+      tabIndex >= 0 ? navSegments.slice(0, tabIndex) : navSegments;
     const tab = navMatch ? null : rest.split("/")[0] || "queue";
     return { biz, tab, navPath };
   }, [pathname, workspace.slug, businesses]);
@@ -1016,6 +1017,8 @@ export function WorkspaceShell({
                   name: b.name,
                   letter: b.letter,
                   variant: b.variant ?? "brand",
+                  icon: b.icon ?? null,
+                  logo_url: b.logo_url ?? null,
                   color_hex: b.color_hex ?? null,
                 }))}
                 navNodes={navNodes.map((n) => ({

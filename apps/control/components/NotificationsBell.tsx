@@ -7,7 +7,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { BellIcon, ChevronRightIcon } from "@aio/ui/icon";
+import { BellIcon, ChevronRightIcon, getAppIcon } from "@aio/ui/icon";
 
 import { getSupabaseBrowserClient } from "../lib/supabase/client";
 
@@ -29,6 +29,8 @@ type BusinessLookup = {
   /** First letter for the avatar dot when no icon is set. */
   letter: string;
   variant: string;
+  icon?: string | null;
+  logo_url?: string | null;
   /** Optional custom hex (overrides variant). */
   color_hex?: string | null;
 };
@@ -53,6 +55,29 @@ const NODE_VARIANT_COLORS: Record<string, string> = {
 function businessColor(biz: BusinessLookup | null) {
   if (!biz) return "var(--app-fg-3)";
   return biz.color_hex ?? NODE_VARIANT_COLORS[biz.variant] ?? "var(--tt-green)";
+}
+
+function businessTextColor(biz: BusinessLookup | null) {
+  if (!biz) return "#fff";
+  if (biz.color_hex) return readableTextColor(biz.color_hex);
+  return biz.variant === "amber" ? "#1a1c1a" : "#fff";
+}
+
+function readableTextColor(hex: string): string {
+  const m = hex.replace("#", "").trim();
+  const expanded =
+    m.length === 3
+      ? m
+          .split("")
+          .map((c) => c + c)
+          .join("")
+      : m;
+  const r = parseInt(expanded.slice(0, 2), 16);
+  const g = parseInt(expanded.slice(2, 4), 16);
+  const b = parseInt(expanded.slice(4, 6), 16);
+  if ([r, g, b].some((n) => Number.isNaN(n))) return "#fff";
+  const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+  return yiq >= 180 ? "#1a1c1a" : "#fff";
 }
 
 type Props = {
@@ -388,6 +413,7 @@ export function NotificationsBell({
           )}
           {groupedItems.map(({ id, items: arr, business: biz }) => {
             const collapsed = collapsedGroups.has(id);
+            const bizIcon = biz ? getAppIcon(biz.icon, 10) : null;
             return (
               <div key={id} style={{ marginBottom: 4 }}>
                 <button
@@ -433,15 +459,34 @@ export function NotificationsBell({
                       height: 14,
                       borderRadius: "50%",
                       background: businessColor(biz),
-                      color: "#fff",
+                      color: businessTextColor(biz),
                       display: "inline-flex",
                       alignItems: "center",
                       justifyContent: "center",
+                      overflow: "hidden",
                       fontSize: 9,
                       fontWeight: 800,
                     }}
                   >
-                    {biz ? biz.letter : "."}
+                    {biz?.logo_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={biz.logo_url}
+                        alt=""
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
+                          display: "block",
+                        }}
+                      />
+                    ) : bizIcon ? (
+                      bizIcon
+                    ) : biz ? (
+                      biz.letter
+                    ) : (
+                      "."
+                    )}
                   </span>
                   <span style={{ flex: 1 }}>
                     {biz ? biz.name : "Workspace"}
