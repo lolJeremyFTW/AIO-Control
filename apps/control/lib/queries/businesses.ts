@@ -19,6 +19,7 @@ export type BusinessTarget = {
 export type BusinessRow = {
   id: string;
   workspace_id: string;
+  slug: string;
   name: string;
   sub: string | null;
   letter: string;
@@ -45,7 +46,7 @@ export async function listBusinesses(
   const { data, error } = await supabase
     .from("businesses")
     .select(
-      "id, workspace_id, name, sub, letter, variant, icon, color_hex, logo_url, status, primary_action, created_at, sort_order, daily_spend_limit_cents, monthly_spend_limit_cents, description, mission, targets, isolated",
+      "id, workspace_id, slug, name, sub, letter, variant, icon, color_hex, logo_url, status, primary_action, created_at, sort_order, daily_spend_limit_cents, monthly_spend_limit_cents, description, mission, targets, isolated",
     )
     .eq("workspace_id", workspaceId)
     .is("archived_at", null)
@@ -113,6 +114,55 @@ export async function listKpisForWorkspace(
     return [];
   }
   return (data ?? []) as KpiRow[];
+}
+
+/** Converts a name into a URL-safe slug (lowercase alphanum + hyphens, max 60 chars). */
+export function slugifyName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/[\s-]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 60) || "item";
+}
+
+/** Finds an available slug for a business within a workspace, appending -2/-3 on collision. */
+export async function generateUniqueBusinessSlug(
+  supabase: Awaited<ReturnType<typeof import("../supabase/server").createSupabaseServerClient>>,
+  workspaceId: string,
+  name: string,
+  excludeId?: string,
+): Promise<string> {
+  const base = slugifyName(name);
+  let slug = base;
+  let attempt = 2;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    let q = supabase
+      .from("businesses")
+      .select("id")
+      .eq("workspace_id", workspaceId)
+      .eq("slug", slug);
+    if (excludeId) q = q.neq("id", excludeId);
+    const { data } = await q.maybeSingle();
+    if (!data) return slug;
+    slug = `${base}-${attempt}`;
+    attempt++;
+  }
+}
+
+/**
+ * Resolves a URL param that is either a slug or a legacy UUID.
+ * Returns the matching business or undefined.
+ */
+export function findBusiness(
+  businesses: BusinessRow[],
+  slugOrId: string,
+): BusinessRow | undefined {
+  return (
+    businesses.find((b) => b.slug === slugOrId) ??
+    businesses.find((b) => b.id === slugOrId)
+  );
 }
 
 /**

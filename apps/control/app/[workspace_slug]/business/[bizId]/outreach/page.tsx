@@ -12,7 +12,7 @@ import {
   getCurrentUser,
   getWorkspaceBySlug,
 } from "../../../../../lib/auth/workspace";
-import { listBusinesses } from "../../../../../lib/queries/businesses";
+import { listBusinesses, findBusiness } from "../../../../../lib/queries/businesses";
 import { OutreachLeadsTable } from "../../../../../components/OutreachLeadsTable";
 import { getServiceRoleSupabase } from "../../../../../lib/supabase/service";
 
@@ -33,7 +33,7 @@ export default async function OutreachPage({ params, searchParams }: Props) {
   if (!workspace) notFound();
 
   const businesses = await listBusinesses(workspace.id);
-  const biz = businesses.find((b) => b.id === bizId);
+  const biz = findBusiness(businesses, bizId);
   if (!biz) notFound();
 
   const supabase = getServiceRoleSupabase();
@@ -51,7 +51,7 @@ export default async function OutreachPage({ params, searchParams }: Props) {
         .from("outreach_leads")
         .select("id", { count: "exact", head: true })
         .eq("workspace_id", workspace.id)
-        .eq("business_id", bizId)
+        .eq("business_id", biz.id)
         .eq("status", s);
       counts[s] = count ?? 0;
     }),
@@ -95,7 +95,7 @@ export default async function OutreachPage({ params, searchParams }: Props) {
   const origin =
     process.env.NEXT_PUBLIC_TRIGGER_ORIGIN ?? "https://aio.tromptech.life";
 
-  const baseHref = `/${workspace.slug}/business/${bizId}/outreach`;
+  const baseHref = `/${workspace.slug}/business/${biz.slug}/outreach`;
 
   return (
     <div className="content">

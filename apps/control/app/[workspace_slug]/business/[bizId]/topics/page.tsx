@@ -11,6 +11,10 @@ import {
   getCurrentUser,
   getWorkspaceBySlug,
 } from "../../../../../lib/auth/workspace";
+import {
+  listBusinesses,
+  findBusiness,
+} from "../../../../../lib/queries/businesses";
 import { listFlatNavNodes } from "../../../../../lib/queries/nav-nodes";
 
 type Props = {
@@ -25,7 +29,11 @@ export default async function BusinessTopicsPage({ params }: Props) {
   const workspace = await getWorkspaceBySlug(workspace_slug);
   if (!workspace) notFound();
 
-  const topics = await listFlatNavNodes(bizId);
+  const businesses = await listBusinesses(workspace.id);
+  const biz = findBusiness(businesses, bizId);
+  if (!biz) notFound();
+
+  const topics = await listFlatNavNodes(biz.id);
   const base = `/${workspace_slug}/business/${bizId}`;
 
   return (
@@ -79,7 +87,7 @@ export default async function BusinessTopicsPage({ params }: Props) {
           {topics.map((t) => (
             <Link
               key={t.id}
-              href={`${base}/n/${t.id}`}
+              href={`${base}/n/${t.slug}`}
               style={{
                 display: "flex",
                 alignItems: "center",

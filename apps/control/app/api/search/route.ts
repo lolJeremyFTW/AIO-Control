@@ -61,7 +61,7 @@ export async function GET(req: Request) {
   // throw away.
   const bizQuery = supabase
     .from("businesses")
-    .select("id, name, sub")
+    .select("id, slug, name, sub")
     .ilike("name", like)
     .limit(6);
   if (businessFilter) bizQuery.eq("id", businessFilter);
@@ -88,6 +88,7 @@ export async function GET(req: Request) {
       (r) =>
         (r.data ?? []) as {
           id: string;
+          slug: string;
           name: string;
           sub: string | null;
         }[],
@@ -138,7 +139,7 @@ export async function GET(req: Request) {
       id: b.id,
       title: b.name,
       sub: b.sub ?? undefined,
-      href: `/${slug}/business/${b.id}`,
+      href: `/${slug}/business/${b.slug}`,
     })),
     ...agents.map((a) => ({
       kind: "agent" as const,

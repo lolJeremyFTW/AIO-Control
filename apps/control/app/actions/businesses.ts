@@ -11,6 +11,9 @@ import {
   telegramCreateForumTopic,
   telegramEditForumTopic,
 } from "../../lib/notify/telegram";
+import {
+  generateUniqueBusinessSlug,
+} from "../../lib/queries/businesses";
 import { createSupabaseServerClient } from "../../lib/supabase/server";
 import { getServiceRoleSupabase } from "../../lib/supabase/service";
 
@@ -51,10 +54,16 @@ export async function createBusiness(
       : null;
 
   const supabase = await createSupabaseServerClient();
+  const slug = await generateUniqueBusinessSlug(
+    supabase,
+    input.workspace_id,
+    input.name.trim(),
+  );
   const { data, error } = await supabase
     .from("businesses")
     .insert({
       workspace_id: input.workspace_id,
+      slug,
       name: input.name.trim(),
       sub: input.sub?.trim() || null,
       letter,
@@ -117,6 +126,8 @@ export async function createBusiness(
 export async function updateBusiness(input: {
   workspace_slug: string;
   id: string;
+  /** Current business slug — used in revalidatePath so the slug-based URL cache is cleared. */
+  business_slug?: string;
   patch: {
     name?: string;
     sub?: string | null;
@@ -144,6 +155,21 @@ export async function updateBusiness(input: {
     if (!trimmed) return { ok: false, error: "Naam mag niet leeg zijn." };
     patch.name = trimmed;
     patch.letter = trimmed.slice(0, 1).toUpperCase();
+    // Regenerate slug on rename to keep URLs human-readable.
+    const supabaseForSlug = await createSupabaseServerClient();
+    const { data: bizForWorkspace } = await supabaseForSlug
+      .from("businesses")
+      .select("workspace_id")
+      .eq("id", input.id)
+      .maybeSingle();
+    if (bizForWorkspace?.workspace_id) {
+      patch.slug = await generateUniqueBusinessSlug(
+        supabaseForSlug,
+        bizForWorkspace.workspace_id as string,
+        trimmed,
+        input.id,
+      );
+    }
   }
   if (input.patch.sub !== undefined)
     patch.sub = input.patch.sub?.toString().trim() || null;
@@ -191,7 +217,8 @@ export async function updateBusiness(input: {
   }
 
   revalidatePath(`/${input.workspace_slug}/dashboard`);
-  revalidatePath(`/${input.workspace_slug}/business/${input.id}`, "layout");
+  const bizPathId = (patch.slug as string | undefined) ?? input.business_slug ?? input.id;
+  revalidatePath(`/${input.workspace_slug}/business/${bizPathId}`, "layout");
   return { ok: true, data: null };
 }
 
@@ -211,11 +238,14 @@ export async function duplicateBusiness(input: {
   if (srcErr || !src) {
     return { ok: false, error: srcErr?.message ?? "Origineel niet gevonden." };
   }
+  const copyName = `${src.name} (kopie)`;
+  const copySlug = await generateUniqueBusinessSlug(supabase, input.workspace_id, copyName);
   const { data, error } = await supabase
     .from("businesses")
     .insert({
       workspace_id: input.workspace_id,
-      name: `${src.name} (kopie)`,
+      slug: copySlug,
+      name: copyName,
       sub: src.sub,
       letter: src.letter,
       variant: src.variant,

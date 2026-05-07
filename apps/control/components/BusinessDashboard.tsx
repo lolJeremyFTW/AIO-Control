@@ -100,7 +100,7 @@ export async function BusinessDashboard({
               queue.length > 0
                 ? {
                     label: t("biz.viewAll"),
-                    href: `/${workspaceSlug}/business/${business.id}`,
+                    href: `/${workspaceSlug}/business/${business.slug}`,
                   }
                 : undefined
             }
@@ -121,7 +121,7 @@ export async function BusinessDashboard({
               title={t("biz.agentsCount", { count: agents.length })}
               cta={{
                 label: t("biz.manage"),
-                href: `/${workspaceSlug}/business/${business.id}/agents`,
+                href: `/${workspaceSlug}/business/${business.slug}/agents`,
               }}
             />
             {agents.length === 0 ? (
@@ -169,7 +169,7 @@ export async function BusinessDashboard({
               title={t("biz.recentRuns")}
               cta={{
                 label: t("biz.history"),
-                href: `/${workspaceSlug}/business/${business.id}/schedules`,
+                href: `/${workspaceSlug}/business/${business.slug}/schedules`,
               }}
             />
             {runs.length === 0 ? (

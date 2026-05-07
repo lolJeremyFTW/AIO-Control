@@ -9,6 +9,9 @@ import { revalidatePath } from "next/cache";
 import { ALL_VARIANTS } from "@aio/ui/rail/Node";
 
 import { telegramCreateForumTopic } from "../../lib/notify/telegram";
+import {
+  generateUniqueNavNodeSlug,
+} from "../../lib/queries/nav-nodes";
 import { createSupabaseServerClient } from "../../lib/supabase/server";
 import { getServiceRoleSupabase } from "../../lib/supabase/service";
 
@@ -20,6 +23,8 @@ export async function createNavNode(input: {
   workspace_slug: string;
   workspace_id: string;
   business_id: string;
+  /** Business slug for cache revalidation — falls back to business_id if omitted. */
+  business_slug?: string;
   parent_id: string | null;
   name: string;
   variant?: string;
@@ -41,12 +46,18 @@ export async function createNavNode(input: {
       : null;
 
   const supabase = await createSupabaseServerClient();
+  const slug = await generateUniqueNavNodeSlug(
+    supabase,
+    input.business_id,
+    input.name.trim(),
+  );
   const { data, error } = await supabase
     .from("nav_nodes")
     .insert({
       workspace_id: input.workspace_id,
       business_id: input.business_id,
       parent_id: input.parent_id,
+      slug,
       name: input.name.trim(),
       letter,
       variant,
@@ -72,7 +83,7 @@ export async function createNavNode(input: {
   }).catch((err) => console.error("autoCreateNavNodeTopic failed", err));
 
   revalidatePath(
-    `/${input.workspace_slug}/business/${input.business_id}`,
+    `/${input.workspace_slug}/business/${input.business_slug ?? input.business_id}`,
     "layout",
   );
   return { ok: true, data: { id: data.id } };
@@ -166,6 +177,8 @@ async function autoCreateNavNodeTelegramTopic(opts: {
 export async function updateNavNode(input: {
   workspace_slug: string;
   business_id: string;
+  /** Business slug for cache revalidation — falls back to business_id if omitted. */
+  business_slug?: string;
   id: string;
   patch: {
     name?: string;
@@ -182,6 +195,14 @@ export async function updateNavNode(input: {
     if (!trimmed) return { ok: false, error: "Naam mag niet leeg zijn." };
     patch.name = trimmed;
     patch.letter = (input.patch.icon ?? trimmed).slice(0, 1).toUpperCase();
+    // Regenerate slug on rename.
+    const supabaseForSlug = await createSupabaseServerClient();
+    patch.slug = await generateUniqueNavNodeSlug(
+      supabaseForSlug,
+      input.business_id,
+      trimmed,
+      input.id,
+    );
   }
   if (input.patch.variant !== undefined) {
     if ((ALL_VARIANTS as readonly string[]).includes(input.patch.variant)) {
@@ -210,7 +231,7 @@ export async function updateNavNode(input: {
     .eq("id", input.id);
   if (error) return { ok: false, error: error.message };
   revalidatePath(
-    `/${input.workspace_slug}/business/${input.business_id}`,
+    `/${input.workspace_slug}/business/${input.business_slug ?? input.business_id}`,
     "layout",
   );
   return { ok: true, data: null };
@@ -220,6 +241,8 @@ export async function duplicateNavNode(input: {
   workspace_slug: string;
   workspace_id: string;
   business_id: string;
+  /** Business slug for cache revalidation — falls back to business_id if omitted. */
+  business_slug?: string;
   source_id: string;
 }): Promise<ActionResult<{ id: string }>> {
   const supabase = await createSupabaseServerClient();
@@ -231,13 +254,16 @@ export async function duplicateNavNode(input: {
   if (srcErr || !src) {
     return { ok: false, error: srcErr?.message ?? "Origineel niet gevonden." };
   }
+  const copyName = `${src.name} (kopie)`;
+  const copySlug = await generateUniqueNavNodeSlug(supabase, input.business_id, copyName);
   const { data, error } = await supabase
     .from("nav_nodes")
     .insert({
       workspace_id: input.workspace_id,
       business_id: input.business_id,
       parent_id: src.parent_id,
-      name: `${src.name} (kopie)`,
+      slug: copySlug,
+      name: copyName,
       letter: src.name.slice(0, 1).toUpperCase(),
       variant: src.variant,
       icon: src.icon,
@@ -252,7 +278,7 @@ export async function duplicateNavNode(input: {
     return { ok: false, error: error?.message ?? "Insert faalde." };
   }
   revalidatePath(
-    `/${input.workspace_slug}/business/${input.business_id}`,
+    `/${input.workspace_slug}/business/${input.business_slug ?? input.business_id}`,
     "layout",
   );
   return { ok: true, data: { id: data.id } };
@@ -261,6 +287,7 @@ export async function duplicateNavNode(input: {
 export async function moveNavNode(input: {
   workspace_slug: string;
   business_id: string;
+  business_slug?: string;
   id: string;
   new_parent_id: string | null;
 }): Promise<ActionResult<null>> {
@@ -291,7 +318,7 @@ export async function moveNavNode(input: {
     .eq("id", input.id);
   if (error) return { ok: false, error: error.message };
   revalidatePath(
-    `/${input.workspace_slug}/business/${input.business_id}`,
+    `/${input.workspace_slug}/business/${input.business_slug ?? input.business_id}`,
     "layout",
   );
   return { ok: true, data: null };
@@ -300,6 +327,7 @@ export async function moveNavNode(input: {
 export async function swapNavNodeOrder(input: {
   workspace_slug: string;
   business_id: string;
+  business_slug?: string;
   source_id: string;
   target_id: string;
 }): Promise<ActionResult<null>> {
@@ -326,7 +354,7 @@ export async function swapNavNodeOrder(input: {
     .eq("id", b.id);
 
   revalidatePath(
-    `/${input.workspace_slug}/business/${input.business_id}`,
+    `/${input.workspace_slug}/business/${input.business_slug ?? input.business_id}`,
     "layout",
   );
   return { ok: true, data: null };
@@ -335,6 +363,7 @@ export async function swapNavNodeOrder(input: {
 export async function reorderNavNode(input: {
   workspace_slug: string;
   business_id: string;
+  business_slug?: string;
   id: string;
   direction: "up" | "down";
 }): Promise<ActionResult<null>> {
@@ -377,7 +406,7 @@ export async function reorderNavNode(input: {
     .eq("id", sib.data.id);
 
   revalidatePath(
-    `/${input.workspace_slug}/business/${input.business_id}`,
+    `/${input.workspace_slug}/business/${input.business_slug ?? input.business_id}`,
     "layout",
   );
   return { ok: true, data: null };
@@ -386,6 +415,7 @@ export async function reorderNavNode(input: {
 export async function archiveNavNode(input: {
   workspace_slug: string;
   business_id: string;
+  business_slug?: string;
   id: string;
 }): Promise<ActionResult<null>> {
   const supabase = await createSupabaseServerClient();
@@ -395,7 +425,7 @@ export async function archiveNavNode(input: {
     .eq("id", input.id);
   if (error) return { ok: false, error: error.message };
   revalidatePath(
-    `/${input.workspace_slug}/business/${input.business_id}`,
+    `/${input.workspace_slug}/business/${input.business_slug ?? input.business_id}`,
     "layout",
   );
   return { ok: true, data: null };

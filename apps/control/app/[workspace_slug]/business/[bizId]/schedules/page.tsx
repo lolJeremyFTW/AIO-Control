@@ -10,7 +10,7 @@ import {
 } from "../../../../../lib/auth/workspace";
 import { getDict } from "../../../../../lib/i18n/server";
 import { listAgentsForWorkspace } from "../../../../../lib/queries/agents";
-import { listBusinesses } from "../../../../../lib/queries/businesses";
+import { listBusinesses, findBusiness } from "../../../../../lib/queries/businesses";
 import {
   listSchedulesForBusiness,
   listRecentRunsForBusiness,
@@ -37,18 +37,12 @@ export default async function BusinessSchedulesPage({ params }: Props) {
   const [
     businesses,
     allAgents,
-    schedules,
-    runs,
-    navNodes,
     hdrs,
     { data: telegramRows },
     { data: customRows },
   ] = await Promise.all([
     listBusinesses(workspace.id),
     listAgentsForWorkspace(workspace.id),
-    listSchedulesForBusiness(bizId),
-    listRecentRunsForBusiness(bizId, 12),
-    listFlatNavNodes(bizId),
     headers(),
     supabase
       .from("telegram_targets")
@@ -61,10 +55,15 @@ export default async function BusinessSchedulesPage({ params }: Props) {
       .eq("workspace_id", workspace.id)
       .eq("enabled", true),
   ]);
-  const biz = businesses.find((b) => b.id === bizId);
+  const biz = findBusiness(businesses, bizId);
   if (!biz) notFound();
+  const [schedules, runs, navNodes] = await Promise.all([
+    listSchedulesForBusiness(biz.id),
+    listRecentRunsForBusiness(biz.id, 12),
+    listFlatNavNodes(biz.id),
+  ]);
   const agents = allAgents.filter(
-    (a) => a.business_id === bizId || a.business_id === null,
+    (a) => a.business_id === biz.id || a.business_id === null,
   );
   const telegramTargets = (telegramRows ?? []) as { id: string; name: string }[];
   const customIntegrations = (customRows ?? []) as { id: string; name: string }[];

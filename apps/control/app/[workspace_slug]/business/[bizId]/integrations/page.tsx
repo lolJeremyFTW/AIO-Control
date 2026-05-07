@@ -6,7 +6,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { getCurrentUser, getWorkspaceBySlug } from "../../../../../lib/auth/workspace";
 import { getDict } from "../../../../../lib/i18n/server";
-import { listBusinesses } from "../../../../../lib/queries/businesses";
+import { listBusinesses, findBusiness } from "../../../../../lib/queries/businesses";
 import { listIntegrationsForBusiness } from "../../../../../lib/queries/integrations";
 import { IntegrationsList } from "../../../../../components/IntegrationsList";
 
@@ -22,12 +22,10 @@ export default async function BusinessIntegrationsPage({ params }: Props) {
   const workspace = await getWorkspaceBySlug(workspace_slug);
   if (!workspace) notFound();
 
-  const [businesses, integrations] = await Promise.all([
-    listBusinesses(workspace.id),
-    listIntegrationsForBusiness(workspace.id, bizId),
-  ]);
-  const biz = businesses.find((b) => b.id === bizId);
+  const businesses = await listBusinesses(workspace.id);
+  const biz = findBusiness(businesses, bizId);
   if (!biz) notFound();
+  const integrations = await listIntegrationsForBusiness(workspace.id, biz.id);
 
   const { t } = await getDict();
 
