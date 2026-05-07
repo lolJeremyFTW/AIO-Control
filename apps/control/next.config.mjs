@@ -20,6 +20,10 @@ const nextConfig = {
   transpilePackages: ["@aio/ui", "@aio/db", "@aio/ai"],
   // Standalone output makes systemd-on-VPS a one-line `node server.js`.
   output: "standalone",
+  // Keep build asset paths deterministic on the VPS. Next/Turbopack writes
+  // manifest temp files under .next/static/<buildId>; pre-creating that
+  // directory in deploy/vps-deploy.sh avoids intermittent ENOENT races.
+  generateBuildId: async () => process.env.GIT_COMMIT_SHA || "dev",
   // Pin Turbopack to the monorepo root so it stops walking up to the user's
   // home directory looking for an unrelated lockfile.
   turbopack: { root: monorepoRoot },
