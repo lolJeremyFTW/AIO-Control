@@ -5,7 +5,7 @@
 
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 
 import type { AgentRow } from "../lib/queries/agents";
@@ -48,6 +48,7 @@ export function SchedulesPanel({
   hideCreateForm = false,
 }: Props) {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const [pending, startTransition] = useTransition();
   const [agentId, setAgentId] = useState<string>(agents[0]?.id ?? "");
@@ -71,6 +72,19 @@ export function SchedulesPanel({
     const schedule = schedules.find((s) => s.id === scheduleId);
     if (schedule) setEditingSchedule(schedule);
   }, [schedules, searchParams]);
+
+  const closeEditingSchedule = () => {
+    setEditingSchedule(null);
+    const params = new URLSearchParams(searchParams.toString());
+    if (params.has("schedule")) {
+      params.delete("schedule");
+      const query = params.toString();
+      router.replace(query ? `${pathname}?${query}` : pathname, {
+        scroll: false,
+      });
+    }
+    router.refresh();
+  };
 
   const createWebhook = () => {
     if (!agentId) return setError("Kies eerst een agent.");
@@ -615,10 +629,7 @@ export function SchedulesPanel({
             provider: a.provider,
           }))}
           navNodes={navNodes}
-          onClose={() => {
-            setEditingSchedule(null);
-            router.refresh();
-          }}
+          onClose={closeEditingSchedule}
         />
       )}
     </div>
