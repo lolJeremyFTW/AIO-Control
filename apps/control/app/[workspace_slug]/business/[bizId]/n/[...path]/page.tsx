@@ -128,7 +128,7 @@ export default async function NavNodePage({ params, searchParams }: Props) {
 
     return (
       <>
-        <TopicTabs baseHref={topicBaseHref} topicName={current.name} />
+        <TopicTabs baseHref={topicBaseHref} topicName={current.name} navNodeId={current.id} workspaceId={workspace.id} />
         <div className="content">
         <div className="page-title-row">
           <h1>Agents — {current.name}</h1>
@@ -167,7 +167,7 @@ export default async function NavNodePage({ params, searchParams }: Props) {
     const businessAgents = allAgents.filter((a) => a.business_id === biz.id);
     return (
       <>
-        <TopicTabs baseHref={topicBaseHref} topicName={current.name} />
+        <TopicTabs baseHref={topicBaseHref} topicName={current.name} navNodeId={current.id} workspaceId={workspace.id} />
         <div className="content">
         <div className="page-title-row">
           <h1>Runs — {current.name}</h1>
@@ -206,7 +206,7 @@ export default async function NavNodePage({ params, searchParams }: Props) {
 
   return (
     <>
-      <TopicTabs baseHref={topicBaseHref} topicName={current?.name ?? ""} />
+      <TopicTabs baseHref={topicBaseHref} topicName={current?.name ?? ""} navNodeId={current?.id ?? ""} workspaceId={workspace.id} />
       <div className="content">
 
       <div
