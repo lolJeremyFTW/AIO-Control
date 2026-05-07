@@ -118,6 +118,16 @@ export type BusinessBlueprintPlan = {
   explanation: string;
 };
 
+export type BusinessTopicSuggestion = {
+  name: string;
+  reason: string;
+};
+
+export type BusinessTopicSuggestionsPlan = {
+  topics: BusinessTopicSuggestion[];
+  explanation: string;
+};
+
 export type FlowPlanProvider = "claude" | "minimax";
 
 function buildSystem(provider: FlowPlanProvider): string {
@@ -449,6 +459,41 @@ const BUSINESS_BLUEPRINT_TOOL: Anthropic.Tool = {
   },
 };
 
+const TOPIC_SUGGESTIONS_TOOL: Anthropic.Tool = {
+  name: "suggest_business_topics",
+  description:
+    "Stel sterke root-topics voor de AIO Control business rail voor.",
+  input_schema: {
+    type: "object" as const,
+    required: ["topics", "explanation"],
+    properties: {
+      explanation: {
+        type: "string",
+        description: "Korte uitleg waarom deze topic set past.",
+      },
+      topics: {
+        type: "array",
+        minItems: 4,
+        maxItems: 8,
+        items: {
+          type: "object",
+          required: ["name", "reason"],
+          properties: {
+            name: {
+              type: "string",
+              description: "Korte rail-topicnaam, 1-3 woorden.",
+            },
+            reason: {
+              type: "string",
+              description: "Waarom dit topic nuttig is voor deze business.",
+            },
+          },
+        },
+      },
+    },
+  },
+};
+
 const MINIMAX_BASE = "https://api.minimax.io/v1";
 const MINIMAX_MODEL = "MiniMax-M2.7-Highspeed";
 
@@ -519,6 +564,30 @@ function normalizeBusinessBlueprintPlan(
       recurring_review: input.research_plan?.recurring_review ?? "",
     },
     explanation: input.explanation ?? "",
+  };
+}
+
+function normalizeTopicSuggestionsPlan(
+  input: Partial<BusinessTopicSuggestionsPlan>,
+): BusinessTopicSuggestionsPlan {
+  const seen = new Set<string>();
+  const topics = (input.topics ?? [])
+    .map((topic) => ({
+      name: topic.name?.trim() ?? "",
+      reason: topic.reason?.trim() ?? "",
+    }))
+    .filter((topic) => {
+      if (!topic.name) return false;
+      const key = topic.name.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 8);
+
+  return {
+    topics,
+    explanation: input.explanation?.trim() ?? "",
   };
 }
 
@@ -615,4 +684,80 @@ export async function generateBusinessBlueprintPlan(
 
   const input = toolBlock.input as Partial<BusinessBlueprintPlan>;
   return normalizeBusinessBlueprintPlan(input);
+}
+
+export async function generateBusinessTopicSuggestions(
+  input: {
+    name: string;
+    description?: string;
+    mission?: string;
+    targets?: Array<{ name?: string; target?: string; unit?: string }>;
+    existingTopics?: string[];
+  },
+  apiKey: string,
+  provider: FlowPlanProvider = "claude",
+): Promise<BusinessTopicSuggestionsPlan> {
+  const clientOpts: ConstructorParameters<typeof Anthropic>[0] = { apiKey };
+  if (provider === "minimax") {
+    clientOpts.baseURL = minimaxAnthropicBase();
+    clientOpts.defaultHeaders = { Authorization: `Bearer ${apiKey}` };
+  }
+
+  const model = provider === "minimax" ? MINIMAX_MODEL : "claude-sonnet-4-6";
+  const client = new Anthropic(clientOpts);
+
+  const system = `Je bent een senior AI-operations architect voor AIO Control.
+Stel root-topics voor die als rail-navigatie dienen binnen een nieuwe automated business.
+
+Ontwerpregels:
+- Geef 5 tot 8 root-topics.
+- Topicnamen zijn kort, scanbaar en operationeel: 1-3 woorden.
+- Denk aan hoe de business dagelijks bestuurd wordt: aanbod, research, content, sales, delivery, klanten, finance, analytics, automations.
+- Maak ze specifiek voor de business; vermijd generieke setjes als die niet passen.
+- Vermijd dubbele of overlappende topics.
+- Stel alleen root-topics voor, geen subtopics.
+- Gebruik dezelfde taal als de businessbeschrijving.`;
+
+  const msg = await client.messages.create({
+    model,
+    max_tokens: 2048,
+    system,
+    tools: [TOPIC_SUGGESTIONS_TOOL],
+    tool_choice: { type: "tool", name: "suggest_business_topics" },
+    messages: [
+      {
+        role: "user",
+        content:
+          "Stel goede AIO Control root-topics voor deze nieuwe business voor.\n" +
+          "Gebruik verplicht de suggest_business_topics tool. Als de provider geen tool-call kan teruggeven, antwoord dan uitsluitend met een JSON object volgens hetzelfde schema.\n\n" +
+          JSON.stringify(
+            {
+              business_name: input.name,
+              description: input.description ?? "",
+              mission: input.mission ?? "",
+              targets: input.targets ?? [],
+              existing_topics: input.existingTopics ?? [],
+            },
+            null,
+            2,
+          ),
+      },
+    ],
+  });
+
+  const toolBlock = msg.content.find((block) => block.type === "tool_use");
+  if (!toolBlock || toolBlock.type !== "tool_use") {
+    const parsed =
+      parseJsonObjectFromText<Partial<BusinessTopicSuggestionsPlan>>(
+        textFromMessage(msg),
+      );
+    if (parsed) return normalizeTopicSuggestionsPlan(parsed);
+    throw new Error(
+      "AI gaf geen bruikbare topic-suggesties terug. Probeer opnieuw met een concretere beschrijving.",
+    );
+  }
+
+  return normalizeTopicSuggestionsPlan(
+    toolBlock.input as Partial<BusinessTopicSuggestionsPlan>,
+  );
 }

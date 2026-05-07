@@ -31,6 +31,11 @@ type TelegramTargetOption = {
   chat_id?: string | null;
 };
 
+type TopicSuggestion = {
+  name: string;
+  reason: string;
+};
+
 type Props = {
   workspaceSlug: string;
   workspaceId: string;
@@ -123,11 +128,55 @@ export function BusinessSetupWizard({
   // ── Step 3: Topics ──
   const [topicNames, setTopicNames] = useState<string[]>([]);
   const [topicInput, setTopicInput] = useState("");
+  const [topicSuggestions, setTopicSuggestions] = useState<TopicSuggestion[]>([]);
+  const [topicAiExplanation, setTopicAiExplanation] = useState("");
+  const [topicAiError, setTopicAiError] = useState<string | null>(null);
+  const [generatingTopics, setGeneratingTopics] = useState(false);
   const addTopic = () => {
     const t = topicInput.trim();
     if (!t) return;
     if (!topicNames.includes(t)) setTopicNames([...topicNames, t]);
     setTopicInput("");
+  };
+  const addSuggestedTopic = (topic: string) => {
+    const t = topic.trim();
+    if (!t) return;
+    setTopicNames((current) =>
+      current.some((x) => x.toLowerCase() === t.toLowerCase())
+        ? current
+        : [...current, t],
+    );
+  };
+  const generateTopicsWithAi = async () => {
+    setTopicAiError(null);
+    setTopicAiExplanation("");
+    setGeneratingTopics(true);
+    try {
+      const res = await fetch("/api/business-topics/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          workspace_id: workspaceId,
+          name,
+          description,
+          mission,
+          targets,
+          existing_topics: topicNames,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        setTopicAiError(json.error ?? "Topic-suggesties genereren mislukt.");
+        return;
+      }
+      setTopicSuggestions(json.suggestions?.topics ?? []);
+      setTopicAiExplanation(json.suggestions?.explanation ?? "");
+    } catch {
+      setTopicAiError("Netwerkfout bij topic-suggesties.");
+    } finally {
+      setGeneratingTopics(false);
+    }
   };
 
   // ── Step 4: Main agent ──
@@ -409,6 +458,129 @@ export function BusinessSetupWizard({
               Marketing / Sales / …). Je kunt later altijd subtopics binnen
               elk topic aanmaken via right-click of de + knop.
             </p>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+                marginBottom: 10,
+                padding: "10px 12px",
+                border: "1px solid var(--app-border)",
+                borderRadius: 10,
+                background: "var(--app-card-2)",
+              }}
+            >
+              <div>
+                <strong style={{ display: "block", fontSize: 12.5 }}>
+                  AI topic voorstel
+                </strong>
+                <span
+                  style={{
+                    display: "block",
+                    marginTop: 2,
+                    color: "var(--app-fg-3)",
+                    fontSize: 11.5,
+                    lineHeight: 1.4,
+                  }}
+                >
+                  Gebruikt naam, beschrijving, mission en targets om passende
+                  rail-topics te maken.
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={generateTopicsWithAi}
+                disabled={generatingTopics}
+                style={btnPrimary(generatingTopics)}
+              >
+                {generatingTopics ? "AI denkt…" : "Genereer met AI"}
+              </button>
+            </div>
+            {topicAiError && (
+              <p
+                role="alert"
+                style={{
+                  margin: "0 0 10px",
+                  color: "var(--rose)",
+                  background: "rgba(230,82,107,0.08)",
+                  border: "1px solid rgba(230,82,107,0.4)",
+                  borderRadius: 10,
+                  padding: "8px 10px",
+                  fontSize: 12.5,
+                }}
+              >
+                {topicAiError}
+              </p>
+            )}
+            {topicSuggestions.length > 0 && (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8,
+                  marginBottom: 12,
+                  padding: "10px 12px",
+                  border: "1px solid var(--tt-green)",
+                  borderRadius: 10,
+                  background: "rgba(57,178,85,0.06)",
+                }}
+              >
+                {topicAiExplanation && (
+                  <p style={{ ...hint, margin: 0 }}>{topicAiExplanation}</p>
+                )}
+                <div style={{ display: "grid", gap: 6 }}>
+                  {topicSuggestions.map((topic) => {
+                    const alreadyAdded = topicNames.some(
+                      (t) => t.toLowerCase() === topic.name.toLowerCase(),
+                    );
+                    return (
+                      <button
+                        key={topic.name}
+                        type="button"
+                        onClick={() => addSuggestedTopic(topic.name)}
+                        disabled={alreadyAdded}
+                        style={{
+                          ...btnGhost,
+                          borderStyle: "solid",
+                          textAlign: "left",
+                          opacity: alreadyAdded ? 0.55 : 1,
+                          cursor: alreadyAdded ? "default" : "pointer",
+                        }}
+                      >
+                        <strong style={{ color: "var(--app-fg)" }}>
+                          {alreadyAdded ? "✓ " : "+ "}
+                          {topic.name}
+                        </strong>
+                        {topic.reason && (
+                          <span
+                            style={{
+                              display: "block",
+                              marginTop: 2,
+                              color: "var(--app-fg-3)",
+                              lineHeight: 1.4,
+                            }}
+                          >
+                            {topic.reason}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    topicSuggestions.forEach((topic) =>
+                      addSuggestedTopic(topic.name),
+                    )
+                  }
+                  style={{ ...btnSec, alignSelf: "flex-start" }}
+                >
+                  Alles toevoegen
+                </button>
+              </div>
+            )}
             <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
               <input
                 value={topicInput}
