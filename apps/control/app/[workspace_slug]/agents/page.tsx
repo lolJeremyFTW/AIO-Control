@@ -13,6 +13,7 @@ import {
 import { resolveApiKey } from "../../../lib/api-keys/resolve";
 import { listAgentsForWorkspace } from "../../../lib/queries/agents";
 import { listBusinesses } from "../../../lib/queries/businesses";
+import { listFlatNavNodes } from "../../../lib/queries/nav-nodes";
 import { listSkillsForWorkspace } from "../../../lib/queries/skills";
 import {
   listRecentRunsForWorkspace,
@@ -72,6 +73,20 @@ export default async function WorkspaceAgentsPage({ params }: Props) {
     name: s.name,
     description: s.description,
   }));
+  const topicGroups = await Promise.all(
+    businesses.map(async (b) => ({
+      business_id: b.id,
+      topics: await listFlatNavNodes(b.id),
+    })),
+  );
+  const calendarTopics = topicGroups.flatMap((group) =>
+    group.topics.map((topic) => ({
+      id: topic.id,
+      business_id: group.business_id,
+      name: topic.name,
+      depth: topic.depth,
+    })),
+  );
 
   // Resolve key status across every provider used in the workspace.
   const uniqueProviders = Array.from(new Set(allAgents.map((a) => a.provider)));
@@ -134,6 +149,7 @@ export default async function WorkspaceAgentsPage({ params }: Props) {
             variant: b.variant ?? "brand",
             color_hex: b.color_hex ?? null,
           }))}
+          topics={calendarTopics}
           schedules={schedules.map((s) => ({
             id: s.id,
             agent_id: s.agent_id,
@@ -142,11 +158,13 @@ export default async function WorkspaceAgentsPage({ params }: Props) {
             cron_expr: s.cron_expr,
             enabled: s.enabled,
             title: s.title,
+            nav_node_id: s.nav_node_id,
           }))}
           runs={runs.map((r) => ({
             id: r.id,
             agent_id: r.agent_id,
             business_id: r.business_id,
+            nav_node_id: r.nav_node_id,
             schedule_id: r.schedule_id,
             status: r.status,
             started_at: r.started_at,

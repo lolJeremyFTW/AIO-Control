@@ -5,8 +5,8 @@
 
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState, useTransition } from "react";
 
 import type { AgentRow } from "../lib/queries/agents";
 import type { ScheduleRow } from "../lib/queries/schedules";
@@ -48,6 +48,7 @@ export function SchedulesPanel({
   hideCreateForm = false,
 }: Props) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [pending, startTransition] = useTransition();
   const [agentId, setAgentId] = useState<string>(agents[0]?.id ?? "");
   const selectedAgent = agents.find((a) => a.id === agentId);
@@ -63,6 +64,13 @@ export function SchedulesPanel({
   const [editingSchedule, setEditingSchedule] = useState<ScheduleRow | null>(
     null,
   );
+
+  useEffect(() => {
+    const scheduleId = searchParams.get("schedule");
+    if (!scheduleId) return;
+    const schedule = schedules.find((s) => s.id === scheduleId);
+    if (schedule) setEditingSchedule(schedule);
+  }, [schedules, searchParams]);
 
   const createWebhook = () => {
     if (!agentId) return setError("Kies eerst een agent.");

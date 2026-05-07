@@ -69,6 +69,10 @@ export function RunsPage({
   // we re-run the same query path that pagination uses, no duplication.
   const [tick, setTick] = useState(0);
 
+  useEffect(() => {
+    setOpenRunId(search.get("run"));
+  }, [search]);
+
   // Re-fetch whenever filters change.
   useEffect(() => {
     setRuns([]);

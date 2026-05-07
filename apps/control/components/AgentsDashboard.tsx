@@ -9,6 +9,8 @@
 
 "use client";
 
+import { useRouter } from "next/navigation";
+import type { CSSProperties } from "react";
 import { useEffect, useMemo, useState } from "react";
 
 import { translate } from "../lib/i18n/dict";
@@ -18,6 +20,7 @@ type ScheduleLite = {
   id: string;
   agent_id: string;
   business_id: string | null;
+  nav_node_id: string | null;
   kind: "cron" | "webhook" | "manual";
   cron_expr: string | null;
   enabled: boolean;
@@ -28,6 +31,7 @@ type RunLite = {
   id: string;
   agent_id: string;
   business_id: string | null;
+  nav_node_id: string | null;
   schedule_id: string | null;
   status: string;
   started_at: string | null;
@@ -51,10 +55,18 @@ type BusinessLite = {
   color_hex?: string | null;
 };
 
+type TopicLite = {
+  id: string;
+  business_id: string;
+  name: string;
+  depth: number;
+};
+
 type Props = {
   workspaceSlug: string;
   agents: AgentLite[];
   businesses: BusinessLite[];
+  topics: TopicLite[];
   schedules: ScheduleLite[];
   /** Recent runs across the workspace (last 200) — used for cost
    *  totals + the calendar's "fired" markers. */
@@ -67,9 +79,11 @@ export function AgentsDashboard({
   workspaceSlug,
   agents,
   businesses,
+  topics,
   schedules,
   runs,
 }: Props) {
+  const router = useRouter();
   const locale = useLocale();
   // Renamed to `tr` to avoid shadowing by the time-variable `t` used
   // in the calendar `for (const t of fires)` loop below.
@@ -82,6 +96,9 @@ export function AgentsDashboard({
     locale === "en" ? "en-US" : locale === "de" ? "de-DE" : "nl-NL";
   const [view, setView] = useState<ViewMode>("week");
   const [anchor, setAnchor] = useState<Date>(() => new Date());
+  const [businessFilter, setBusinessFilter] = useState("all");
+  const [topicFilter, setTopicFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
   // Hydration guard: the SSR pass and the first CSR pass run on
   // different wall-clocks (React error #418). We render a stable
   // empty dashboard on the server and only flip to real content
@@ -90,6 +107,57 @@ export function AgentsDashboard({
   useEffect(() => {
     setHydrated(true);
   }, []);
+
+  const visibleTopics = useMemo(
+    () =>
+      businessFilter === "all"
+        ? []
+        : topics.filter((topic) => topic.business_id === businessFilter),
+    [businessFilter, topics],
+  );
+
+  useEffect(() => {
+    if (
+      topicFilter !== "all" &&
+      !visibleTopics.some((topic) => topic.id === topicFilter)
+    ) {
+      setTopicFilter("all");
+    }
+  }, [topicFilter, visibleTopics]);
+
+  const filteredSchedules = useMemo(() => {
+    if (statusFilter !== "all" && statusFilter !== "scheduled") return [];
+    return schedules.filter((s) => {
+      if (businessFilter !== "all" && s.business_id !== businessFilter) {
+        return false;
+      }
+      if (topicFilter !== "all" && s.nav_node_id !== topicFilter) {
+        return false;
+      }
+      return true;
+    });
+  }, [businessFilter, schedules, statusFilter, topicFilter]);
+
+  const filteredRuns = useMemo(
+    () =>
+      runs.filter((r) => {
+        if (statusFilter === "scheduled") return false;
+        if (businessFilter !== "all" && r.business_id !== businessFilter) {
+          return false;
+        }
+        if (topicFilter !== "all" && r.nav_node_id !== topicFilter) {
+          return false;
+        }
+        if (statusFilter !== "all") {
+          if (statusFilter === "failed") {
+            return r.status === "failed" || r.status === "fail";
+          }
+          return r.status === statusFilter;
+        }
+        return true;
+      }),
+    [businessFilter, runs, statusFilter, topicFilter],
+  );
 
   // ── KPI rollups ─────────────────────────────────────────────
   const stats = useMemo(() => {
@@ -145,7 +213,7 @@ export function AgentsDashboard({
     for (const day of window.days) {
       map.set(dayKey(day), []);
     }
-    for (const s of schedules) {
+    for (const s of filteredSchedules) {
       if (s.kind !== "cron" || !s.enabled || !s.cron_expr) continue;
       const fires = computeFires(s.cron_expr, window.start, window.end);
       const agent = agents.find((a) => a.id === s.agent_id);
@@ -167,7 +235,7 @@ export function AgentsDashboard({
     // user sees what has already fired. Scheduled runs merge into
     // their matching planned fire chip; manual/off-schedule runs stay
     // as separate chips.
-    for (const r of runs) {
+    for (const r of filteredRuns) {
       const at = new Date(r.created_at);
       if (at < window.start || at > window.end) continue;
       const key = dayKey(at);
@@ -190,7 +258,7 @@ export function AgentsDashboard({
       arr.sort((a, b) => a.time.getTime() - b.time.getTime());
     }
     return map;
-  }, [window, schedules, runs, agents, businesses]);
+  }, [window, filteredSchedules, filteredRuns, agents, businesses]);
 
   const shiftAnchor = (delta: number) => {
     const d = new Date(anchor);
@@ -198,6 +266,21 @@ export function AgentsDashboard({
     else if (view === "week") d.setDate(d.getDate() + delta * 7);
     else if (view === "month") d.setMonth(d.getMonth() + delta);
     setAnchor(d);
+  };
+
+  const openFire = (fire: ScheduleFire) => {
+    if (fire.run) {
+      const base = fire.run.business_id
+        ? `/${workspaceSlug}/business/${fire.run.business_id}/runs`
+        : `/${workspaceSlug}/runs`;
+      router.push(`${base}?run=${fire.run.id}`);
+      return;
+    }
+    if (fire.schedule?.business_id) {
+      router.push(
+        `/${workspaceSlug}/business/${fire.schedule.business_id}/schedules?schedule=${fire.schedule.id}`,
+      );
+    }
   };
 
   // Render a tiny skeleton on the SSR pass + the very first CSR
@@ -258,6 +341,8 @@ export function AgentsDashboard({
             alignItems: "center",
             justifyContent: "space-between",
             marginBottom: 12,
+            gap: 12,
+            flexWrap: "wrap",
           }}
         >
           <h3 style={{ margin: 0 }}>{tr("dash.calendar")}</h3>
@@ -336,12 +421,76 @@ export function AgentsDashboard({
           </div>
         </div>
 
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(3, minmax(160px, 1fr))",
+            gap: 10,
+            marginBottom: 12,
+          }}
+        >
+          <label style={filterLabelStyle}>
+            <span>Business</span>
+            <select
+              value={businessFilter}
+              onChange={(e) => {
+                setBusinessFilter(e.target.value);
+                setTopicFilter("all");
+              }}
+              style={filterSelectStyle}
+            >
+              <option value="all">Alle businesses</option>
+              {businesses.map((business) => (
+                <option key={business.id} value={business.id}>
+                  {business.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label style={filterLabelStyle}>
+            <span>Topic</span>
+            <select
+              value={topicFilter}
+              onChange={(e) => setTopicFilter(e.target.value)}
+              disabled={businessFilter === "all" || visibleTopics.length === 0}
+              style={filterSelectStyle}
+            >
+              <option value="all">
+                {businessFilter === "all" ? "Kies eerst business" : "Alle topics"}
+              </option>
+              {visibleTopics.map((topic) => (
+                <option key={topic.id} value={topic.id}>
+                  {"- ".repeat(topic.depth)}
+                  {topic.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label style={filterLabelStyle}>
+            <span>Status</span>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              style={filterSelectStyle}
+            >
+              <option value="all">Alle statuses</option>
+              <option value="scheduled">Nog gepland</option>
+              <option value="queued">Queued</option>
+              <option value="running">Running</option>
+              <option value="done">Done</option>
+              <option value="failed">Error/failed</option>
+              <option value="review">Review</option>
+            </select>
+          </label>
+        </div>
+
         {view === "day" && (
           <DayView
             day={anchor}
             fires={fireMap.get(dayKey(anchor)) ?? []}
             intlLocale={intlLocale}
             tr={tr}
+            onOpenFire={openFire}
           />
         )}
         {view === "week" && (
@@ -350,6 +499,7 @@ export function AgentsDashboard({
             fireMap={fireMap}
             intlLocale={intlLocale}
             tr={tr}
+            onOpenFire={openFire}
           />
         )}
         {view === "month" && (
@@ -359,6 +509,7 @@ export function AgentsDashboard({
             fireMap={fireMap}
             intlLocale={intlLocale}
             tr={tr}
+            onOpenFire={openFire}
           />
         )}
       </div>
@@ -557,16 +708,43 @@ function Kpi({
 
 type Tr = (key: string, vars?: Record<string, string | number>) => string;
 
+const filterLabelStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 4,
+  fontSize: 11,
+  fontWeight: 800,
+  letterSpacing: 0.4,
+  textTransform: "uppercase",
+  color: "var(--app-fg-3)",
+};
+
+const filterSelectStyle: CSSProperties = {
+  width: "100%",
+  minWidth: 0,
+  padding: "8px 10px",
+  border: "1px solid var(--app-border)",
+  borderRadius: 8,
+  background: "var(--app-card-2)",
+  color: "var(--app-fg)",
+  fontFamily: "var(--type)",
+  fontSize: 12.5,
+  fontWeight: 700,
+  textTransform: "none",
+};
+
 function DayView({
   day,
   fires,
   intlLocale,
   tr,
+  onOpenFire,
 }: {
   day: Date;
   fires: ScheduleFire[];
   intlLocale: string;
   tr: Tr;
+  onOpenFire: (fire: ScheduleFire) => void;
 }) {
   // Hour rail with chips per fire — compacted from the original 24×58px
   // layout (~1.4k px tall) to ~22px per row. Empty rows render as a
@@ -592,6 +770,7 @@ function DayView({
             fires={inHour}
             intlLocale={intlLocale}
             tr={tr}
+            onOpenFire={onOpenFire}
           />
         );
       })}
@@ -607,11 +786,13 @@ function DayHourRow({
   fires,
   intlLocale,
   tr,
+  onOpenFire,
 }: {
   hour: number;
   fires: ScheduleFire[];
   intlLocale: string;
   tr: Tr;
+  onOpenFire: (fire: ScheduleFire) => void;
 }) {
   const isEmpty = fires.length === 0;
   return (
@@ -643,7 +824,14 @@ function DayHourRow({
         }}
       >
         {fires.map((f, i) => (
-          <FireChip key={i} fire={f} compact intlLocale={intlLocale} tr={tr} />
+          <FireChip
+            key={i}
+            fire={f}
+            compact
+            intlLocale={intlLocale}
+            tr={tr}
+            onOpen={() => onOpenFire(f)}
+          />
         ))}
       </div>
     </>
@@ -655,11 +843,13 @@ function WeekView({
   fireMap,
   intlLocale,
   tr,
+  onOpenFire,
 }: {
   days: Date[];
   fireMap: Map<string, ScheduleFire[]>;
   intlLocale: string;
   tr: Tr;
+  onOpenFire: (fire: ScheduleFire) => void;
 }) {
   return (
     <div
@@ -725,6 +915,7 @@ function WeekView({
                     compact
                     intlLocale={intlLocale}
                     tr={tr}
+                    onOpen={() => onOpenFire(f)}
                   />
                 ))
               )}
@@ -742,12 +933,14 @@ function MonthView({
   fireMap,
   intlLocale,
   tr,
+  onOpenFire,
 }: {
   anchor: Date;
   days: Date[];
   fireMap: Map<string, ScheduleFire[]>;
   intlLocale: string;
   tr: Tr;
+  onOpenFire: (fire: ScheduleFire) => void;
 }) {
   // Day-of-week headers using the active locale. We start at a known
   // Monday (1970-01-05 was a Monday) and walk 7 days, so the labels
@@ -843,6 +1036,7 @@ function MonthView({
                     compact
                     intlLocale={intlLocale}
                     tr={tr}
+                    onOpen={() => onOpenFire(f)}
                   />
                 ))}
                 {fires.length > 3 && (
@@ -869,6 +1063,7 @@ function FireChip({
   fire,
   compact,
   intlLocale,
+  onOpen,
   // tr unused inside the chip currently — kept on the prop list so
   // callers don't have to drop it; will surface as the run-status
   // label gets translated next pass.
@@ -877,6 +1072,7 @@ function FireChip({
   fire: ScheduleFire;
   compact?: boolean;
   intlLocale: string;
+  onOpen: () => void;
   tr: Tr;
 }) {
   const isPast = !!fire.run;
@@ -889,7 +1085,9 @@ function FireChip({
     : (fire.biz?.color_hex ??
       `var(--${fire.biz?.variant ?? "tt-green"}, var(--tt-green))`);
   return (
-    <span
+    <button
+      type="button"
+      onClick={onOpen}
       title={`${fire.time.toLocaleTimeString(intlLocale, {
         hour: "2-digit",
         minute: "2-digit",
@@ -913,6 +1111,8 @@ function FireChip({
         overflow: "hidden",
         textOverflow: "ellipsis",
         maxWidth: "100%",
+        cursor: "pointer",
+        fontFamily: "var(--type)",
       }}
     >
       <span
@@ -945,7 +1145,7 @@ function FireChip({
       >
         {fire.agentName}
       </span>
-    </span>
+    </button>
   );
 }
 
