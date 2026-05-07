@@ -103,11 +103,16 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
   },
   // Filesystem read/write/list — same toolset Claude Code's Read/Write
   // tools provide, but as a standalone MCP server. Sandboxed to
-  // MCP_FS_ROOT (default /home/jeremy so agents can reach all project
-  // dirs under the user home without re-configuring the env var).
+  // MCP_FS_ROOTS (colon-separated list) or MCP_FS_ROOT (single dir).
+  // Default: just /home/jeremy/aio-control so search_files doesn't
+  // crawl the 76 GB /home/jeremy/Sync folder and time out.
   filesystem: {
     command: `${NPM_GLOBAL_BIN}/mcp-server-filesystem`,
-    args: [process.env.MCP_FS_ROOT ?? "/home/jeremy"],
+    args: (
+      process.env.MCP_FS_ROOTS ??
+      process.env.MCP_FS_ROOT ??
+      "/home/jeremy/aio-control"
+    ).split(":"),
   },
   // AIO Control platform tools (list_businesses, list_agents, list_runs).
   // read_secret is gated by AIO_MCP_ALLOW_READ_SECRET in aio-server.
