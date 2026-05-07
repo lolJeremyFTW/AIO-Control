@@ -32,7 +32,6 @@ export function NewNavNodeDialog({
   const ref = useRef<HTMLDialogElement>(null);
   const router = useRouter();
   const [name, setName] = useState("");
-  const [href, setHref] = useState("");
   const [appearance, setAppearance] = useState<AppearanceValue>({
     variant: "slate",
     icon: "",
@@ -59,7 +58,6 @@ export function NewNavNodeDialog({
       icon: appearance.icon || undefined,
       color_hex: appearance.colorHex,
       logo_url: appearance.logoUrl,
-      href: href || undefined,
     });
     setPending(false);
     if (!res.ok) {
@@ -123,15 +121,6 @@ export function NewNavNodeDialog({
             placeholder="YouTube, Lead-mgmt, …"
             style={input}
             required
-          />
-        </Field>
-
-        <Field label="Externe URL (optioneel)">
-          <input
-            value={href}
-            onChange={(e) => setHref(e.target.value)}
-            placeholder="https://yt-intel.tromptech.life"
-            style={input}
           />
         </Field>
 
