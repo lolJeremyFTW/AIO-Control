@@ -358,16 +358,10 @@ body[data-theme="light"] .node.dashed {
   color: var(--ink-2);
 }
 .node.selected {
-  box-shadow:
-    0 0 0 2.5px var(--rail-dark),
-    0 0 0 4px var(--tt-green),
-    0 0 22px 4px var(--tt-green-glow);
+  box-shadow: 0 0 22px 4px var(--tt-green-glow);
 }
 body[data-theme="light"] .node.selected {
-  box-shadow:
-    0 0 0 2.5px #fff,
-    0 0 0 4px var(--tt-green),
-    0 0 22px 4px var(--tt-green-glow);
+  box-shadow: 0 0 22px 4px var(--tt-green-glow);
 }
 .badge {
   position: absolute;
