@@ -233,7 +233,14 @@ export function Header({
             {avatarLetter}
           </button>
           {activeAvatar && userMenu && (
-            <div className="user-menu" role="menu">
+            <div
+              className="user-menu"
+              role="menu"
+              onClick={(e) => {
+                const target = e.target as HTMLElement;
+                if (target.closest("button,a")) setActiveAvatar(false);
+              }}
+            >
               {(userDisplayName || userEmail) && (
                 <div className="who">
                   {userDisplayName && <div className="n">{userDisplayName}</div>}

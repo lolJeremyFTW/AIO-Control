@@ -973,54 +973,53 @@ export function WorkspaceShell({
           userMenu={
             <>
               <button
+                type="button"
                 role="menuitem"
                 onClick={() => router.push(`/${workspace.slug}/profile`)}
               >
                 {t("nav.profile")}
               </button>
               <button
+                type="button"
                 role="menuitem"
                 onClick={() => router.push(`/${workspace.slug}/settings`)}
               >
                 {t("nav.settings")}
               </button>
               <button
+                type="button"
                 role="menuitem"
                 onClick={() => router.push(`/${workspace.slug}/queue`)}
               >
                 {t("nav.queue")}
               </button>
               <button
+                type="button"
                 role="menuitem"
                 onClick={() => router.push(`/${workspace.slug}/runs`)}
               >
                 {t("nav.runs")}
               </button>
               <button
+                type="button"
                 role="menuitem"
                 onClick={() => router.push(`/${workspace.slug}/activity`)}
               >
                 {t("nav.activity")}
               </button>
               <button
+                type="button"
                 role="menuitem"
                 onClick={() => router.push(`/${workspace.slug}/cost`)}
               >
                 {t("nav.cost")}
               </button>
               <button
+                type="button"
                 role="menuitem"
                 onClick={() => router.push(`/${workspace.slug}/marketplace`)}
               >
                 {t("nav.marketplace")}
-              </button>
-              <button
-                role="menuitem"
-                onClick={() =>
-                  router.push(`/${workspace.slug}/admin/marketplace`)
-                }
-              >
-                {t("nav.marketplaceAdmin")}
               </button>
               <div className="sep" />
               <form action={signOutAction}>
