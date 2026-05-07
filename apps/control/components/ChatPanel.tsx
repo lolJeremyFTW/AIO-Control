@@ -70,6 +70,14 @@ type UIMessage = {
   createdAt: Date;
 };
 
+type CommandItem = {
+  id: string;
+  title: string;
+  description: string;
+  command: string;
+  kind: "mcp" | "agent" | "skill" | "tool" | "command";
+};
+
 const chatboxDockStyle: CSSProperties = {
   position: "fixed",
   right: 18,
@@ -93,6 +101,8 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
   const [showSidebar, setShowSidebar] = useState(false);
   const [unreadPingCount, setUnreadPingCount] = useState(0);
   const [storageLoaded, setStorageLoaded] = useState(false);
+  const [commands, setCommands] = useState<CommandItem[]>([]);
+  const [commandIndex, setCommandIndex] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -103,6 +113,22 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+    const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+    const params = workspaceSlug
+      ? `?workspace_slug=${encodeURIComponent(workspaceSlug)}`
+      : "";
+    fetch(`${base}/api/commands${params}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json: { items?: CommandItem[] } | null) => {
+        if (Array.isArray(json?.items)) setCommands(json.items);
+      })
+      .catch(() => {
+        setCommands([]);
+      });
+  }, [mounted, workspaceSlug]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -317,6 +343,35 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
     }, 0);
     return () => clearTimeout(timeoutId);
   }, [open, showSidebar]);
+
+  const slashMatch = input.match(/(?:^|\s)\/([^\s]*)$/);
+  const slashQuery = slashMatch?.[1]?.toLowerCase() ?? null;
+  const slashCommands =
+    slashQuery == null
+      ? []
+      : commands
+          .filter((item) => {
+            if (slashQuery === "commands") return true;
+            const haystack = `${item.command} ${item.title} ${item.description} ${item.kind}`.toLowerCase();
+            return haystack.includes(slashQuery);
+          })
+          .slice(0, 8);
+
+  useEffect(() => {
+    setCommandIndex(0);
+  }, [slashQuery]);
+
+  const applyCommand = useCallback(
+    (item: CommandItem) => {
+      setInput((current) =>
+        current.replace(/(?:^|\s)\/([^\s]*)$/, (match) => {
+          const prefix = match.startsWith(" ") ? " " : "";
+          return `${prefix}${item.command} `;
+        }),
+      );
+    },
+    [],
+  );
 
   const send = useCallback(
     async (
@@ -1247,11 +1302,124 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
               padding: 10,
               display: "flex",
               gap: 8,
+              position: "relative",
             }}
           >
+            {slashCommands.length > 0 && (
+              <div
+                style={{
+                  position: "absolute",
+                  left: 10,
+                  right: 58,
+                  bottom: 52,
+                  maxHeight: 260,
+                  overflowY: "auto",
+                  background: "var(--app-card)",
+                  border: "1.5px solid var(--app-border)",
+                  borderRadius: 10,
+                  boxShadow: "0 14px 34px rgba(0,0,0,0.35)",
+                  padding: 6,
+                  zIndex: 2,
+                }}
+              >
+                {slashCommands.map((item, idx) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      applyCommand(item);
+                    }}
+                    style={{
+                      width: "100%",
+                      display: "grid",
+                      gridTemplateColumns: "92px 1fr auto",
+                      gap: 8,
+                      alignItems: "center",
+                      padding: "7px 8px",
+                      border: "none",
+                      borderRadius: 7,
+                      background:
+                        idx === commandIndex
+                          ? "rgba(57,178,85,0.12)"
+                          : "transparent",
+                      color: "var(--app-fg)",
+                      textAlign: "left",
+                      cursor: "pointer",
+                      fontFamily: "var(--type)",
+                    }}
+                  >
+                    <code
+                      style={{
+                        fontSize: 11,
+                        color: "var(--tt-green)",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {item.command}
+                    </code>
+                    <span style={{ minWidth: 0 }}>
+                      <span
+                        style={{
+                          display: "block",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {item.title}
+                      </span>
+                      <span
+                        style={{
+                          display: "block",
+                          fontSize: 10.5,
+                          color: "var(--app-fg-3)",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {item.description}
+                      </span>
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 9.5,
+                        fontWeight: 700,
+                        color: "var(--app-fg-3)",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      {item.kind}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (slashCommands.length === 0) return;
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setCommandIndex((idx) => (idx + 1) % slashCommands.length);
+                } else if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setCommandIndex(
+                    (idx) => (idx - 1 + slashCommands.length) % slashCommands.length,
+                  );
+                } else if (e.key === "Tab") {
+                  e.preventDefault();
+                  const item = slashCommands[commandIndex] ?? slashCommands[0];
+                  if (item) applyCommand(item);
+                } else if (e.key === "Escape") {
+                  setCommandIndex(0);
+                }
+              }}
               placeholder="Vraag iets aan de agent…"
               disabled={sending}
               style={{

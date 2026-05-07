@@ -8,62 +8,19 @@
 
 import { useState } from "react";
 
+import { MCP_SERVER_CATALOG } from "@aio/ai/mcp/registry";
+
 export type McpPermissions = {
   filesystem?: "off" | "ro" | "rw";
   aio?: "off" | "ro" | "rw";
 };
 
-const BUILTIN_SERVERS: Array<{ id: string; label: string; desc: string; badge?: string }> = [
-  {
-    id: "minimax",
-    label: "MiniMax Coder-Plan",
-    desc: "web_search + understand_image (vereist MINIMAX_API_KEY env).",
-  },
-  {
-    id: "aio",
-    label: "AIO Control",
-    desc: "list_businesses, list_agents, list_runs, send_telegram_message.",
-  },
-  {
-    id: "bash",
-    label: "Bash Shell",
-    desc: "Volledige shell-toegang op de VPS. Gevaarlijke commands vereisen goedkeuring.",
-  },
-  {
-    id: "filesystem",
-    label: "Filesystem",
-    desc: "Read / Write / List binnen MCP_FS_ROOT (default /home/jeremy).",
-  },
-  {
-    id: "fetch",
-    label: "Web Fetch",
-    desc: "Trekt willekeurige URLs op en retourneert de body als tekst/markdown. Officieel Anthropic MCP.",
-    badge: "official",
-  },
-  {
-    id: "playwright",
-    label: "Playwright Browser",
-    desc: "Volledig Chromium browser met JS-rendering. Navigeren, klikken, formulieren, screenshots. Models zijn hier op getraind.",
-    badge: "official",
-  },
-  {
-    id: "brave",
-    label: "Brave Search",
-    desc: "Hoge-kwaliteit web + nieuws zoekopdrachten via Brave Search API. Vereist BRAVE_API_KEY in workspace secrets.",
-    badge: "official",
-  },
-  {
-    id: "memory",
-    label: "Memory (Knowledge Graph)",
-    desc: "Persistent geheugen tussen runs: entities, relaties, observaties. Agents kunnen feiten opslaan en ophalen.",
-    badge: "official",
-  },
-  {
-    id: "firecrawl",
-    label: "Firecrawl",
-    desc: "Scrape & crawl websites naar clean markdown. Ondersteunt JS-rendering, volledige site-crawl en deep research. Vereist FIRECRAWL_API_KEY in MCP Tools instellingen.",
-  },
-];
+const BUILTIN_SERVERS = MCP_SERVER_CATALOG.map((item) => ({
+  id: item.id,
+  label: item.title,
+  desc: item.description,
+  badge: item.badge,
+}));
 
 export function McpServersField({
   value,
@@ -143,7 +100,7 @@ export function McpServersField({
               />
               <span>
                 <span style={{ fontWeight: 700 }}>{opt.label}</span>
-                {opt.badge === "official" && (
+                {opt.badge && (
                   <span style={{
                     display: "inline-block",
                     marginLeft: 6,
@@ -157,7 +114,7 @@ export function McpServersField({
                     borderRadius: 4,
                     padding: "1px 5px",
                     verticalAlign: "middle",
-                  }}>official</span>
+                  }}>{opt.badge}</span>
                 )}
                 <span
                   style={{

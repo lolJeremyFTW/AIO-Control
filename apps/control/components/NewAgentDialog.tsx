@@ -49,6 +49,7 @@ const PROVIDERS: { id: Provider; label: string; defaultModel?: string }[] = [
   { id: "openrouter", label: "OpenRouter", defaultModel: "openrouter/auto" },
   { id: "minimax", label: "MiniMax (Coder Plan)", defaultModel: "MiniMax-M2.7-Highspeed" },
   { id: "ollama", label: "Ollama (lokaal/VPS)", defaultModel: "llama3" },
+  { id: "openai_codex", label: "OpenAI Codex (ChatGPT login)", defaultModel: "openai_codex/gpt-5.5" },
   { id: "openclaw", label: "OpenClaw (CLI subprocess op VPS)" },
   { id: "hermes", label: "Hermes-agent (CLI subprocess op VPS)" },
   { id: "codex", label: "Codex / OpenAI" },
@@ -108,6 +109,7 @@ export function NewAgentDialog({
     );
   const [mcpPermissions, setMcpPermissions] = useState<{
     filesystem?: "off" | "ro" | "rw";
+    aio?: "off" | "ro" | "rw";
   }>({});
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -254,7 +256,7 @@ export function NewAgentDialog({
               : t("agent.field.model")
           }
         >
-          {provider === "openclaw" || provider === "hermes" ? (
+          {provider === "openclaw" || provider === "hermes" || provider === "openai_codex" ? (
             <ProviderModelPicker
               provider={provider}
               value={model}
@@ -340,6 +342,14 @@ export function NewAgentDialog({
             (b.v. <code>/root/.hermes/hermes-agent/hermes</code>). Let op
             user-permissies — de aio-control service draait als{" "}
             <code>jeremy</code>.
+          </Hint>
+        )}
+        {provider === "openai_codex" && (
+          <Hint>
+            Gebruikt je eigen ChatGPT/Codex login in AIO Control. Interactieve
+            chat draait op de ingelogde gebruiker; cron/webhook runs gebruiken
+            de workspace-owner login. Image generation valt terug op een
+            owner-scoped OpenAI API key als Codex OAuth het niet ondersteunt.
           </Hint>
         )}
 

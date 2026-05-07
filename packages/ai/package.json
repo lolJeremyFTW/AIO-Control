@@ -11,7 +11,8 @@
     "./routines": "./src/routines.ts",
     "./aio-tools": "./src/aio-tools.ts",
     "./flow-planner": "./src/flow-planner.ts",
-    "./mcp": "./src/mcp/host.ts"
+    "./mcp": "./src/mcp/host.ts",
+    "./mcp/registry": "./src/mcp/registry.ts"
   },
   "scripts": {
     "lint": "eslint . --max-warnings 0",
