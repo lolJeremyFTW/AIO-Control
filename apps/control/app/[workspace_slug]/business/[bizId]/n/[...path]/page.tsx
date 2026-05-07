@@ -70,6 +70,47 @@ export default async function NavNodePage({ params }: Props) {
 
   return (
     <div className="content">
+      {/* Business context banner — mirrors the page-title-row on other
+          business sub-pages so the user always knows which business
+          they're in when drilling into a topic. */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          marginBottom: 16,
+          padding: "10px 14px",
+          background: "var(--app-card)",
+          border: "1.5px solid var(--app-border)",
+          borderRadius: 12,
+        }}
+      >
+        <span
+          className={`node ${biz.variant}`}
+          style={{ ["--size" as string]: "32px", fontSize: 14, flexShrink: 0 }}
+        >
+          {biz.letter}
+        </span>
+        <div style={{ minWidth: 0 }}>
+          <Link
+            href={baseHref}
+            style={{
+              fontWeight: 700,
+              fontSize: 14,
+              color: "var(--app-fg)",
+              textDecoration: "none",
+            }}
+          >
+            {biz.name}
+          </Link>
+          {biz.sub && (
+            <div style={{ fontSize: 11.5, color: "var(--app-fg-3)", marginTop: 1 }}>
+              {biz.sub}
+            </div>
+          )}
+        </div>
+      </div>
+
       <div
         style={{
           display: "flex",
