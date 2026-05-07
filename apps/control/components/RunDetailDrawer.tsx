@@ -23,6 +23,8 @@ type RunDetail = {
   ended_at: string | null;
   duration_ms: number | null;
   cost_cents: number;
+  input_tokens: number | null;
+  output_tokens: number | null;
   input: unknown;
   output: { text?: string } | null;
   error_text: string | null;
@@ -933,6 +935,7 @@ function StatusPill({
 }
 
 function RunFooter({ run }: { run: RunDetail }) {
+  const tokenUsage = getRunTokenUsage(run);
   return (
     <footer
       style={{
@@ -949,6 +952,13 @@ function RunFooter({ run }: { run: RunDetail }) {
       <LiveDurationStat run={run} />
       <Stat label="Kosten" value={`€${(run.cost_cents / 100).toFixed(4)}`} />
       <Stat
+        label="Tokens"
+        value={`${formatTokenCount(tokenUsage.input, tokenUsage.estimatedInput)} in / ${formatTokenCount(
+          tokenUsage.output,
+          tokenUsage.estimatedOutput,
+        )} out`}
+      />
+      <Stat
         label="Provider"
         value={
           run.agents?.provider
@@ -962,6 +972,51 @@ function RunFooter({ run }: { run: RunDetail }) {
       />
     </footer>
   );
+}
+
+function getRunTokenUsage(run: RunDetail): {
+  input: number;
+  output: number;
+  estimatedInput: boolean;
+  estimatedOutput: boolean;
+} {
+  return {
+    input: run.input_tokens ?? estimateRunInputTokens(run),
+    output: run.output_tokens ?? estimateRunOutputTokens(run),
+    estimatedInput: run.input_tokens == null,
+    estimatedOutput: run.output_tokens == null,
+  };
+}
+
+function estimateRunInputTokens(run: RunDetail): number {
+  const input = run.input as
+    | { prompt?: string; messages?: { content?: string }[]; payload?: unknown }
+    | null;
+  if (input?.messages) {
+    return estimateTokens(input.messages.map((m) => m.content ?? "").join("\n"));
+  }
+  if (typeof input?.prompt === "string") return estimateTokens(input.prompt);
+  if (input?.payload !== undefined) return estimateTokens(JSON.stringify(input.payload));
+  return 0;
+}
+
+function estimateRunOutputTokens(run: RunDetail): number {
+  const historyText =
+    run.message_history
+      ?.filter((s): s is RunStep & { kind: "assistant" } => s.kind === "assistant")
+      .map((s) => s.text)
+      .join("\n") ?? "";
+  return estimateTokens(historyText || run.output?.text || "");
+}
+
+function estimateTokens(text: string): number {
+  const trimmed = text.trim();
+  if (!trimmed) return 0;
+  return Math.max(1, Math.ceil(trimmed.length / 4));
+}
+
+function formatTokenCount(value: number, estimated: boolean): string {
+  return `${estimated ? "~" : ""}${value.toLocaleString("nl-NL")}`;
 }
 
 // Duration that ticks live while the run is queued/running, and

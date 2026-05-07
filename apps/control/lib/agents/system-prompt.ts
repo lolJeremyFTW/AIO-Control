@@ -262,6 +262,11 @@ export async function buildAgentSystemPrompt(
       "Hallucineer geen fictieve tool-namen en interpreteer geen " +
       "`[run agent X]` als een echte aanroep.",
   );
+  lines.push(
+    "Als je later in dezelfde chat wilt terugkomen met een korte melding " +
+      "(bijvoorbeeld \"ik ping je over 2 minuten\"), gebruik dan de " +
+      "ingebouwde tool `schedule_chat_ping`. Zeg dat niet alleen als tekst.",
+  );
 
   // ── Runtime / now ─────────────────────────────────────────────────
   // OpenClaw injects "Current Date & Time" so the agent has a stable

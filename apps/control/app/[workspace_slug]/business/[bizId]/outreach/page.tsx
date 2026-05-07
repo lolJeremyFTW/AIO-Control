@@ -155,14 +155,14 @@ export default async function OutreachPage({ params, searchParams }: Props) {
         <FilterChip href={baseHref} active={!activeStatus}>
           Alle ({total})
         </FilterChip>
-        {STATUSES.filter((s) => counts[s] > 0).map((s) => (
+        {STATUSES.filter((s) => (counts[s] ?? 0) > 0).map((s) => (
           <FilterChip
             key={s}
             href={`${baseHref}?status=${s}`}
             active={activeStatus === s}
             color={STATUS_COLORS[s]}
           >
-            {STATUS_LABELS[s]} ({counts[s]})
+            {STATUS_LABELS[s]} ({counts[s] ?? 0})
           </FilterChip>
         ))}
       </div>

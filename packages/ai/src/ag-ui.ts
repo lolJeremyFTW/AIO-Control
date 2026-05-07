@@ -65,6 +65,11 @@ export type AGUIEvent =
       label?: string;
     }
   | {
+      type: "chat_ping_scheduled";
+      delay_minutes: number;
+      message: string;
+    }
+  | {
       type: "confirm_required";
       tool_call_id: string;
       summary: string;

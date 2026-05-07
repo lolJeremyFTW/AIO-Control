@@ -27,6 +27,7 @@ import {
 import {
   executeAioTool,
   executeAioWriteTool,
+  scheduleChatPing,
 } from "../../../../lib/agents/tool-execution";
 import { checkSpendLimit } from "../../../../lib/dispatch/spend-limit";
 import { dispatchRunEvent } from "../../../../lib/notify/dispatch";
@@ -207,6 +208,7 @@ export async function POST(
   const finishedAt = { ts: 0 };
   let assistantText = "";
   let usage: { input: number; output: number; cost: number } | null = null;
+  let scheduledPingViaTool = false;
 
   // Resolve which AIO Control tools this agent is allowed to use.
   // null in the DB = use the kind defaults; explicit array = allow-list.
@@ -367,6 +369,13 @@ export async function POST(
                 cost: event.usage.cost_cents,
               };
             }
+            if (event.type === "cost_update") {
+              usage = {
+                input: event.input_tokens,
+                output: event.output_tokens,
+                cost: event.cost_cents,
+              };
+            }
             if (event.type === "tool_call_start") {
               toolUses.push({
                 id: event.tool_call_id,
@@ -397,6 +406,7 @@ export async function POST(
             const res = await executeAioTool(tu.name, tu.args, {
               workspaceId: agent.workspace_id,
               defaultBusinessId: agent.business_id,
+              chatThreadId: threadId,
             });
             if (res.kind === "defer") {
               const ev = res.event;
@@ -447,6 +457,21 @@ export async function POST(
                 toolResults.push({
                   id: tu.id,
                   content: JSON.stringify({ ok: true }),
+                });
+                continue;
+              } else if (ev.type === "chat_ping_scheduled") {
+                scheduledPingViaTool = true;
+                send({
+                  type: "chat_ping_scheduled",
+                  delay_minutes: ev.delayMinutes,
+                  message: ev.message,
+                });
+                toolResults.push({
+                  id: tu.id,
+                  content: JSON.stringify({
+                    scheduled: true,
+                    delay_minutes: ev.delayMinutes,
+                  }),
                 });
                 continue;
               }
@@ -517,6 +542,8 @@ export async function POST(
             // captured AFTER finishedAt, not at request start.
             duration_ms: finishedAt.ts ? finishedAt.ts - startedAtMs : null,
             cost_cents: usage?.cost ?? 0,
+            input_tokens: usage?.input ?? 0,
+            output_tokens: usage?.output ?? 0,
             output: { text: assistantText },
           })
           .eq("id", run.id)
@@ -546,6 +573,16 @@ export async function POST(
         // load it back. Best-effort — we don't fail the response if
         // the insert hiccups.
         if (threadId && lastUserText) {
+          if (!scheduledPingViaTool) {
+            const fallbackPing = inferScheduledChatPing(assistantText);
+            if (fallbackPing) {
+              scheduleChatPing(
+                threadId,
+                fallbackPing.delayMinutes,
+                fallbackPing.message,
+              );
+            }
+          }
           await persistChatTurn({
             thread_id: threadId,
             user_message: lastUserText,
@@ -571,4 +608,42 @@ export async function POST(
       "x-aio-run-id": run.id,
     },
   });
+}
+
+function inferScheduledChatPing(
+  text: string,
+): { delayMinutes: number; message: string } | null {
+  const normalized = text.toLowerCase();
+  if (!/\b(ping|meld|laat.*weten|kom.*terug)\b/.test(normalized)) return null;
+  if (/\b(kan|kun|zal)\s+(je|u)?\s*niet\s+(pingen|melden)\b/.test(normalized)) {
+    return null;
+  }
+
+  const minuteMatch = normalized.match(
+    /\bover\s+(\d{1,3})\s*(minuut|minuten|minute|minutes|min)\b/,
+  );
+  if (minuteMatch) {
+    const delayMinutes = Number(minuteMatch[1]);
+    if (Number.isFinite(delayMinutes) && delayMinutes > 0) {
+      return {
+        delayMinutes,
+        message: "Ping: ik ben terug in deze chat. Check de status even.",
+      };
+    }
+  }
+
+  const secondMatch = normalized.match(
+    /\bover\s+(\d{1,4})\s*(seconde|secondes|seconds|sec)\b/,
+  );
+  if (secondMatch) {
+    const seconds = Number(secondMatch[1]);
+    if (Number.isFinite(seconds) && seconds > 0) {
+      return {
+        delayMinutes: Math.max(seconds / 60, 1 / 60),
+        message: "Ping: ik ben terug in deze chat. Check de status even.",
+      };
+    }
+  }
+
+  return null;
 }

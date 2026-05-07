@@ -19,6 +19,7 @@ export type SettingsSectionId =
   | "notifications"
   | "team"
   | "talk"
+  | "server-files"
   | "subscription"
   | "providers"
   | "danger";
@@ -78,6 +79,12 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     id: "talk",
     labelKey: "settings.section.talk",
     descKey: "page.talk.sub",
+    group: "workspace",
+  },
+  {
+    id: "server-files",
+    labelKey: "settings.section.serverFiles",
+    descKey: "settings.section.serverFiles.desc",
     group: "workspace",
   },
 

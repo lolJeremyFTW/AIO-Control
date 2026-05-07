@@ -29,7 +29,7 @@ export async function POST(req: Request) {
   let llmResponseText = "";
   let sttProvider = "whisper-1";
   let ttsProvider = "elevenlabs";
-  let voiceId = "EXAVITQm4R8VDqDW9Pei"; // Rachel (default ElevenLabs voice)
+  let voiceId = "EXAVITQu4vr4xnSDxMaL"; // Sarah/Rachel fallback voice
 
   // ── 1. Auth ───────────────────────────────────────────────────────────────
   const supabase = await createSupabaseServerClient();
@@ -231,6 +231,23 @@ export async function POST(req: Request) {
   const hermesAgentName = (runtimeRow?.hermes_agent_name as string | null) ?? null;
   const openclawAgentName = (runtimeRow?.openclaw_agent_name as string | null) ?? null;
 
+  const talkMcpServers: string[] =
+    ((agent as { config?: { mcpServers?: string[] } }).config?.mcpServers) ?? [];
+  const MCP_TOOL_KEY_MAP: Record<string, string> = {
+    brave: "BRAVE_API_KEY",
+    firecrawl: "FIRECRAWL_API_KEY",
+  };
+  const mcpToolKeys: Record<string, string> = {};
+  for (const [server, envVar] of Object.entries(MCP_TOOL_KEY_MAP)) {
+    if (talkMcpServers.includes(server)) {
+      const key = await resolveApiKey(server, {
+        workspaceId: workspace_id,
+        businessId: agent.business_id,
+      });
+      if (key) mcpToolKeys[envVar] = key;
+    }
+  }
+
   // Resolve allowed tools for this agent (same logic as chat route).
   const allowedToolNames =
     (agent as { allowed_tools?: string[] | null }).allowed_tools ??
@@ -238,6 +255,7 @@ export async function POST(req: Request) {
   const tools = allowedToolNames
     .map((n) => AIO_TOOLS[n])
     .filter((t): t is NonNullable<typeof t> => !!t)
+    .filter((t) => t.name !== "schedule_chat_ping")
     .map((t) => ({ name: t.name, description: t.description, parameters: t.parameters }));
 
   // Build system prompt — same preamble as chat for full business context.
@@ -250,8 +268,11 @@ export async function POST(req: Request) {
     provider: agent.provider,
     model: agent.model,
   });
-  const talkNote =
-    "Je wordt aangesproken via spraakinvoer. Geef korte, gesproken antwoorden — maximaal 2-3 zinnen. Geen markdown formatting.";
+  const talkNote = [
+    "You are AIO Control, TrompTech's solo-operator agent command center. You help Jeremy operate, automate, inspect, and coordinate his AIO system using available tools and context.",
+    "Je wordt aangesproken via spraakinvoer. Geef korte, gesproken antwoorden - maximaal 2-3 zinnen. Geen markdown formatting.",
+    "Je hebt dezelfde agent-context, business-context, AIO tools en geconfigureerde MCP servers als de normale chatroute.",
+  ].join("\n");
   const systemPrompt =
     prependPreamble(preamble, agentConfig.systemPrompt) +
     `\n\n---\n\n${talkNote}`;
@@ -285,6 +306,7 @@ export async function POST(req: Request) {
   try {
     for (let hop = 0; hop < HOPS_MAX && !deferred; hop++) {
       const toolUses: Array<{ id: string; name: string; args: unknown }> = [];
+      const providerHandledIds = new Set<string>();
 
       for await (const event of streamChat({
         provider: resolvedProvider as ProviderId,
@@ -298,12 +320,17 @@ export async function POST(req: Request) {
           ollamaEndpoint: ollamaEndpoint ?? undefined,
           hermesAgentName,
           openclawAgentName,
+          mcpToolKeys: Object.keys(mcpToolKeys).length > 0 ? mcpToolKeys : undefined,
         },
+        sessionId: `talk:${workspace_id}:${agent.id}`,
         tools,
       })) {
         if (event.type === "token") llmResponseText += event.delta;
         if (event.type === "tool_call_start") {
           toolUses.push({ id: event.tool_call_id, name: event.name, args: event.args });
+        }
+        if (event.type === "tool_call_result") {
+          providerHandledIds.add(event.tool_call_id);
         }
         if (event.type === "message_end") break;
       }
@@ -311,7 +338,7 @@ export async function POST(req: Request) {
       if (toolUses.length === 0) break;
 
       const toolResults: Array<{ id: string; content: string }> = [];
-      for (const tu of toolUses) {
+      for (const tu of toolUses.filter((toolUse) => !providerHandledIds.has(toolUse.id))) {
         const res = await executeAioTool(tu.name, tu.args, {
           workspaceId: workspace_id,
           defaultBusinessId: agent.business_id,
@@ -329,6 +356,9 @@ export async function POST(req: Request) {
           } else if (ev.type === "todo_set") {
             toolResults.push({ id: tu.id, content: JSON.stringify({ ok: true }) });
             continue;
+          } else if (ev.type === "chat_ping_scheduled") {
+            deferSpeakText =
+              "Ik kan alleen in de normale chat later terugpingen. Open de chatbox als je een delayed ping wilt.";
           }
           deferred = true;
           break;

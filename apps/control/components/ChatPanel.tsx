@@ -14,6 +14,7 @@ import { ChatIcon } from "@aio/ui/icon";
 import type { AGUIEvent, ChatMessage } from "@aio/ai/ag-ui";
 
 import type { AgentRow } from "../lib/queries/agents";
+import { getSupabaseBrowserClient } from "../lib/supabase/client";
 import {
   deleteThread,
   listMessages,
@@ -35,6 +36,13 @@ type UIMessage = {
   role: "user" | "assistant" | "error" | "system";
   text: string;
   pending?: boolean;
+  usage?: {
+    inputTokens?: number;
+    outputTokens?: number;
+    costCents?: number;
+    estimatedInput?: boolean;
+    estimatedOutput?: boolean;
+  };
   /** When set, the bubble renders an ask_followup question with
    *  optional multiple-choice buttons (a click sends that label as
    *  the user's next message). */
@@ -72,6 +80,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
   const [threads, setThreads] = useState<ThreadRow[]>([]);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(false);
+  const [unreadPingCount, setUnreadPingCount] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -113,6 +122,76 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
   useEffect(() => {
     if (open) listRef.current?.scrollTo({ top: 99999 });
   }, [messages, open]);
+
+  useEffect(() => {
+    if (open) setUnreadPingCount(0);
+  }, [open]);
+
+  useEffect(() => {
+    if (!agentId) return;
+    let supabase: ReturnType<typeof getSupabaseBrowserClient>;
+    try {
+      supabase = getSupabaseBrowserClient();
+    } catch {
+      return;
+    }
+
+    type InsertPayload = {
+      new?: {
+        id?: string;
+        thread_id?: string;
+        role?: "user" | "assistant" | "system";
+        content?: { text?: string; kind?: string };
+        created_at?: string;
+      };
+    };
+
+    const channel = supabase
+      .channel(`chat_messages:agent:${agentId}`)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .on(
+        "postgres_changes" as any,
+        {
+          event: "INSERT",
+          schema: "aio_control",
+          table: "chat_messages",
+        },
+        (payload: InsertPayload) => {
+          const row = payload.new;
+          if (
+            !row?.id ||
+            row.role !== "assistant" ||
+            row.content?.kind !== "scheduled_ping"
+          ) {
+            return;
+          }
+          const rowId = row.id;
+          if (row.thread_id === activeThreadId) {
+            setMessages((prev) => {
+              if (prev.some((m) => m.id === rowId)) return prev;
+              return [
+                ...prev,
+                {
+                  id: rowId,
+                  role: "assistant",
+                  text: row.content?.text ?? "",
+                  createdAt: row.created_at ? new Date(row.created_at) : new Date(),
+                },
+              ];
+            });
+          }
+          if (!open || row.thread_id !== activeThreadId) {
+            setUnreadPingCount((n) => n + 1);
+          }
+          if (agentId) void listThreads(agentId).then(setThreads);
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [activeThreadId, agentId, open]);
 
   // Handle clicks outside the panel or inside the panel but outside the sidebar.
   useEffect(() => {
@@ -170,6 +249,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
         content: m.text,
       }));
     if (!isApproval) history.push({ role: "user", content: text });
+    const inputTokenEstimate = estimateTokens(history.map((m) => m.content).join("\n"));
 
     setMessages((m) => {
       // For approval requests we don't add a user bubble; we just
@@ -179,7 +259,19 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
         : [
             ...m,
             { id: userId, role: "user" as const, text, createdAt: new Date() },
-            { id: assistantId, role: "assistant" as const, text: "", pending: true, createdAt: new Date() },
+            {
+              id: assistantId,
+              role: "assistant" as const,
+              text: "",
+              pending: true,
+              usage: {
+                inputTokens: inputTokenEstimate,
+                outputTokens: 0,
+                estimatedInput: true,
+                estimatedOutput: true,
+              },
+              createdAt: new Date(),
+            },
           ];
       // Mark the original confirm bubble as decided so its buttons
       // disable + the card swaps to a status pill.
@@ -264,7 +356,15 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
                 setMessages((m) =>
                   m.map((mm) =>
                     mm.id === assistantId
-                      ? { ...mm, text: mm.text + event.delta }
+                      ? {
+                          ...mm,
+                          text: mm.text + event.delta,
+                          usage: {
+                            ...mm.usage,
+                            outputTokens: estimateTokens(mm.text + event.delta),
+                            estimatedOutput: true,
+                          },
+                        }
                       : mm,
                   ),
                 );
@@ -286,7 +386,37 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
               if (event.type === "message_end") {
                 setMessages((m) =>
                   m.map((mm) =>
-                    mm.id === assistantId ? { ...mm, pending: false } : mm,
+                    mm.id === assistantId
+                      ? {
+                          ...mm,
+                          pending: false,
+                          usage: {
+                            inputTokens: event.usage.input_tokens,
+                            outputTokens: event.usage.output_tokens,
+                            costCents: event.usage.cost_cents,
+                            estimatedInput: false,
+                            estimatedOutput: false,
+                          },
+                        }
+                      : mm,
+                  ),
+                );
+              }
+              if (event.type === "cost_update") {
+                setMessages((m) =>
+                  m.map((mm) =>
+                    mm.id === assistantId
+                      ? {
+                          ...mm,
+                          usage: {
+                            inputTokens: event.input_tokens,
+                            outputTokens: event.output_tokens,
+                            costCents: event.cost_cents,
+                            estimatedInput: false,
+                            estimatedOutput: false,
+                          },
+                        }
+                      : mm,
                   ),
                 );
               }
@@ -415,8 +545,30 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
         className="chatbox"
         title="Chat met AI"
         onClick={() => setOpen((v) => !v)}
+        style={{ position: "relative" }}
       >
         <ChatIcon />
+        {unreadPingCount > 0 && (
+          <span
+            style={{
+              position: "absolute",
+              top: -4,
+              right: -4,
+              minWidth: 18,
+              height: 18,
+              borderRadius: 999,
+              background: "var(--rose)",
+              color: "#fff",
+              fontSize: 10,
+              fontWeight: 800,
+              display: "grid",
+              placeItems: "center",
+              border: "2px solid var(--app-bg)",
+            }}
+          >
+            {unreadPingCount > 9 ? "9+" : unreadPingCount}
+          </span>
+        )}
       </div>
 
       {open && (
@@ -716,6 +868,14 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
 
                 {/* Tool-call chips so the user sees what the agent is
                     doing while it runs. */}
+                {m.usage &&
+                  (m.role === "assistant" || m.role === "error") &&
+                  (m.pending ||
+                    m.usage.inputTokens != null ||
+                    m.usage.outputTokens != null) && (
+                    <TokenUsageLine usage={m.usage} />
+                  )}
+
                 {m.toolCalls && m.toolCalls.length > 0 && (
                   <div
                     style={{
@@ -997,5 +1157,39 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
         </div>
       )}
     </>
+  );
+}
+
+function estimateTokens(text: string): number {
+  const trimmed = text.trim();
+  if (!trimmed) return 0;
+  return Math.max(1, Math.ceil(trimmed.length / 4));
+}
+
+function formatTokenCount(value?: number, estimated?: boolean): string {
+  if (value == null) return "?";
+  return `${estimated ? "~" : ""}${value.toLocaleString("nl-NL")}`;
+}
+
+function TokenUsageLine({
+  usage,
+}: {
+  usage: NonNullable<UIMessage["usage"]>;
+}) {
+  const cost =
+    usage.costCents != null ? ` · €${(usage.costCents / 100).toFixed(4)}` : "";
+  return (
+    <div
+      style={{
+        alignSelf: "flex-start",
+        fontSize: 10.5,
+        color: "var(--app-fg-3)",
+        fontFamily: "var(--mono, ui-monospace, monospace)",
+      }}
+    >
+      {formatTokenCount(usage.inputTokens, usage.estimatedInput)} in /{" "}
+      {formatTokenCount(usage.outputTokens, usage.estimatedOutput)} out
+      {cost}
+    </div>
   );
 }

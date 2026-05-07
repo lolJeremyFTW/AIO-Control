@@ -24,6 +24,7 @@ import "server-only";
 import * as cron from "node-cron";
 
 import { dispatchRun } from "./runs";
+import { deliverDueChatPings } from "../agents/tool-execution";
 import { getServiceRoleSupabase } from "../supabase/service";
 
 let started = false;
@@ -368,6 +369,9 @@ async function tick(): Promise<void> {
   void cleanupZombieRuns().catch(() => {});
   void runRetrySweep().catch((err) =>
     console.error("[cron-scheduler] retry sweep failed", err),
+  );
+  void deliverDueChatPings().catch((err) =>
+    console.error("[cron-scheduler] chat ping delivery failed", err),
   );
 
   // Query enabled cron schedules joined with their agents so we can

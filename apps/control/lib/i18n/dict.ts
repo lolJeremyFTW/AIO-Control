@@ -547,6 +547,9 @@ const nl: Dict = {
   "settings.section.danger.desc":
     "Data exporteren of de workspace permanent verwijderen.",
   "settings.section.talk": "Talk to AI",
+  "settings.section.serverFiles": "VPS bestanden",
+  "settings.section.serverFiles.desc":
+    "Read-only bladeren door bestanden op de server.",
   "settings.section.subscription": "Abonnement",
   "settings.field.workspaceName": "Workspace naam",
   "settings.field.email": "Email",
@@ -1151,6 +1154,9 @@ const en: Partial<Dict> = {
   "settings.section.danger.desc":
     "Export data or delete the workspace permanently.",
   "settings.section.talk": "Talk to AI",
+  "settings.section.serverFiles": "VPS files",
+  "settings.section.serverFiles.desc":
+    "Read-only browsing for files on the server.",
   "settings.section.subscription": "Subscription",
   "settings.field.workspaceName": "Workspace name",
   "settings.field.email": "Email",
@@ -1583,6 +1589,9 @@ const de: Partial<Dict> = {
   "settings.section.danger.desc":
     "Daten exportieren oder den Workspace dauerhaft löschen.",
   "settings.section.talk": "Talk to AI",
+  "settings.section.serverFiles": "VPS-Dateien",
+  "settings.section.serverFiles.desc":
+    "Read-only Zugriff auf Dateien auf dem Server.",
   "settings.section.subscription": "Abonnement",
   "settings.field.workspaceName": "Workspace-Name",
   "settings.field.email": "E-Mail",

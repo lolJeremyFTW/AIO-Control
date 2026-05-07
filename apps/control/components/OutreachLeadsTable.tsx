@@ -78,7 +78,7 @@ export function OutreachLeadsTable({ leads: initial, reportOrigin }: Props) {
           schema: "aio_control",
           table: "outreach_leads",
         },
-        (payload) => {
+        (payload: { new: Lead }) => {
           const updated = payload.new as Lead;
           setLeads((prev) =>
             prev.map((l) => (l.id === updated.id ? { ...l, ...updated } : l)),

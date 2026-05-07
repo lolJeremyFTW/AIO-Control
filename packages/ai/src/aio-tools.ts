@@ -318,6 +318,27 @@ export const AIO_TOOLS: Record<string, AioToolSpec> = {
       additionalProperties: false,
     },
   },
+  schedule_chat_ping: {
+    name: "schedule_chat_ping",
+    category: "meta",
+    description:
+      "Schedule a short follow-up message in this same chat thread. Use this instead of saying 'I'll ping you in X minutes' when you need to notify the operator later.",
+    parameters: {
+      type: "object",
+      properties: {
+        delay_minutes: {
+          type: "number",
+          description: "How many minutes from now before the ping appears.",
+        },
+        message: {
+          type: "string",
+          description: "The short message to insert into the chat later.",
+        },
+      },
+      required: ["delay_minutes", "message"],
+      additionalProperties: false,
+    },
+  },
 };
 
 export const AIO_TOOL_NAMES = Object.keys(AIO_TOOLS);

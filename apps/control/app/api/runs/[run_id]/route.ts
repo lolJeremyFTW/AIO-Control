@@ -27,7 +27,8 @@ export async function GET(
     .select(
       `id, workspace_id, agent_id, business_id, schedule_id,
        triggered_by, status, started_at, ended_at, duration_ms,
-       cost_cents, input, output, error_text, message_history,
+       cost_cents, input_tokens, output_tokens, input, output,
+       error_text, message_history,
        created_at, attempt, max_attempts, next_retry_at,
        agents:agent_id ( id, name, provider, model )`,
     )

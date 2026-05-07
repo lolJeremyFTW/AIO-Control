@@ -255,7 +255,12 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
     try {
       await supabase
         .from("runs")
-        .update({ message_history: history, cost_cents: cost })
+        .update({
+          message_history: history,
+          cost_cents: cost,
+          input_tokens: inputTokens,
+          output_tokens: outputTokens,
+        })
         .eq("id", runId);
     } catch (err) {
       // Non-fatal; the final write at the end will catch up.

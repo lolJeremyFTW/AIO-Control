@@ -19,6 +19,9 @@ export type AioToolContext = {
   /** When the agent itself is business-scoped, defaults its writes
    *  to that business unless the caller passes business_id explicitly. */
   defaultBusinessId: string | null;
+  /** Present for interactive chat turns so meta tools can write back to
+   *  the same thread after the stream has closed. */
+  chatThreadId?: string | null;
 };
 
 export type AioToolResult =
@@ -35,7 +38,8 @@ export type AioToolResult =
         | { type: "ask_followup"; question: string; options?: { label: string; description?: string }[] }
         | { type: "confirm_required"; summary: string; kind: string; pending: { name: string; args: unknown } }
         | { type: "open_ui_at"; path: string; label?: string }
-        | { type: "todo_set"; items: Array<{ id: string; content: string; status: "pending" | "in_progress" | "completed" }> };
+        | { type: "todo_set"; items: Array<{ id: string; content: string; status: "pending" | "in_progress" | "completed" }> }
+        | { type: "chat_ping_scheduled"; delayMinutes: number; message: string };
     };
 
 export async function executeAioTool(
@@ -202,6 +206,31 @@ export async function executeAioTool(
         return { kind: "defer", event: { type: "open_ui_at", path, label } };
       }
 
+      case "schedule_chat_ping": {
+        const delayMinutes = Number(a.delay_minutes ?? 0);
+        const message = String(a.message ?? "").trim();
+        if (!ctx.chatThreadId) {
+          return {
+            kind: "error",
+            error: "schedule_chat_ping werkt alleen in een actieve chat-thread.",
+          };
+        }
+        if (!Number.isFinite(delayMinutes) || delayMinutes <= 0) {
+          return {
+            kind: "error",
+            error: "schedule_chat_ping needs delay_minutes > 0.",
+          };
+        }
+        if (!message) {
+          return { kind: "error", error: "schedule_chat_ping needs a message." };
+        }
+        scheduleChatPing(ctx.chatThreadId, delayMinutes, message);
+        return {
+          kind: "defer",
+          event: { type: "chat_ping_scheduled", delayMinutes, message },
+        };
+      }
+
       // ── WRITE — gated behind user confirm in the chat panel ──────
       // First-pass: defer with confirm_required. The chat-route's
       // approve_tool path re-enters via executeAioWriteTool below
@@ -230,6 +259,109 @@ export async function executeAioTool(
       error: err instanceof Error ? err.message : String(err),
     };
   }
+}
+
+export function scheduleChatPing(
+  threadId: string,
+  delayMinutes: number,
+  message: string,
+): void {
+  const delayMs = Math.min(Math.round(delayMinutes * 60_000), 24 * 60 * 60_000);
+  const dueAt = new Date(Date.now() + Math.max(delayMs, 1_000)).toISOString();
+  const admin = getServiceRoleSupabase();
+
+  void admin
+    .from("chat_scheduled_messages")
+    .insert({
+      thread_id: threadId,
+      message,
+      due_at: dueAt,
+    })
+    .select("id")
+    .single()
+    .then(({ data, error }) => {
+      if (error || !data) {
+        console.error("schedule_chat_ping enqueue failed", error);
+        setTimeout(() => {
+          void insertScheduledPingMessage(threadId, message);
+        }, Math.max(delayMs, 1_000));
+        return;
+      }
+      const scheduledId = data.id as string;
+      setTimeout(() => {
+        void deliverScheduledChatPing(scheduledId);
+      }, Math.max(delayMs, 1_000));
+    });
+}
+
+export async function deliverDueChatPings(limit = 50): Promise<void> {
+  const admin = getServiceRoleSupabase();
+  const { data, error } = await admin
+    .from("chat_scheduled_messages")
+    .select("id")
+    .is("delivered_at", null)
+    .lte("due_at", new Date().toISOString())
+    .order("due_at", { ascending: true })
+    .limit(limit);
+  if (error) {
+    console.error("deliverDueChatPings query failed", error);
+    return;
+  }
+  for (const row of data ?? []) {
+    await deliverScheduledChatPing(row.id as string);
+  }
+}
+
+async function deliverScheduledChatPing(id: string): Promise<void> {
+  const admin = getServiceRoleSupabase();
+  const { data: claimed, error: claimError } = await admin
+    .from("chat_scheduled_messages")
+    .update({ delivered_at: new Date().toISOString() })
+    .eq("id", id)
+    .is("delivered_at", null)
+    .lte("due_at", new Date().toISOString())
+    .select("thread_id, message")
+    .maybeSingle();
+  if (claimError) {
+    console.error("deliverScheduledChatPing claim failed", claimError);
+    return;
+  }
+  if (!claimed) return;
+  const delivered = await insertScheduledPingMessage(
+    claimed.thread_id as string,
+    claimed.message as string,
+  );
+  if (!delivered) {
+    await admin
+      .from("chat_scheduled_messages")
+      .update({ delivered_at: null })
+      .eq("id", id);
+  }
+}
+
+async function insertScheduledPingMessage(
+  threadId: string,
+  message: string,
+): Promise<boolean> {
+  const admin = getServiceRoleSupabase();
+  const { error } = await admin.from("chat_messages").insert({
+    thread_id: threadId,
+    role: "assistant",
+    content: {
+      text: message,
+      kind: "scheduled_ping",
+      scheduled_for: new Date().toISOString(),
+    },
+  });
+  if (error) {
+    console.error("schedule_chat_ping insert failed", error);
+    return false;
+  }
+  await admin
+    .from("chat_threads")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", threadId);
+  return true;
 }
 
 /**
