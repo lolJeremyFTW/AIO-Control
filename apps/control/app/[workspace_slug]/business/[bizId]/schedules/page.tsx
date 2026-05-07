@@ -2,6 +2,7 @@
 // / manual schedules, plus a recent-runs timeline.
 
 import { headers } from "next/headers";
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import {
@@ -17,7 +18,7 @@ import {
 } from "../../../../../lib/queries/schedules";
 import { listFlatNavNodes } from "../../../../../lib/queries/nav-nodes";
 import { RunsTimeline } from "../../../../../components/RunsTimeline";
-import { ScheduleBuilder } from "../../../../../components/ScheduleBuilder";
+import { ScheduleBuilderDialog } from "../../../../../components/ScheduleBuilderDialog";
 import { SchedulesPanel } from "../../../../../components/SchedulesPanel";
 import { createSupabaseServerClient } from "../../../../../lib/supabase/server";
 
@@ -82,11 +83,8 @@ export default async function BusinessSchedulesPage({ params }: Props) {
     <div className="content">
       <div className="page-title-row">
         <h1>{t("page.business.schedules.h1", { business: biz.name })}</h1>
-        <span className="sub">{t("page.business.schedules.sub")}</span>
-      </div>
-      {agents.length > 0 && (
-        <div style={{ marginBottom: 22 }}>
-          <ScheduleBuilder
+        {agents.length > 0 && (
+          <ScheduleBuilderDialog
             workspaceSlug={workspace.slug}
             workspaceId={workspace.id}
             businessId={biz.id}
@@ -96,8 +94,8 @@ export default async function BusinessSchedulesPage({ params }: Props) {
             customIntegrations={customIntegrations}
             navNodes={navNodes}
           />
-        </div>
-      )}
+        )}
+      </div>
 
       <SchedulesPanel
         workspaceSlug={workspace.slug}
@@ -126,6 +124,23 @@ export default async function BusinessSchedulesPage({ params }: Props) {
         businessId={biz.id}
         workspaceId={biz.workspace_id}
       />
+      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
+        <Link
+          href={`/${workspace.slug}/business/${biz.id}/runs`}
+          style={{
+            padding: "9px 15px",
+            border: "1.5px solid var(--app-border)",
+            background: "var(--app-card-2)",
+            color: "var(--app-fg)",
+            borderRadius: 10,
+            fontWeight: 700,
+            fontSize: 12.5,
+            textDecoration: "none",
+          }}
+        >
+          alle runs
+        </Link>
+      </div>
     </div>
   );
 }
