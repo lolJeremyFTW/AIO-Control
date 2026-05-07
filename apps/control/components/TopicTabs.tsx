@@ -26,20 +26,22 @@ export function TopicTabs({ baseHref, topicName }: Props) {
         alignItems: "center",
         gap: 4,
         marginBottom: 16,
-        borderBottom: "2px solid var(--app-border-2)",
+        borderBottom: "1px solid var(--app-border-2)",
         flexWrap: "wrap",
       }}
     >
       {/* Topic name as the left anchor */}
       <span
         style={{
-          fontSize: 13,
+          fontSize: 12.5,
           fontWeight: 800,
           color: "var(--app-fg)",
-          padding: "8px 14px 8px 0",
-          marginRight: 4,
-          borderRight: "1px solid var(--app-border-2)",
+          padding: "8px 14px",
           whiteSpace: "nowrap",
+          display: "inline-flex",
+          alignItems: "center",
+          transform: "translateY(1px)",
+          borderBottom: "2px solid transparent",
         }}
       >
         {topicName}
@@ -52,25 +54,32 @@ export function TopicTabs({ baseHref, topicName }: Props) {
             ? path === baseHref || path === `${baseHref}/`
             : path === href || path.startsWith(`${href}/`);
         return (
-          <Link
+          <span
             key={label}
-            href={href}
             style={{
               display: "inline-flex",
               alignItems: "center",
-              padding: "8px 14px",
-              fontSize: 12.5,
-              fontWeight: 700,
-              color: active ? "var(--app-fg)" : "var(--app-fg-3)",
-              textDecoration: "none",
+              transform: "translateY(1px)",
               borderBottom: active
                 ? "2px solid var(--tt-green)"
                 : "2px solid transparent",
-              transform: "translateY(2px)",
             }}
           >
-            {label}
-          </Link>
+            <Link
+              href={href}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                padding: "8px 10px 8px 14px",
+                fontSize: 12.5,
+                fontWeight: 700,
+                color: active ? "var(--app-fg)" : "var(--app-fg-3)",
+                textDecoration: "none",
+              }}
+            >
+              {label}
+            </Link>
+          </span>
         );
       })}
     </div>
