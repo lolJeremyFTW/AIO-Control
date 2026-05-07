@@ -86,7 +86,9 @@ create policy "api_keys_owner_write" on aio_control.api_keys
     )
   );
 
-create or replace view aio_control.api_keys_metadata
+drop view if exists aio_control.api_keys_metadata;
+
+create view aio_control.api_keys_metadata
 with (security_invoker = true) as
 select id, workspace_id, owner_user_id, scope, scope_id, provider, label,
        (encrypted_value is not null) as has_value,
