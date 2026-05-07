@@ -9,7 +9,10 @@ import {
   getProfile,
   getWorkspaceBySlug,
 } from "../../../lib/auth/workspace";
+import { listAgentsForWorkspace } from "../../../lib/queries/agents";
+import { listSkillsForWorkspace } from "../../../lib/queries/skills";
 import { ProfileEditor } from "../../../components/ProfileEditor";
+import { SkillsManager } from "../../../components/SkillsManager";
 import { getDict } from "../../../lib/i18n/server";
 
 type Props = { params: Promise<{ workspace_slug: string }> };
@@ -26,6 +29,10 @@ export default async function ProfilePage({ params }: Props) {
   ]);
   if (!profile) redirect("/login");
   if (!workspace) notFound();
+  const [skills, agents] = await Promise.all([
+    listSkillsForWorkspace(workspace.id),
+    listAgentsForWorkspace(workspace.id),
+  ]);
   const { locale, t } = dict;
 
   return (
@@ -69,6 +76,27 @@ export default async function ProfilePage({ params }: Props) {
         uploadWorkspaceId={workspace.id}
         currentLocale={locale}
       />
+      <section id="skills" style={{ marginTop: 28 }}>
+        <div className="page-title-row">
+          <h1>Skills</h1>
+          <span className="sub">
+            Workspace skills, online import en per-agent context selectie
+          </span>
+        </div>
+        <SkillsManager
+          workspaceSlug={workspace_slug}
+          workspaceId={workspace.id}
+          initialSkills={skills}
+          initialAgents={agents.map((agent) => ({
+            id: agent.id,
+            name: agent.name,
+            kind: agent.kind,
+            provider: agent.provider,
+            business_id: agent.business_id,
+            allowed_skills: agent.allowed_skills,
+          }))}
+        />
+      </section>
     </div>
   );
 }

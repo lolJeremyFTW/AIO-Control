@@ -56,7 +56,7 @@ export function SkillsPickerField({
           Skills — welke procedurele kennis krijgt deze agent?
         </span>
         <a
-          href={`/${workspaceSlug}/skills`}
+          href={`/${workspaceSlug}/profile#skills`}
           target="_blank"
           rel="noopener noreferrer"
           style={{
@@ -79,12 +79,12 @@ export function SkillsPickerField({
         >
           Nog geen skills in deze workspace. Maak er één aan via{" "}
           <a
-            href={`/${workspaceSlug}/skills`}
+            href={`/${workspaceSlug}/profile#skills`}
             target="_blank"
             rel="noopener noreferrer"
             style={{ color: "var(--tt-green)", fontWeight: 700 }}
           >
-            /{workspaceSlug}/skills
+            profiel / skills
           </a>
           .
         </p>

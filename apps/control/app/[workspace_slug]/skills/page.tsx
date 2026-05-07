@@ -11,6 +11,7 @@ import {
   getCurrentUser,
   getWorkspaceBySlug,
 } from "../../../lib/auth/workspace";
+import { listAgentsForWorkspace } from "../../../lib/queries/agents";
 import { listSkillsForWorkspace } from "../../../lib/queries/skills";
 import { SkillsManager } from "../../../components/SkillsManager";
 
@@ -24,7 +25,10 @@ export default async function SkillsPage({ params }: Props) {
   const workspace = await getWorkspaceBySlug(workspace_slug);
   if (!workspace) notFound();
 
-  const skills = await listSkillsForWorkspace(workspace.id);
+  const [skills, agents] = await Promise.all([
+    listSkillsForWorkspace(workspace.id),
+    listAgentsForWorkspace(workspace.id),
+  ]);
 
   return (
     <main
@@ -68,6 +72,14 @@ export default async function SkillsPage({ params }: Props) {
         workspaceSlug={workspace_slug}
         workspaceId={workspace.id}
         initialSkills={skills}
+        initialAgents={agents.map((agent) => ({
+          id: agent.id,
+          name: agent.name,
+          kind: agent.kind,
+          provider: agent.provider,
+          business_id: agent.business_id,
+          allowed_skills: agent.allowed_skills,
+        }))}
       />
     </main>
   );
