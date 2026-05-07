@@ -66,6 +66,20 @@ function dashboardOrigin(value: string | undefined): string {
   }
 }
 
+function normalizeCustomTabUrl(value: string): string {
+  try {
+    if (value.startsWith("/d/")) return `${APP_ORIGIN}${value}`;
+    const url = new URL(value);
+    if (url.pathname.startsWith("/d/")) {
+      return `${APP_ORIGIN}${url.pathname}${url.search}${url.hash}`;
+    }
+  } catch {
+    // Schema validation catches invalid URLs for MCP calls; keep this helper
+    // non-throwing so callers can still surface the original validation error.
+  }
+  return value;
+}
+
 const ListAgentsSchema = z.object({
   scope: z.enum(["all", "global", "business"]).optional().default("all"),
   business_id: z.string().uuid().optional(),
@@ -800,6 +814,7 @@ async function upsertCustomTabInner(
   sort_order: number,
   nav_node_id?: string,
 ): Promise<{ tab_id?: string; error?: string }> {
+  const normalizedUrl = normalizeCustomTabUrl(url);
   let existingQuery = supabaseAio
     .from("custom_tabs")
     .select("id")
@@ -815,7 +830,7 @@ async function upsertCustomTabInner(
   if (existing) {
     const { error } = await supabaseAio
       .from("custom_tabs")
-      .update({ url, sort_order, nav_node_id: nav_node_id ?? null })
+      .update({ url: normalizedUrl, sort_order, nav_node_id: nav_node_id ?? null })
       .eq("id", existing.id);
     if (error) return { error: error.message };
     return { tab_id: existing.id as string };
@@ -828,7 +843,7 @@ async function upsertCustomTabInner(
       business_id,
       nav_node_id: nav_node_id ?? null,
       label,
-      url,
+      url: normalizedUrl,
       sort_order,
     })
     .select("id")

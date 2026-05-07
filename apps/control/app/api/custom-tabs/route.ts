@@ -17,6 +17,20 @@ async function resolveBusinessId(
   return (data?.id as string) ?? null;
 }
 
+function normalizeCustomTabUrl(value: string): string {
+  try {
+    if (value.startsWith("/d/")) return `https://aio.tromptech.life${value}`;
+    const url = new URL(value);
+    if (url.pathname.startsWith("/d/")) {
+      return `https://aio.tromptech.life${url.pathname}${url.search}${url.hash}`;
+    }
+  } catch {
+    // Let the insert fail normally for malformed URLs; this endpoint has
+    // historically accepted external URLs as plain strings.
+  }
+  return value;
+}
+
 export async function GET(req: NextRequest) {
   const businessIdParam = req.nextUrl.searchParams.get("business_id");
   const navNodeId = req.nextUrl.searchParams.get("nav_node_id");
@@ -78,7 +92,7 @@ export async function POST(req: NextRequest) {
       workspace_id,
       nav_node_id: nav_node_id ?? null,
       label,
-      url,
+      url: normalizeCustomTabUrl(url),
     })
     .select("id")
     .single();
