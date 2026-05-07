@@ -76,9 +76,6 @@ type Props = {
     at: string;
     status: "queued" | "running" | "done" | "failed" | "review";
   } | null;
-  /** Root-level nav_nodes for this business. Rendered as tabs between
-   *  the built-ins and custom iframe tabs. Each links to /n/<slug>. */
-  navNodeTabs?: { slug: string; label: string }[];
   /** Optional context-specific tabs that show up when the user is
    *  drilled into a topic. The topic-edit dialog (later) lets the
    *  user add custom dashboard tabs that flow through here. Each
@@ -109,12 +106,34 @@ export function BusinessTabs({
   workspaceId,
   routinesCount,
   lastRun,
-  navNodeTabs,
   topicTabs,
   labels,
 }: Props) {
   const path = usePathname() ?? "";
   const base = `/${workspaceSlug}/business/${businessId}`;
+
+  // On topic pages (/n/…) hide the full business tab strip — the
+  // TopicTabs component inside the page renders its own navigation.
+  // Show only a small breadcrumb so the user can navigate back.
+  if (path.includes("/n/")) {
+    return (
+      <div style={{ marginBottom: 12 }}>
+        <Link
+          href={base}
+          style={{
+            fontSize: 12,
+            color: "var(--app-fg-3)",
+            textDecoration: "none",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+          }}
+        >
+          ← {businessId}
+        </Link>
+      </div>
+    );
+  }
 
   const [localTopicTabs, setLocalTopicTabs] = useState<BusinessTabsTopicEntry[]>(topicTabs ?? []);
   const [showAdd, setShowAdd] = useState(false);
@@ -159,6 +178,12 @@ export function BusinessTabs({
     }
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [refreshTabs]);
+
+  // Poll every 15 s so agent-created tabs appear within seconds of creation.
+  useEffect(() => {
+    const id = setInterval(() => void refreshTabs(), 15_000);
+    return () => clearInterval(id);
   }, [refreshTabs]);
 
   async function handleAddTab(e: React.FormEvent) {
@@ -242,24 +267,9 @@ export function BusinessTabs({
     },
   ];
 
-  // Root nav_nodes become tabs between the built-ins and any custom
-  // iframe tabs. They link to /n/<slug> and are active for the whole
-  // subtree under that slug.
-  const navNodeTabItems: Tab[] = (navNodeTabs ?? []).map((n) => {
-    const href = `${base}/n/${n.slug}`;
-    return {
-      href,
-      label: n.label,
-      match: (p) => p === href || p.startsWith(`${href}/`),
-    } satisfies Tab;
-  });
-
-  // Topic-specific tabs (custom dashboards added by the user). These
-  // come AFTER the nav_node tabs so the standard nav stays anchored
-  // on the left.
+  // Custom iframe tabs added by agents or the user come after built-ins.
   const tabs: Tab[] = [
     ...builtins,
-    ...navNodeTabItems,
     ...localTopicTabs.map((t) => {
       const href = `${base}${t.href}`;
       return {

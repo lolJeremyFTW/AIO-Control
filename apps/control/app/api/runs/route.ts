@@ -14,6 +14,7 @@ export async function GET(req: Request) {
   const workspaceId = url.searchParams.get("workspace");
   const status = url.searchParams.get("status");
   const agent = url.searchParams.get("agent");
+  const navNode = url.searchParams.get("navNode");
   const limit = Math.min(Number(url.searchParams.get("limit") ?? 25), 100);
   const offset = Math.max(Number(url.searchParams.get("offset") ?? 0), 0);
 
@@ -43,6 +44,7 @@ export async function GET(req: Request) {
   else if (workspaceId) q = q.eq("workspace_id", workspaceId);
   if (status) q = q.eq("status", status);
   if (agent) q = q.eq("agent_id", agent);
+  if (navNode) q = q.eq("nav_node_id", navNode);
 
   const { data, error } = await q;
   if (error) {
