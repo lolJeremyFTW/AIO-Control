@@ -210,6 +210,8 @@ export function AgentsDashboard({
 
   const fireMap = useMemo(() => {
     const map = new Map<string, ScheduleFire[]>();
+    const nowMinute = new Date();
+    nowMinute.setSeconds(0, 0);
     for (const day of window.days) {
       map.set(dayKey(day), []);
     }
@@ -221,6 +223,7 @@ export function AgentsDashboard({
         ? (businesses.find((b) => b.id === s.business_id) ?? null)
         : null;
       for (const t of fires) {
+        if (t < nowMinute) continue;
         const key = dayKey(t);
         if (!map.has(key)) continue;
         map.get(key)!.push({
