@@ -169,8 +169,8 @@ const nl: Dict = {
   "agent.edit.title": "Agent bewerken",
   "agent.edit.sub": "Pas naam, provider, systeemprompt en rapportagedoelen aan.",
   "agent.field.notifyEmail": "E-mail (overschrijft workspace-standaard)",
-  "agent.field.topic": "Topic (optioneel)",
-  "agent.field.topic.business": "Geen topic — gehele business",
+  "agent.field.topic": "Topics (optioneel)",
+  "agent.field.topic.business": "Geen topics - gehele business",
   "agent.tools.title": "AIO Control-tools — wat mag deze agent aanroepen",
   "agent.tools.desc":
     "Read-tools (list_*, get_*) zijn veilig en nooit destructief. Write-tools (create_*, update_*) vereisen je bevestiging in de chat vóór ze daadwerkelijk uitgevoerd worden. Meta-tools (ask_followup, todo_set, open_ui_at) zijn UI-side-effects.",
@@ -1048,8 +1048,8 @@ const en: Partial<Dict> = {
   "agent.edit.title": "Edit agent",
   "agent.edit.sub": "Adjust name, provider, system prompt and reporting targets.",
   "agent.field.notifyEmail": "Email (override workspace default)",
-  "agent.field.topic": "Topic (optional)",
-  "agent.field.topic.business": "No topic — whole business",
+  "agent.field.topic": "Topics (optional)",
+  "agent.field.topic.business": "No topics - whole business",
   "agent.tools.title": "AIO Control tools — what is this agent allowed to call",
   "agent.tools.desc":
     "Read tools (list_*, get_*) are safe + never destructive. Write tools (create_*, update_*) require your confirmation in the chat before they execute. Meta tools (ask_followup, todo_set, open_ui_at) are UI side-effects.",
@@ -1717,8 +1717,8 @@ const de: Partial<Dict> = {
   "agent.edit.sub":
     "Name, Provider, System-Prompt und Reporting-Ziele anpassen.",
   "agent.field.notifyEmail": "E-Mail (überschreibt Workspace-Default)",
-  "agent.field.topic": "Topic (optional)",
-  "agent.field.topic.business": "Kein Topic — gesamtes Business",
+  "agent.field.topic": "Topics (optional)",
+  "agent.field.topic.business": "Keine Topics - gesamtes Business",
   "agent.tools.title":
     "AIO-Control-Tools — was darf dieser Agent aufrufen",
   "agent.tools.desc":

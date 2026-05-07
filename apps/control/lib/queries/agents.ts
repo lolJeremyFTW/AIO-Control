@@ -9,6 +9,7 @@ export type AgentRow = {
   workspace_id: string;
   business_id: string | null;
   nav_node_id: string | null;
+  topic_ids: string[];
   name: string;
   kind: "chat" | "worker" | "reviewer" | "generator" | "router";
   provider:
@@ -55,7 +56,11 @@ export async function getAgentById(id: string): Promise<AgentRow | null> {
     console.error("getAgentById failed", error);
     return null;
   }
-  return data as AgentRow | null;
+  const rows = await hydrateAgentTopicIds(
+    supabase,
+    data ? ([data] as AgentRow[]) : [],
+  );
+  return rows[0] ?? null;
 }
 
 export async function listAgentsForWorkspace(
@@ -81,7 +86,7 @@ export async function listAgentsForWorkspace(
     console.error("listAgentsForWorkspace failed", error);
     return [];
   }
-  return (data ?? []) as AgentRow[];
+  return hydrateAgentTopicIds(supabase, (data ?? []) as AgentRow[]);
 }
 
 /** Convenience wrapper: workspace-global (business_id IS NULL) only. */
@@ -89,4 +94,51 @@ export async function listGlobalAgents(
   workspaceId: string,
 ): Promise<AgentRow[]> {
   return listAgentsForWorkspace(workspaceId, "global");
+}
+
+async function hydrateAgentTopicIds(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  rows: AgentRow[],
+): Promise<AgentRow[]> {
+  if (rows.length === 0) return rows;
+
+  const fallbackRows = () =>
+    rows.map((row) => ({
+      ...row,
+      topic_ids: uniqueIds(row.nav_node_id ? [row.nav_node_id] : []),
+    }));
+
+  const { data, error } = await supabase
+    .from("agent_topic_links")
+    .select("agent_id, nav_node_id")
+    .in(
+      "agent_id",
+      rows.map((row) => row.id),
+    );
+  if (error) {
+    console.error("hydrateAgentTopicIds failed", error);
+    return fallbackRows();
+  }
+
+  const byAgent = new Map<string, string[]>();
+  for (const link of (data ?? []) as Array<{
+    agent_id: string;
+    nav_node_id: string;
+  }>) {
+    const current = byAgent.get(link.agent_id) ?? [];
+    current.push(link.nav_node_id);
+    byAgent.set(link.agent_id, current);
+  }
+
+  return rows.map((row) => ({
+    ...row,
+    topic_ids: uniqueIds([
+      ...(byAgent.get(row.id) ?? []),
+      ...(row.nav_node_id ? [row.nav_node_id] : []),
+    ]),
+  }));
+}
+
+function uniqueIds(ids: string[]): string[] {
+  return [...new Set(ids.filter(Boolean))];
 }

@@ -46,6 +46,7 @@ type Props = {
    *  the edit dialog. Empty = no topics defined yet (or workspace-
    *  global agents page) so the picker stays hidden. */
   navOptions?: { id: string; name: string; depth: number }[];
+  contextNavNodeId?: string | null;
   /** Workspace skills — populates the per-agent skills picker in
    *  the edit dialog. Empty = no skills defined yet. Pulled from
    *  /[ws]/skills via listSkillsForWorkspace. */
@@ -62,6 +63,7 @@ export function AgentsList({
   customIntegrations = [],
   workspaceDefaults,
   navOptions = [],
+  contextNavNodeId = null,
   availableSkills = [],
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -84,6 +86,7 @@ export function AgentsList({
             workspace_id: workspaceId,
             agent_id: agent.id,
             business_id: businessId,
+            nav_node_id: contextNavNodeId,
           });
           if (res.ok) router.refresh();
           else alert(res.error);
@@ -228,6 +231,7 @@ export function AgentsList({
           customIntegrations={customIntegrations}
           defaults={workspaceDefaults}
           navOptions={navOptions}
+          initialTopicIds={contextNavNodeId ? [contextNavNodeId] : []}
           onClose={() => setOpen(false)}
         />
       )}
@@ -277,6 +281,8 @@ function AgentCard({
       setIsMac(/Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent));
     }
   }, []);
+  const topicCount =
+    agent.topic_ids?.length ?? (agent.nav_node_id ? 1 : 0);
 
   return (
     <div
@@ -333,6 +339,9 @@ function AgentCard({
       <div style={{ fontSize: 12, color: "var(--app-fg-3)" }}>
         {agent.provider}
         {agent.model ? ` · ${agent.model}` : ""}
+        {topicCount > 0
+          ? ` · ${topicCount} topic${topicCount === 1 ? "" : "s"}`
+          : ""}
       </div>
       <div
         style={{

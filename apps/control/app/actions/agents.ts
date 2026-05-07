@@ -48,6 +48,9 @@ export type AgentInput = {
   /** Pin the agent to a topic (nav_node) at creation time. NULL =
    *  belongs to the business as a whole (current behaviour). */
   nav_node_id?: string | null;
+  /** Full topic link set. nav_node_id remains the first/default topic
+   *  for older dispatch paths that only know one topic. */
+  nav_node_ids?: string[];
   /** Names of MCP servers this agent should host. For provider="minimax"
    *  pick from "minimax", "filesystem", "fetch". streamMinimax spawns
    *  each native via @aio/ai/mcp/host. */
@@ -62,6 +65,89 @@ export type AgentInput = {
 export type ActionResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: string };
+
+type SupabaseServerClient = Awaited<
+  ReturnType<typeof createSupabaseServerClient>
+>;
+
+function uniqueIds(ids: Array<string | null | undefined>): string[] {
+  return [...new Set(ids.filter((id): id is string => !!id))];
+}
+
+async function getValidAgentTopicIds(
+  supabase: SupabaseServerClient,
+  input: {
+    workspaceId: string;
+    businessId: string | null;
+    topicIds: Array<string | null | undefined>;
+  },
+): Promise<ActionResult<string[]>> {
+  const ids = uniqueIds(input.topicIds);
+  if (ids.length === 0) return { ok: true, data: [] };
+  if (!input.businessId) {
+    return {
+      ok: false,
+      error: "Workspace-globale agents kunnen niet aan business-topics worden gekoppeld.",
+    };
+  }
+
+  const { data, error } = await supabase
+    .from("nav_nodes")
+    .select("id")
+    .eq("workspace_id", input.workspaceId)
+    .eq("business_id", input.businessId)
+    .is("archived_at", null)
+    .in("id", ids);
+  if (error) return { ok: false, error: error.message };
+
+  const valid = new Set(
+    ((data ?? []) as Array<{ id: string }>).map((row) => row.id),
+  );
+  const missing = ids.filter((id) => !valid.has(id));
+  if (missing.length > 0) {
+    return {
+      ok: false,
+      error: "Een of meer topics horen niet bij deze business.",
+    };
+  }
+
+  return { ok: true, data: ids };
+}
+
+async function replaceAgentTopicLinks(
+  supabase: SupabaseServerClient,
+  input: {
+    workspaceId: string;
+    businessId: string | null;
+    agentId: string;
+    topicIds: string[];
+  },
+): Promise<ActionResult<null>> {
+  const { error: deleteError } = await supabase
+    .from("agent_topic_links")
+    .delete()
+    .eq("workspace_id", input.workspaceId)
+    .eq("agent_id", input.agentId);
+  if (deleteError) return { ok: false, error: deleteError.message };
+
+  if (!input.businessId || input.topicIds.length === 0) {
+    return { ok: true, data: null };
+  }
+
+  const { error: insertError } = await supabase
+    .from("agent_topic_links")
+    .insert(
+      input.topicIds.map((topicId) => ({
+        workspace_id: input.workspaceId,
+        business_id: input.businessId,
+        agent_id: input.agentId,
+        nav_node_id: topicId,
+      })),
+    );
+  if (insertError) return { ok: false, error: insertError.message };
+
+  return { ok: true, data: null };
+}
 
 export async function createAgent(
   input: AgentInput,
@@ -107,6 +193,16 @@ export async function createAgent(
       : "env";
 
   const supabase = await createSupabaseServerClient();
+  const topicIds = await getValidAgentTopicIds(supabase, {
+    workspaceId: input.workspace_id,
+    businessId: input.business_id,
+    topicIds:
+      input.nav_node_ids !== undefined
+        ? input.nav_node_ids
+        : [input.nav_node_id],
+  });
+  if (!topicIds.ok) return topicIds;
+
   const { data, error } = await supabase
     .from("agents")
     .insert({
@@ -135,12 +231,22 @@ export async function createAgent(
       next_agent_on_done: input.next_agent_on_done ?? null,
       next_agent_on_fail: input.next_agent_on_fail ?? null,
       key_source: keySource,
-      nav_node_id: input.nav_node_id ?? null,
+      nav_node_id: topicIds.data[0] ?? null,
     })
     .select("id")
     .single();
   if (error || !data) {
     return { ok: false, error: error?.message ?? "Insert failed." };
+  }
+  const topicLinkRes = await replaceAgentTopicLinks(supabase, {
+    workspaceId: input.workspace_id,
+    businessId: input.business_id,
+    agentId: data.id,
+    topicIds: topicIds.data,
+  });
+  if (!topicLinkRes.ok) {
+    await supabase.from("agents").delete().eq("id", data.id);
+    return { ok: false, error: topicLinkRes.error };
   }
   revalidatePath(
     `/${input.workspace_slug}/business/${input.business_id ?? ""}`,
@@ -180,6 +286,7 @@ export async function updateAgent(input: {
      *  business as a whole). Powers the per-topic dashboards via
      *  migration 043. */
     nav_node_id?: string | null;
+    nav_node_ids?: string[] | null;
     /** Names of MCP servers the agent should host (provider-specific).
      *  For provider="minimax" the known servers are "minimax",
      *  "filesystem", "fetch". streamMinimax spawns each via
@@ -224,8 +331,35 @@ export async function updateAgent(input: {
     const v = input.patch.allowed_skills;
     patch.allowed_skills = !v || v.length === 0 ? null : v;
   }
-  if (input.patch.nav_node_id !== undefined)
-    patch.nav_node_id = input.patch.nav_node_id ?? null;
+  const hasTopicLinkPatch =
+    input.patch.nav_node_ids !== undefined ||
+    input.patch.nav_node_id !== undefined;
+  const supabase = await createSupabaseServerClient();
+  let agentScope: { workspace_id: string; business_id: string | null } | null =
+    null;
+  let topicIds: string[] | null = null;
+  if (hasTopicLinkPatch) {
+    const { data: agentRow, error: agentError } = await supabase
+      .from("agents")
+      .select("workspace_id, business_id")
+      .eq("id", input.id)
+      .maybeSingle();
+    if (agentError || !agentRow?.workspace_id) {
+      return { ok: false, error: "Agent niet gevonden." };
+    }
+    agentScope = agentRow as { workspace_id: string; business_id: string | null };
+    const validTopicIds = await getValidAgentTopicIds(supabase, {
+      workspaceId: agentScope.workspace_id,
+      businessId: agentScope.business_id,
+      topicIds:
+        input.patch.nav_node_ids !== undefined
+          ? (input.patch.nav_node_ids ?? [])
+          : [input.patch.nav_node_id],
+    });
+    if (!validTopicIds.ok) return validTopicIds;
+    topicIds = validTopicIds.data;
+    patch.nav_node_id = topicIds[0] ?? null;
+  }
 
   // Config fields are merged into the existing jsonb so we don't
   // clobber routing rules or temperature.
@@ -236,7 +370,6 @@ export async function updateAgent(input: {
     input.patch.mcpPermissions !== undefined ||
     input.patch.maxHops !== undefined
   ) {
-    const supabase = await createSupabaseServerClient();
     const { data: cur } = await supabase
       .from("agents")
       .select("config")
@@ -274,14 +407,26 @@ export async function updateAgent(input: {
     patch.config = config;
   }
 
-  if (Object.keys(patch).length === 0) return { ok: true, data: null };
+  if (Object.keys(patch).length === 0 && !hasTopicLinkPatch) {
+    return { ok: true, data: null };
+  }
 
-  const supabase = await createSupabaseServerClient();
-  const { error } = await supabase
-    .from("agents")
-    .update(patch)
-    .eq("id", input.id);
-  if (error) return { ok: false, error: error.message };
+  if (Object.keys(patch).length > 0) {
+    const { error } = await supabase
+      .from("agents")
+      .update(patch)
+      .eq("id", input.id);
+    if (error) return { ok: false, error: error.message };
+  }
+  if (hasTopicLinkPatch && agentScope) {
+    const topicLinkRes = await replaceAgentTopicLinks(supabase, {
+      workspaceId: agentScope.workspace_id,
+      businessId: agentScope.business_id,
+      agentId: input.id,
+      topicIds: topicIds ?? [],
+    });
+    if (!topicLinkRes.ok) return { ok: false, error: topicLinkRes.error };
+  }
   if (input.business_id) {
     revalidatePath(`/${input.workspace_slug}/business/${input.business_id}`);
   } else {
@@ -300,7 +445,7 @@ export async function duplicateAgent(input: {
   const { data: src } = await supabase
     .from("agents")
     .select(
-      "name, kind, provider, model, config, telegram_target_id, custom_integration_id",
+      "name, kind, provider, model, config, telegram_target_id, custom_integration_id, nav_node_id",
     )
     .eq("id", input.source_id)
     .maybeSingle();
@@ -318,10 +463,35 @@ export async function duplicateAgent(input: {
       config: src.config,
       telegram_target_id: src.telegram_target_id,
       custom_integration_id: src.custom_integration_id,
+      nav_node_id: src.nav_node_id ?? null,
     })
     .select("id")
     .single();
   if (error || !data) return { ok: false, error: error?.message ?? "Insert faalde." };
+
+  const { data: sourceTopicLinks } = await supabase
+    .from("agent_topic_links")
+    .select("nav_node_id")
+    .eq("workspace_id", input.workspace_id)
+    .eq("agent_id", input.source_id);
+  const topicLinkRes = await replaceAgentTopicLinks(supabase, {
+    workspaceId: input.workspace_id,
+    businessId: input.business_id,
+    agentId: data.id,
+    topicIds: uniqueIds([
+      ...((sourceTopicLinks ?? []) as Array<{ nav_node_id: string }>).map(
+        (link) => link.nav_node_id,
+      ),
+      src.nav_node_id as string | null,
+    ]),
+  });
+  if (!topicLinkRes.ok) {
+    console.error("duplicateAgent topic link copy failed", {
+      source_id: input.source_id,
+      agent_id: data.id,
+      error: topicLinkRes.error,
+    });
+  }
 
   if (input.business_id) {
     revalidatePath(`/${input.workspace_slug}/business/${input.business_id}`);

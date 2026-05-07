@@ -150,7 +150,12 @@ export default async function NavNodePage({ params, searchParams }: Props) {
         getDict(),
       ]);
 
-    const topicAgents = allAgents.filter((a) => a.nav_node_id === current.id);
+    const topicAgents = allAgents.filter(
+      (a) =>
+        a.business_id === biz.id &&
+        ((a.topic_ids ?? []).includes(current.id) ||
+          a.nav_node_id === current.id),
+    );
     const uniqueProviders = Array.from(new Set(topicAgents.map((a) => a.provider)));
     const providerKeyStatus: Record<string, boolean> = {};
     await Promise.all(
@@ -195,6 +200,7 @@ export default async function NavNodePage({ params, searchParams }: Props) {
               (wsDefaults?.default_system_prompt as string | null) ?? null,
           }}
           navOptions={navOptions}
+          contextNavNodeId={current.id}
           availableSkills={skills.map((s) => ({
             id: s.id,
             name: s.name,

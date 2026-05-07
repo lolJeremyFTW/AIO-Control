@@ -87,6 +87,9 @@ export default async function WorkspaceAgentsPage({ params }: Props) {
       depth: topic.depth,
     })),
   );
+  const topicsByBusiness = new Map(
+    topicGroups.map((group) => [group.business_id, group.topics]),
+  );
 
   // Resolve key status across every provider used in the workspace.
   const uniqueProviders = Array.from(new Set(allAgents.map((a) => a.provider)));
@@ -223,6 +226,7 @@ export default async function WorkspaceAgentsPage({ params }: Props) {
             telegramTargets={telegramTargets}
             customIntegrations={customIntegrations}
             workspaceDefaults={wsDefaultsTyped}
+            navOptions={topicsByBusiness.get(g.id) ?? []}
           />
         </section>
       ))}

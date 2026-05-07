@@ -20,6 +20,7 @@ import { updateAgent } from "../app/actions/agents";
 import type { AgentRow } from "../lib/queries/agents";
 import { translate } from "../lib/i18n/dict";
 import { useLocale } from "../lib/i18n/client";
+import { AgentTopicsField } from "./AgentTopicsField";
 import { McpServersField } from "./McpServersField";
 import { ProviderModelPicker } from "./ProviderModelPicker";
 import { SkillsPickerField } from "./SkillsPickerField";
@@ -141,7 +142,16 @@ export function EditAgentDialog({
   const [nextOnDone, setNextOnDone] = useState(agent.next_agent_on_done ?? "");
   const [nextOnFail, setNextOnFail] = useState(agent.next_agent_on_fail ?? "");
   const [notifyEmail, setNotifyEmail] = useState(agent.notify_email ?? "");
-  const [navNodeId, setNavNodeId] = useState(agent.nav_node_id ?? "");
+  const [topicIds, setTopicIds] = useState<string[]>(() => {
+    const available = new Set(navOptions.map((option) => option.id));
+    const current =
+      agent.topic_ids && agent.topic_ids.length > 0
+        ? agent.topic_ids
+        : agent.nav_node_id
+          ? [agent.nav_node_id]
+          : [];
+    return current.filter((id) => available.has(id));
+  });
   // Tools allow-list. `useDefaults` toggle short-circuits the picker
   // back to the kind-default set (sent as null on save).
   const [useToolsDefault, setUseToolsDefault] = useState(
@@ -190,7 +200,12 @@ export function EditAgentDialog({
         notify_email: notifyEmail || null,
         allowed_tools: useToolsDefault ? null : allowedTools,
         allowed_skills: allowedSkills,
-        nav_node_id: navNodeId || null,
+        ...(navOptions.length > 0
+          ? {
+              nav_node_id: topicIds[0] ?? null,
+              nav_node_ids: topicIds,
+            }
+          : {}),
         mcpServers,
         mcpPermissions,
         maxHops: Number(maxHops) > 0 ? Number(maxHops) : null,
@@ -371,22 +386,13 @@ export function EditAgentDialog({
           />
         </Field>
 
-        {navOptions.length > 0 && (
-          <Field label={t("agent.field.topic")}>
-            <select
-              value={navNodeId}
-              onChange={(e) => setNavNodeId(e.target.value)}
-              style={inp}
-            >
-              <option value="">{t("agent.field.topic.business")}</option>
-              {navOptions.map((n) => (
-                <option key={n.id} value={n.id}>
-                  {"— ".repeat(n.depth) + n.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-        )}
+        <AgentTopicsField
+          options={navOptions}
+          selectedIds={topicIds}
+          onChange={setTopicIds}
+          label={t("agent.field.topic")}
+          emptyLabel={t("agent.field.topic.business")}
+        />
 
         <details style={{ marginBottom: 12 }}>
           <summary

@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import { createAgent, type AgentInput } from "../app/actions/agents";
 import { translate, type Locale } from "../lib/i18n/dict";
 import { useLocale } from "../lib/i18n/client";
+import { AgentTopicsField } from "./AgentTopicsField";
 import { McpServersField } from "./McpServersField";
 import { ProviderModelPicker } from "./ProviderModelPicker";
 import { RoutingRulesEditor } from "./RoutingRulesEditor";
@@ -38,6 +39,7 @@ type Props = {
    *  first runs already show up on the per-topic dashboard. Empty =
    *  picker hidden. */
   navOptions?: { id: string; name: string; depth: number }[];
+  initialTopicIds?: string[];
   /** Active UI locale — translates labels via the shared dict. */
   locale?: Locale;
   onClose: () => void;
@@ -71,6 +73,7 @@ export function NewAgentDialog({
   customIntegrations = [],
   defaults,
   navOptions = [],
+  initialTopicIds = [],
   locale: localeProp,
   onClose,
 }: Props) {
@@ -90,7 +93,10 @@ export function NewAgentDialog({
   const [routingRulesJson, setRoutingRulesJson] = useState("");
   const [telegramTargetId, setTelegramTargetId] = useState("");
   const [customIntegrationId, setCustomIntegrationId] = useState("");
-  const [navNodeId, setNavNodeId] = useState("");
+  const [topicIds, setTopicIds] = useState<string[]>(() => {
+    const available = new Set(navOptions.map((option) => option.id));
+    return initialTopicIds.filter((id) => available.has(id));
+  });
   // Where this agent gets its Claude credentials. Subscription =
   // Claude Pro/Max/Team — runs on Claude's own infra (Routines for
   // cron, claude-cli for chat). api_key = Anthropic API key wired
@@ -141,7 +147,8 @@ export function NewAgentDialog({
       telegram_target_id: telegramTargetId || null,
       custom_integration_id: customIntegrationId || null,
       key_source: keySource,
-      nav_node_id: navNodeId || null,
+      nav_node_id: topicIds[0] ?? null,
+      nav_node_ids: topicIds,
       mcpServers: mcpServers.length > 0 ? mcpServers : undefined,
       mcpPermissions: Object.keys(mcpPermissions).length > 0 ? mcpPermissions : undefined,
     });
@@ -372,22 +379,13 @@ export function NewAgentDialog({
           onPermissionsChange={setMcpPermissions}
         />
 
-        {navOptions.length > 0 && (
-          <Field label={t("agent.field.topic")}>
-            <select
-              value={navNodeId}
-              onChange={(e) => setNavNodeId(e.target.value)}
-              style={inputStyle}
-            >
-              <option value="">{t("agent.field.topic.business")}</option>
-              {navOptions.map((n) => (
-                <option key={n.id} value={n.id}>
-                  {"— ".repeat(n.depth) + n.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-        )}
+        <AgentTopicsField
+          options={navOptions}
+          selectedIds={topicIds}
+          onChange={setTopicIds}
+          label={t("agent.field.topic")}
+          emptyLabel={t("agent.field.topic.business")}
+        />
 
         {(telegramTargets.length > 0 || customIntegrations.length > 0) && (
           <div
