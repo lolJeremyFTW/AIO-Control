@@ -62,21 +62,80 @@ function handleNavLinkClick(
 
 const TEMPLATES: Template[] = [
   // Workspace-wide.
-  { labelKey: "search.tpl.openQueue", hintKey: "search.tpl.openQueue.hint", href: "/queue" },
-  { labelKey: "search.tpl.failedRuns", hintKey: "search.tpl.failedRuns.hint", href: "/runs?status=failed" },
-  { labelKey: "search.tpl.workspaceAgents", hintKey: "search.tpl.workspaceAgents.hint", href: "/agents" },
-  { labelKey: "search.tpl.activity", hintKey: "search.tpl.activity.hint", href: "/activity" },
-  { labelKey: "search.tpl.cost", hintKey: "search.tpl.cost.hint", href: "/cost" },
-  { labelKey: "search.tpl.marketplace", hintKey: "search.tpl.marketplace.hint", href: "/marketplace" },
-  { labelKey: "search.tpl.profile", hintKey: "search.tpl.profile.hint", href: "/profile" },
-  { labelKey: "search.tpl.settingsTelegram", hintKey: "search.tpl.settingsTelegram.hint", href: "/settings/telegram" },
-  { labelKey: "search.tpl.settingsApiKeys", hintKey: "search.tpl.settingsApiKeys.hint", href: "/settings/api-keys" },
-  { labelKey: "search.tpl.settingsSpendLimits", hintKey: "search.tpl.settingsSpendLimits.hint", href: "/settings/spend-limits" },
-  { labelKey: "search.tpl.settingsProviders", hintKey: "search.tpl.settingsProviders.hint", href: "/settings/providers" },
+  {
+    labelKey: "search.tpl.openQueue",
+    hintKey: "search.tpl.openQueue.hint",
+    href: "/queue",
+  },
+  {
+    labelKey: "search.tpl.failedRuns",
+    hintKey: "search.tpl.failedRuns.hint",
+    href: "/runs?status=failed",
+  },
+  {
+    labelKey: "search.tpl.workspaceAgents",
+    hintKey: "search.tpl.workspaceAgents.hint",
+    href: "/agents",
+  },
+  {
+    labelKey: "search.tpl.activity",
+    hintKey: "search.tpl.activity.hint",
+    href: "/activity",
+  },
+  {
+    labelKey: "search.tpl.cost",
+    hintKey: "search.tpl.cost.hint",
+    href: "/cost",
+  },
+  {
+    labelKey: "search.tpl.marketplace",
+    hintKey: "search.tpl.marketplace.hint",
+    href: "/marketplace",
+  },
+  {
+    labelKey: "search.tpl.profile",
+    hintKey: "search.tpl.profile.hint",
+    href: "/profile",
+  },
+  {
+    labelKey: "search.tpl.settingsTelegram",
+    hintKey: "search.tpl.settingsTelegram.hint",
+    href: "/settings/telegram",
+  },
+  {
+    labelKey: "search.tpl.settingsApiKeys",
+    hintKey: "search.tpl.settingsApiKeys.hint",
+    href: "/settings/api-keys",
+  },
+  {
+    labelKey: "search.tpl.settingsSpendLimits",
+    hintKey: "search.tpl.settingsSpendLimits.hint",
+    href: "/settings/spend-limits",
+  },
+  {
+    labelKey: "search.tpl.settingsProviders",
+    hintKey: "search.tpl.settingsProviders.hint",
+    href: "/settings/providers",
+  },
   // Business-scoped — only when drilled in.
-  { labelKey: "search.tpl.bizAgents", hintKey: "search.tpl.bizAgents.hint", href: "/business/{bizId}/agents", requiresBusiness: true },
-  { labelKey: "search.tpl.bizRoutines", hintKey: "search.tpl.bizRoutines.hint", href: "/business/{bizId}/schedules", requiresBusiness: true },
-  { labelKey: "search.tpl.bizRuns", hintKey: "search.tpl.bizRuns.hint", href: "/business/{bizId}/runs", requiresBusiness: true },
+  {
+    labelKey: "search.tpl.bizAgents",
+    hintKey: "search.tpl.bizAgents.hint",
+    href: "/business/{bizId}/agents",
+    requiresBusiness: true,
+  },
+  {
+    labelKey: "search.tpl.bizRoutines",
+    hintKey: "search.tpl.bizRoutines.hint",
+    href: "/business/{bizId}/schedules",
+    requiresBusiness: true,
+  },
+  {
+    labelKey: "search.tpl.bizRuns",
+    hintKey: "search.tpl.bizRuns.hint",
+    href: "/business/{bizId}/runs",
+    requiresBusiness: true,
+  },
 ];
 
 type Props = { workspaceSlug: string };
@@ -99,9 +158,7 @@ export function SearchModal({ workspaceSlug }: Props) {
   // capture its id — the scope pill needs this to filter; the
   // templates substitute {bizId}.
   const currentBizId = useMemo(() => {
-    const m = pathname.match(
-      new RegExp(`^/${workspaceSlug}/business/([^/]+)`),
-    );
+    const m = pathname.match(new RegExp(`^/${workspaceSlug}/business/([^/]+)`));
     return m?.[1] ?? null;
   }, [pathname, workspaceSlug]);
 
@@ -160,7 +217,11 @@ export function SearchModal({ workspaceSlug }: Props) {
       setLoading(true);
       try {
         const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-        const params = new URLSearchParams({ q });
+        const params = new URLSearchParams({
+          q,
+          locale,
+          workspace: workspaceSlug,
+        });
         if (scope === "business" && currentBizId)
           params.set("business", currentBizId);
         if (scope === "global") params.set("scope", "global");
@@ -183,7 +244,7 @@ export function SearchModal({ workspaceSlug }: Props) {
       ctl.abort();
       clearTimeout(t);
     };
-  }, [q, scope, currentBizId, open]);
+  }, [q, scope, currentBizId, open, locale, workspaceSlug]);
 
   const go = (href: string) => {
     setOpen(false);
@@ -201,9 +262,7 @@ export function SearchModal({ workspaceSlug }: Props) {
       ...tpl,
       fullHref:
         `/${workspaceSlug}` +
-        (currentBizId
-          ? tpl.href.replace("{bizId}", currentBizId)
-          : tpl.href),
+        (currentBizId ? tpl.href.replace("{bizId}", currentBizId) : tpl.href),
     }));
   }, [currentBizId, workspaceSlug]);
 
@@ -333,8 +392,7 @@ export function SearchModal({ workspaceSlug }: Props) {
                     e.currentTarget.style.borderColor = "var(--tt-green)";
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor =
-                      "var(--app-border-2)";
+                    e.currentTarget.style.borderColor = "var(--app-border-2)";
                   }}
                 >
                   <span style={{ fontSize: 13, fontWeight: 700 }}>
@@ -392,7 +450,7 @@ export function SearchModal({ workspaceSlug }: Props) {
                   minWidth: 70,
                 }}
               >
-                {h.kind}
+                {t(`search.kind.${h.kind}`)}
               </span>
               <span style={{ fontWeight: 600 }}>{h.title}</span>
             </span>

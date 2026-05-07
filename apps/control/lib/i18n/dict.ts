@@ -75,14 +75,13 @@ const nl: Dict = {
   "page.subscription": "Abonnement",
   "page.subscription.sub": "Plan, betaalmethode en facturen voor {workspace}",
   "page.talk": "Talk to AI",
-  "page.talk.sub":
-    "Provider · stem · log voor de microfoon-knop in de header",
+  "page.talk.sub": "Provider · stem · log voor de microfoon-knop in de header",
   "page.flows": "AI Flow Builder",
   "page.workspaceAgents": "Workspace-agenten",
   "page.workspaceAgents.sub":
     "Agenda · omzet · alle agenten in deze workspace, gegroepeerd per business.",
   "page.workspaceAgents.empty":
-    "Nog geen agenten in deze workspace. Maak er één aan via een business of via de knop \"+ Nieuwe agent\" in een lege groep.",
+    'Nog geen agenten in deze workspace. Maak er één aan via een business of via de knop "+ Nieuwe agent" in een lege groep.',
   "page.workspaceAgents.workspaceGroup": "Workspace",
   "page.workspaceAgents.workspaceGroupSub": "Niet aan een business gekoppeld",
   "page.workspaceAgents.businessGroupSub": "Business-agenten",
@@ -140,7 +139,8 @@ const nl: Dict = {
   "agent.field.provider": "Provider",
   "agent.field.model": "Model",
   "agent.field.modelDefault": "Model (standaard: {model})",
-  "agent.field.endpoint": "Endpoint-URL (optioneel — standaard uit env als leeg)",
+  "agent.field.endpoint":
+    "Endpoint-URL (optioneel — standaard uit env als leeg)",
   "agent.field.systemPrompt": "Systeemprompt (optioneel)",
   "agent.field.telegramTarget": "Telegram-kanaal (optioneel)",
   "agent.field.customIntegration": "Eigen integratie (optioneel)",
@@ -167,7 +167,8 @@ const nl: Dict = {
   "agent.cta.save": "Opslaan",
 
   "agent.edit.title": "Agent bewerken",
-  "agent.edit.sub": "Pas naam, provider, systeemprompt en rapportagedoelen aan.",
+  "agent.edit.sub":
+    "Pas naam, provider, systeemprompt en rapportagedoelen aan.",
   "agent.field.notifyEmail": "E-mail (overschrijft workspace-standaard)",
   "agent.field.topic": "Topics (optioneel)",
   "agent.field.topic.business": "Geen topics - gehele business",
@@ -175,7 +176,7 @@ const nl: Dict = {
   "agent.tools.desc":
     "Read-tools (list_*, get_*) zijn veilig en nooit destructief. Write-tools (create_*, update_*) vereisen je bevestiging in de chat vóór ze daadwerkelijk uitgevoerd worden. Meta-tools (ask_followup, todo_set, open_ui_at) zijn UI-side-effects.",
   "agent.tools.useDefault":
-    "Standaardset voor \"{kind}\"-agenten gebruiken ({count} tools)",
+    'Standaardset voor "{kind}"-agenten gebruiken ({count} tools)',
   "agent.chain.title": "Keten — wat draait er na deze agent?",
   "agent.chain.onDone": "Bij DONE → run agent",
   "agent.chain.onFail": "Bij FAIL → run agent (triage)",
@@ -184,7 +185,8 @@ const nl: Dict = {
   "agent.chain.note":
     "De volgende agent ontvangt de output van deze run als inputprompt — perfect voor extract → translate → publish-ketens.",
 
-  "tg.intro": "Bot-token zet je in Instellingen → API Keys als provider \"Telegram\". Hier definieer je waar rapporten heen gaan: chat_id + optioneel topic_id voor forumgroepen.",
+  "tg.intro":
+    'Bot-token zet je in Instellingen → API Keys als provider "Telegram". Hier definieer je waar rapporten heen gaan: chat_id + optioneel topic_id voor forumgroepen.',
   "tg.topology.title": "Topologie — hoe wil je Telegram structureren?",
   "tg.topology.manual": "Handmatig",
   "tg.topology.manual.desc":
@@ -195,15 +197,14 @@ const nl: Dict = {
   "tg.topology.perBizAndNode": "Auto-topic per business + per nav-node",
   "tg.topology.perBizAndNode.desc":
     "Zelfde supergroep; nieuwe businesses en nieuwe topics in onze rail krijgen elk een forumtopic.",
-  "tg.empty": "Nog geen Telegram-kanalen. Klik op \"+ Kanaal toevoegen\".",
+  "tg.empty": 'Nog geen Telegram-kanalen. Klik op "+ Kanaal toevoegen".',
   "tg.add": "+ Kanaal toevoegen",
   "tg.row.test": "Test",
   "tg.row.delete": "Verwijder",
   "tg.row.on": "aan",
   "tg.row.off": "uit",
   "tg.row.autoTopics": "AUTO-TOPICS",
-  "tg.row.autoCreateLabel":
-    "Automatisch forumtopic per nieuwe business",
+  "tg.row.autoCreateLabel": "Automatisch forumtopic per nieuwe business",
   "tg.field.name": "Naam",
   "tg.field.scope": "Scope",
   "tg.field.scope.workspace": "Workspace-standaard",
@@ -211,10 +212,8 @@ const nl: Dict = {
   "tg.field.scope.navnode": "Topic",
   "tg.field.chatId": "Chat-ID (start met -100… voor groepen)",
   "tg.field.topicId": "Topic-ID (optioneel — alleen voor forumgroepen)",
-  "tg.field.allowlist":
-    "Allowlist (komma-gescheiden usernames, optioneel)",
-  "tg.field.denylist":
-    "Denylist (komma-gescheiden usernames, optioneel)",
+  "tg.field.allowlist": "Allowlist (komma-gescheiden usernames, optioneel)",
+  "tg.field.denylist": "Denylist (komma-gescheiden usernames, optioneel)",
   "tg.disclosure.title": "🪄 Auto-topic per business — setup",
   "tg.disclosure.step1":
     "Maak een Telegram-supergroep en zet onder Manage → Topics de optie Topics AAN.",
@@ -223,13 +222,14 @@ const nl: Dict = {
   "tg.disclosure.step3":
     "Pak de chat_id (start met -100…) via @RawDataBot, voeg hier een nieuw kanaal toe met scope = Workspace-standaard en laat topic_id leeg.",
   "tg.disclosure.step4":
-    "Vink hieronder \"Automatisch forumtopic per nieuwe business\" aan op die rij.",
+    'Vink hieronder "Automatisch forumtopic per nieuwe business" aan op die rij.',
   "tg.disclosure.step5":
     "Klaar — vanaf nu krijgt elke nieuwe business automatisch een eigen forumtopic met dezelfde naam (+ emoji als je die instelt). Bestaande businesses krijgen NIET automatisch een topic; maak ze handmatig of dupliceer ze.",
 
   "keys.intro":
     "Stel API-keys in op workspace-niveau (standaard voor alle agenten) of overschrijf per business of per topic. Resolutie: topic → business → workspace → env-var fallback.",
-  "keys.empty": "Nog geen keys ingesteld. Klik op \"+ Key toevoegen\" om te starten.",
+  "keys.empty":
+    'Nog geen keys ingesteld. Klik op "+ Key toevoegen" om te starten.',
   "keys.add": "+ Key toevoegen",
   "keys.row.set": "ingesteld",
   "keys.row.empty": "leeg",
@@ -272,8 +272,8 @@ const nl: Dict = {
   "ctx.moveDown": "↓ Naar beneden",
   "ctx.moveToRoot": "Verplaats naar root",
   "ctx.moveUnder": "Verplaats onder {name}",
-  "ctx.confirmArchiveBiz": "Weet je zeker dat je \"{name}\" wilt archiveren?",
-  "ctx.confirmArchiveTopic": "Topic \"{name}\" archiveren?",
+  "ctx.confirmArchiveBiz": 'Weet je zeker dat je "{name}" wilt archiveren?',
+  "ctx.confirmArchiveTopic": 'Topic "{name}" archiveren?',
   "ctx.newTopicTitle": "Nieuw topic in {parent}",
   "ctx.newSubtopicTitle": "Nieuw subtopic in {parent}",
 
@@ -325,7 +325,7 @@ const nl: Dict = {
   "biz.noRuns.body": "Start een agent via Nu uitvoeren of via een webhook.",
 
   "header.searchPlaceholder":
-    "Zoek of vraag aan AI: \"hoeveel verdiende YouTube vandaag?\"",
+    'Zoek of vraag aan AI: "hoeveel verdiende YouTube vandaag?"',
   "header.crumbBackToWorkspace": "Terug naar workspace dashboard",
   "header.crumbBackToBusinesses": "Terug naar alle businesses",
 
@@ -369,6 +369,23 @@ const nl: Dict = {
   "search.tpl.bizRoutines.hint": "Cron + webhook-planningen",
   "search.tpl.bizRuns": "Deze business: runs",
   "search.tpl.bizRuns.hint": "Volledige run-historie",
+  "search.kind.business": "Business",
+  "search.kind.agent": "Agent",
+  "search.kind.queue": "Wachtrij",
+  "search.kind.node": "Topic",
+  "search.kind.marketplace": "Marketplace",
+
+  "notifications.aria": "Notificaties",
+  "notifications.empty":
+    "Niets om te reviewen - geen open wachtrij-items en geen mislukte runs.",
+  "notifications.openCount": "{count} open",
+  "notifications.clear.title": "Wis alle notificaties voor jou",
+  "notifications.clear.confirmTitle": "Klik nogmaals om te bevestigen",
+  "notifications.clear": "Wis alles",
+  "notifications.clear.confirm": "Bevestig?",
+  "notifications.workspace": "Workspace",
+  "notifications.kind.runFailed": "Run mislukt",
+  "notifications.kind.queue": "Wachtrij",
 
   "pause.live": "Live · auto",
   "pause.paused": "Gepauzeerd",
@@ -386,7 +403,7 @@ const nl: Dict = {
   "ollama.lastScan": "laatst gescand {when}",
   "ollama.modelsCount": "{count} modellen beschikbaar",
   "ollama.empty":
-    "Nog geen modellen gescand. Vul host + poort in en klik op \"Modellen scannen\".",
+    'Nog geen modellen gescand. Vul host + poort in en klik op "Modellen scannen".',
   "rel.now": "net",
   "rel.s": "{n}s geleden",
   "rel.m": "{n}m geleden",
@@ -451,10 +468,13 @@ const nl: Dict = {
   "providers.runtime.cmdLabel": "Voer dit commando uit op de runtime-host:",
   "providers.runtime.copy": "Kopieer",
   "providers.runtime.copied": "✓ Gekopieerd",
-  "providers.runtime.copyFailed": "Kon niet naar clipboard kopiëren — selecteer + Ctrl+C handmatig.",
+  "providers.runtime.copyFailed":
+    "Kon niet naar clipboard kopiëren — selecteer + Ctrl+C handmatig.",
   "providers.runtime.verify": "Verifiëren",
-  "providers.runtime.savedNotice": "Naam opgeslagen. Voer het commando uit en klik daarna op Verifiëren.",
-  "providers.runtime.verifiedNotice": "✓ Agent \"{name}\" gevonden in runtime — toekomstige chats gebruiken dit profiel.",
+  "providers.runtime.savedNotice":
+    "Naam opgeslagen. Voer het commando uit en klik daarna op Verifiëren.",
+  "providers.runtime.verifiedNotice":
+    '✓ Agent "{name}" gevonden in runtime — toekomstige chats gebruiken dit profiel.',
   "providers.runtime.initializedAgo": "Geïnitialiseerd {when}",
   "providers.status.runtimeReady": "Runtime klaar · {name} ✓",
 
@@ -507,8 +527,7 @@ const nl: Dict = {
   "settings.section.providers": "Providers",
   "settings.section.providers.desc":
     "Stap-voor-stap onboarding voor self-hosted providers (Hermes-agent, OpenClaw, Ollama). Geen handmatig prutsen meer.",
-  "settings.section.subscription.desc":
-    "Plan, betaalmethode, facturen.",
+  "settings.section.subscription.desc": "Plan, betaalmethode, facturen.",
   "settings.section.notifications": "Notificaties",
   "settings.section.team": "Team & rollen",
   "settings.section.danger": "Gevarenzone",
@@ -524,7 +543,7 @@ const nl: Dict = {
     "De rechterbovenhoek van de header toont een weerchip per workspace.",
   "settings.section.ollama": "Lokale Ollama",
   "settings.section.ollama.desc":
-    "Vul host + poort van je eigen Ollama-server in. Klik op \"Modellen scannen\" om de beschikbare modellen op te halen — die zijn dan overal in de app selecteerbaar (chatpaneel, Talk-pagina, agenten).",
+    'Vul host + poort van je eigen Ollama-server in. Klik op "Modellen scannen" om de beschikbare modellen op te halen — die zijn dan overal in de app selecteerbaar (chatpaneel, Talk-pagina, agenten).',
   "settings.section.apiKeys": "API-keys",
   "settings.section.apiKeys.desc":
     "Workspace-standaarden of overrides per business of topic. Versleuteling via pgcrypto.",
@@ -546,8 +565,7 @@ const nl: Dict = {
   "settings.section.customIntegrations": "Eigen integraties",
   "settings.section.customIntegrations.desc":
     "Algemene HTTP-webhooks / API-calls. Mustache-placeholders voor run-data.",
-  "settings.section.notifs.desc":
-    "Web Push voor HITL-items op dit apparaat.",
+  "settings.section.notifs.desc": "Web Push voor HITL-items op dit apparaat.",
   "settings.section.team.desc":
     "Wie mag wat. Owner ben jij altijd; je kunt admins, editors en viewers toevoegen.",
   "settings.section.danger.desc":
@@ -562,8 +580,7 @@ const nl: Dict = {
   "settings.field.timezone": "Tijdzone",
 
   "danger.export.title": "Gegevens exporteren",
-  "danger.export.body":
-    "Download een JSON-dump van alles in deze workspace.",
+  "danger.export.body": "Download een JSON-dump van alles in deze workspace.",
   "danger.export.cta": "Download JSON dump",
   "danger.delete.title": "Workspace verwijderen",
   "danger.delete.body": "Definitief. Verwijdert alles wat erin zit.",
@@ -645,6 +662,7 @@ const nl: Dict = {
   "queue.menu.copyTitle": "Kopieer titel",
   "queue.state.manualCheck": "Handmatige check",
   "queue.state.review": "Review (HITL)",
+  "queue.state.fail": "Mislukt",
   "queue.state.auto": "Auto",
   "queue.confidence": "Vertrouwen",
   "queue.action.skip": "Skip",
@@ -688,8 +706,7 @@ const en: Partial<Dict> = {
   "auth.login.title": "Sign in",
   "auth.login.sub": "Sign in to your AIO Control workspace.",
   "auth.signup.title": "Create account",
-  "auth.signup.sub":
-    "Sign up — you'll automatically get your own workspace.",
+  "auth.signup.sub": "Sign up — you'll automatically get your own workspace.",
   "auth.field.username": "Username or email",
   "auth.field.email": "Email",
   "auth.field.name": "Name",
@@ -721,8 +738,8 @@ const en: Partial<Dict> = {
   "ctx.moveDown": "↓ Move down",
   "ctx.moveToRoot": "Move to root",
   "ctx.moveUnder": "Move under {name}",
-  "ctx.confirmArchiveBiz": "Are you sure you want to archive \"{name}\"?",
-  "ctx.confirmArchiveTopic": "Archive topic \"{name}\"?",
+  "ctx.confirmArchiveBiz": 'Are you sure you want to archive "{name}"?',
+  "ctx.confirmArchiveTopic": 'Archive topic "{name}"?',
   "ctx.newTopicTitle": "New topic in {parent}",
   "ctx.newSubtopicTitle": "New subtopic in {parent}",
 
@@ -774,12 +791,11 @@ const en: Partial<Dict> = {
   "biz.noRuns.body": "Trigger an agent via Run-now or a webhook.",
 
   "header.searchPlaceholder":
-    "Search or ask the AI: \"how much did YouTube earn today?\"",
+    'Search or ask the AI: "how much did YouTube earn today?"',
   "header.crumbBackToWorkspace": "Back to workspace dashboard",
   "header.crumbBackToBusinesses": "Back to all businesses",
 
-  "search.placeholder":
-    "Search businesses, agents, queue items, marketplace…",
+  "search.placeholder": "Search businesses, agents, queue items, marketplace…",
   "search.scope.all": "All",
   "search.scope.business": "This business",
   "search.scope.global": "Workspace-global",
@@ -818,6 +834,23 @@ const en: Partial<Dict> = {
   "search.tpl.bizRoutines.hint": "Cron + webhook schedules",
   "search.tpl.bizRuns": "This business: runs",
   "search.tpl.bizRuns.hint": "Full run history",
+  "search.kind.business": "Business",
+  "search.kind.agent": "Agent",
+  "search.kind.queue": "Queue",
+  "search.kind.node": "Topic",
+  "search.kind.marketplace": "Marketplace",
+
+  "notifications.aria": "Notifications",
+  "notifications.empty":
+    "Nothing to review - no open queue items and no failed runs.",
+  "notifications.openCount": "{count} open",
+  "notifications.clear.title": "Clear all notifications for you",
+  "notifications.clear.confirmTitle": "Click again to confirm",
+  "notifications.clear": "Clear all",
+  "notifications.clear.confirm": "Confirm?",
+  "notifications.workspace": "Workspace",
+  "notifications.kind.runFailed": "Run failed",
+  "notifications.kind.queue": "Queue",
 
   "pause.live": "Live · auto",
   "pause.paused": "Paused",
@@ -835,7 +868,7 @@ const en: Partial<Dict> = {
   "ollama.lastScan": "last scanned {when}",
   "ollama.modelsCount": "{count} models available",
   "ollama.empty":
-    "No models scanned yet. Fill host + port and click \"Scan models\".",
+    'No models scanned yet. Fill host + port and click "Scan models".',
   "rel.now": "just now",
   "rel.s": "{n}s ago",
   "rel.m": "{n}m ago",
@@ -858,16 +891,13 @@ const en: Partial<Dict> = {
   "providers.status.partial.scan": "Endpoint set, not scanned yet",
   "providers.status.cliDefault": "CLI default — no URL needed",
 
-  "providers.ollama.tagline":
-    "Local LLM. Free, fast with a GPU, no API keys.",
+  "providers.ollama.tagline": "Local LLM. Free, fast with a GPU, no API keys.",
   "providers.ollama.modelsAvailable": "{count} models available",
   "providers.ollama.gotoSettings": "Go to Ollama settings",
   "providers.ollama.step1":
     "Install Ollama on the machine that runs your models (laptop, VPS, another server).",
-  "providers.ollama.step2":
-    "Start Ollama. Default port is 11434.",
-  "providers.ollama.step3":
-    "Pull a model — for example: ollama pull llama3.2",
+  "providers.ollama.step2": "Start Ollama. Default port is 11434.",
+  "providers.ollama.step3": "Pull a model — for example: ollama pull llama3.2",
   "providers.ollama.step4":
     "Fill host + port on the Ollama settings page and click Scan.",
 
@@ -900,10 +930,13 @@ const en: Partial<Dict> = {
   "providers.runtime.cmdLabel": "Run this command on the runtime host:",
   "providers.runtime.copy": "Copy",
   "providers.runtime.copied": "✓ Copied",
-  "providers.runtime.copyFailed": "Couldn't write to clipboard — select + Ctrl+C manually.",
+  "providers.runtime.copyFailed":
+    "Couldn't write to clipboard — select + Ctrl+C manually.",
   "providers.runtime.verify": "Verify",
-  "providers.runtime.savedNotice": "Name saved. Run the command, then click Verify.",
-  "providers.runtime.verifiedNotice": "✓ Agent \"{name}\" found in runtime — future chats use this profile.",
+  "providers.runtime.savedNotice":
+    "Name saved. Run the command, then click Verify.",
+  "providers.runtime.verifiedNotice":
+    '✓ Agent "{name}" found in runtime — future chats use this profile.',
   "providers.runtime.initializedAgo": "Initialized {when}",
   "providers.status.runtimeReady": "Runtime ready · {name} ✓",
 
@@ -955,8 +988,7 @@ const en: Partial<Dict> = {
   "settings.section.providers": "Providers",
   "settings.section.providers.desc":
     "Step-by-step onboarding for self-hosted providers (Hermes-agent, OpenClaw, Ollama). No more manual fiddling.",
-  "settings.section.subscription.desc":
-    "Plan, payment method, invoices.",
+  "settings.section.subscription.desc": "Plan, payment method, invoices.",
   "settings.section.notifications": "Notifications",
   "settings.section.team": "Team & roles",
   "settings.section.danger": "Danger zone",
@@ -1019,7 +1051,7 @@ const en: Partial<Dict> = {
   "page.workspaceAgents.sub":
     "Calendar · revenue · every agent in this workspace, grouped by business.",
   "page.workspaceAgents.empty":
-    "No agents yet in this workspace. Create one through a business or with the \"+ New agent\" button in an empty group.",
+    'No agents yet in this workspace. Create one through a business or with the "+ New agent" button in an empty group.',
   "page.workspaceAgents.workspaceGroup": "Workspace",
   "page.workspaceAgents.workspaceGroupSub": "Not tied to a business",
   "page.workspaceAgents.businessGroupSub": "Business agents",
@@ -1103,7 +1135,8 @@ const en: Partial<Dict> = {
   "agent.cta.save": "Save",
 
   "agent.edit.title": "Edit agent",
-  "agent.edit.sub": "Adjust name, provider, system prompt and reporting targets.",
+  "agent.edit.sub":
+    "Adjust name, provider, system prompt and reporting targets.",
   "agent.field.notifyEmail": "Email (override workspace default)",
   "agent.field.topic": "Topics (optional)",
   "agent.field.topic.business": "No topics - whole business",
@@ -1111,7 +1144,7 @@ const en: Partial<Dict> = {
   "agent.tools.desc":
     "Read tools (list_*, get_*) are safe + never destructive. Write tools (create_*, update_*) require your confirmation in the chat before they execute. Meta tools (ask_followup, todo_set, open_ui_at) are UI side-effects.",
   "agent.tools.useDefault":
-    "Use the standard set for \"{kind}\" agents ({count} tools)",
+    'Use the standard set for "{kind}" agents ({count} tools)',
   "agent.chain.title": "Chain — what runs after this agent?",
   "agent.chain.onDone": "On DONE → run agent",
   "agent.chain.onFail": "On FAIL → run agent (triage)",
@@ -1120,7 +1153,8 @@ const en: Partial<Dict> = {
   "agent.chain.note":
     "The next agent receives this run's output as its input prompt — ideal for extract → translate → publish chains.",
 
-  "tg.intro": "Set the bot token in Settings → API Keys as provider \"Telegram\". Here you configure where reports go: chat_id + optional topic_id for forum-style groups.",
+  "tg.intro":
+    'Set the bot token in Settings → API Keys as provider "Telegram". Here you configure where reports go: chat_id + optional topic_id for forum-style groups.',
   "tg.topology.title": "Topology — how do you want Telegram structured?",
   "tg.topology.manual": "Manual",
   "tg.topology.manual.desc":
@@ -1131,15 +1165,14 @@ const en: Partial<Dict> = {
   "tg.topology.perBizAndNode": "Auto-topic per business + per nav-node",
   "tg.topology.perBizAndNode.desc":
     "Same supergroup; new businesses + new topics in the rail each get a forum topic.",
-  "tg.empty": "No Telegram channels yet. Click \"+ Add channel\".",
+  "tg.empty": 'No Telegram channels yet. Click "+ Add channel".',
   "tg.add": "+ Add channel",
   "tg.row.test": "Test",
   "tg.row.delete": "Delete",
   "tg.row.on": "on",
   "tg.row.off": "off",
   "tg.row.autoTopics": "AUTO-TOPICS",
-  "tg.row.autoCreateLabel":
-    "Auto-create forum topic per new business",
+  "tg.row.autoCreateLabel": "Auto-create forum topic per new business",
   "tg.field.name": "Name",
   "tg.field.scope": "Scope",
   "tg.field.scope.workspace": "Workspace default",
@@ -1147,10 +1180,8 @@ const en: Partial<Dict> = {
   "tg.field.scope.navnode": "Topic",
   "tg.field.chatId": "Chat ID (starts with -100… for groups)",
   "tg.field.topicId": "Topic ID (optional — for forum-groups)",
-  "tg.field.allowlist":
-    "Allowlist (comma-separated usernames, optional)",
-  "tg.field.denylist":
-    "Denylist (comma-separated usernames, optional)",
+  "tg.field.allowlist": "Allowlist (comma-separated usernames, optional)",
+  "tg.field.denylist": "Denylist (comma-separated usernames, optional)",
   "tg.disclosure.title": "🪄 Auto-create topic per business — setup",
   "tg.disclosure.step1":
     "Create a Telegram supergroup and turn ON Topics under Manage → Topics.",
@@ -1159,13 +1190,13 @@ const en: Partial<Dict> = {
   "tg.disclosure.step3":
     "Get the chat_id (starts with -100…) via @RawDataBot, add a new channel here with scope = Workspace default, leave topic_id empty.",
   "tg.disclosure.step4":
-    "Tick \"Auto-create forum topic per new business\" on that row below.",
+    'Tick "Auto-create forum topic per new business" on that row below.',
   "tg.disclosure.step5":
     "Done — every new business now gets its own forum topic with the same name. Existing businesses are NOT auto-topiced; create them manually or duplicate.",
 
   "keys.intro":
     "Set API keys at workspace level (default for all agents) or override per business or topic. Resolution: topic → business → workspace → env-var fallback.",
-  "keys.empty": "No keys yet. Click \"+ Add key\" to get started.",
+  "keys.empty": 'No keys yet. Click "+ Add key" to get started.',
   "keys.add": "+ Add key",
   "keys.row.set": "set",
   "keys.row.empty": "empty",
@@ -1199,7 +1230,7 @@ const en: Partial<Dict> = {
     "The top-right corner of the header shows a per-workspace weather chip.",
   "settings.section.ollama": "Local Ollama",
   "settings.section.ollama.desc":
-    "Set host + port for your own Ollama server. Click \"Scan models\" to enumerate the models — they then become selectable everywhere in the app (chat panel, talk page, agents).",
+    'Set host + port for your own Ollama server. Click "Scan models" to enumerate the models — they then become selectable everywhere in the app (chat panel, talk page, agents).',
   "settings.section.apiKeys": "API Keys",
   "settings.section.apiKeys.desc":
     "Workspace defaults or overrides per business or topic. Encrypted via pgcrypto.",
@@ -1221,8 +1252,7 @@ const en: Partial<Dict> = {
   "settings.section.customIntegrations": "Custom integrations",
   "settings.section.customIntegrations.desc":
     "Generic HTTP webhooks / API calls. Mustache placeholders for run data.",
-  "settings.section.notifs.desc":
-    "Web Push for HITL items on this device.",
+  "settings.section.notifs.desc": "Web Push for HITL items on this device.",
   "settings.section.team.desc":
     "Who can do what. You're always owner; you can add admins / editors / viewers.",
   "settings.section.danger.desc":
@@ -1264,8 +1294,7 @@ const en: Partial<Dict> = {
   "profile.security.signOutAll.confirm":
     "Signs you out on ALL devices + browsers where you're currently signed in. Continue?",
 
-  "chat.noAgents.title":
-    "Add an agent first - click to go to the marketplace",
+  "chat.noAgents.title": "Add an agent first - click to go to the marketplace",
   "chat.title": "Chat with AI",
   "chat.threads.show": "Show threads",
   "chat.threads.hide": "Hide threads",
@@ -1293,6 +1322,7 @@ const en: Partial<Dict> = {
   "queue.menu.copyTitle": "Copy title",
   "queue.state.manualCheck": "Manual check",
   "queue.state.review": "Review (HITL)",
+  "queue.state.fail": "Failed",
   "queue.state.auto": "Auto",
   "queue.confidence": "Confidence",
   "queue.action.skip": "Skip",
@@ -1368,8 +1398,9 @@ const de: Partial<Dict> = {
   "ctx.moveDown": "↓ Nach unten",
   "ctx.moveToRoot": "Auf Root verschieben",
   "ctx.moveUnder": "Verschieben unter {name}",
-  "ctx.confirmArchiveBiz": "Bist du sicher, dass du \"{name}\" archivieren willst?",
-  "ctx.confirmArchiveTopic": "Topic \"{name}\" archivieren?",
+  "ctx.confirmArchiveBiz":
+    'Bist du sicher, dass du "{name}" archivieren willst?',
+  "ctx.confirmArchiveTopic": 'Topic "{name}" archivieren?',
   "ctx.newTopicTitle": "Neues Topic in {parent}",
   "ctx.newSubtopicTitle": "Neues Subtopic in {parent}",
 
@@ -1421,7 +1452,7 @@ const de: Partial<Dict> = {
   "biz.noRuns.body": "Starte einen Agenten über Run-now oder einen Webhook.",
 
   "header.searchPlaceholder":
-    "Suche oder frag die KI: \"wieviel hat YouTube heute eingebracht?\"",
+    'Suche oder frag die KI: "wieviel hat YouTube heute eingebracht?"',
   "header.crumbBackToWorkspace": "Zurück zum Workspace-Dashboard",
   "header.crumbBackToBusinesses": "Zurück zu allen Businesses",
 
@@ -1465,6 +1496,23 @@ const de: Partial<Dict> = {
   "search.tpl.bizRoutines.hint": "Cron + Webhook-Zeitpläne",
   "search.tpl.bizRuns": "Dieses Business: Runs",
   "search.tpl.bizRuns.hint": "Vollständiger Run-Verlauf",
+  "search.kind.business": "Business",
+  "search.kind.agent": "Agent",
+  "search.kind.queue": "Warteschlange",
+  "search.kind.node": "Topic",
+  "search.kind.marketplace": "Marketplace",
+
+  "notifications.aria": "Benachrichtigungen",
+  "notifications.empty":
+    "Nichts zu pruefen - keine offenen Warteschlangen-Items und keine fehlgeschlagenen Runs.",
+  "notifications.openCount": "{count} offen",
+  "notifications.clear.title": "Alle Benachrichtigungen fuer dich loeschen",
+  "notifications.clear.confirmTitle": "Nochmals klicken zum Bestaetigen",
+  "notifications.clear": "Alle loeschen",
+  "notifications.clear.confirm": "Bestaetigen?",
+  "notifications.workspace": "Workspace",
+  "notifications.kind.runFailed": "Run fehlgeschlagen",
+  "notifications.kind.queue": "Warteschlange",
 
   "pause.live": "Live · auto",
   "pause.paused": "Pausiert",
@@ -1482,7 +1530,7 @@ const de: Partial<Dict> = {
   "ollama.lastScan": "zuletzt gescannt {when}",
   "ollama.modelsCount": "{count} Modelle verfügbar",
   "ollama.empty":
-    "Noch keine Modelle gescannt. Host + Port ausfüllen und auf \"Modelle scannen\" klicken.",
+    'Noch keine Modelle gescannt. Host + Port ausfüllen und auf "Modelle scannen" klicken.',
   "rel.now": "gerade eben",
   "rel.s": "vor {n}s",
   "rel.m": "vor {n}m",
@@ -1511,10 +1559,8 @@ const de: Partial<Dict> = {
   "providers.ollama.gotoSettings": "Zu Ollama-Einstellungen",
   "providers.ollama.step1":
     "Installiere Ollama auf der Maschine, die die Modelle ausführt (Laptop, VPS, anderer Server).",
-  "providers.ollama.step2":
-    "Starte Ollama. Der Standardport ist 11434.",
-  "providers.ollama.step3":
-    "Hole ein Modell — z.B.: ollama pull llama3.2",
+  "providers.ollama.step2": "Starte Ollama. Der Standardport ist 11434.",
+  "providers.ollama.step3": "Hole ein Modell — z.B.: ollama pull llama3.2",
   "providers.ollama.step4":
     "Trage Host + Port auf der Ollama-Einstellungsseite ein und klicke auf Scan.",
 
@@ -1544,13 +1590,17 @@ const de: Partial<Dict> = {
   "providers.runtime.desc":
     "Registriere ein benanntes Profil bzw. einen Agenten in der Runtime, damit Sessions, Memory und Skills über Runs hinweg bestehen bleiben. AIO Control schaltet dann automatisch auf den named-spawn-Pfad.",
   "providers.runtime.nameLabel": "Agent-Name",
-  "providers.runtime.cmdLabel": "Führe dieses Kommando auf dem Runtime-Host aus:",
+  "providers.runtime.cmdLabel":
+    "Führe dieses Kommando auf dem Runtime-Host aus:",
   "providers.runtime.copy": "Kopieren",
   "providers.runtime.copied": "✓ Kopiert",
-  "providers.runtime.copyFailed": "Konnte nicht in die Zwischenablage schreiben — markiere den Text und drücke manuell Ctrl+C.",
+  "providers.runtime.copyFailed":
+    "Konnte nicht in die Zwischenablage schreiben — markiere den Text und drücke manuell Ctrl+C.",
   "providers.runtime.verify": "Verifizieren",
-  "providers.runtime.savedNotice": "Name gespeichert. Kommando ausführen, dann Verify klicken.",
-  "providers.runtime.verifiedNotice": "✓ Agent \"{name}\" in Runtime gefunden — künftige Chats nutzen dieses Profil.",
+  "providers.runtime.savedNotice":
+    "Name gespeichert. Kommando ausführen, dann Verify klicken.",
+  "providers.runtime.verifiedNotice":
+    '✓ Agent "{name}" in Runtime gefunden — künftige Chats nutzen dieses Profil.',
   "providers.runtime.initializedAgo": "Initialisiert {when}",
   "providers.status.runtimeReady": "Runtime bereit · {name} ✓",
 
@@ -1602,8 +1652,7 @@ const de: Partial<Dict> = {
   "settings.section.providers": "Provider",
   "settings.section.providers.desc":
     "Schritt-für-Schritt-Onboarding für self-hosted Provider (Hermes-Agent, OpenClaw, Ollama).",
-  "settings.section.subscription.desc":
-    "Plan, Zahlungsmethode, Rechnungen.",
+  "settings.section.subscription.desc": "Plan, Zahlungsmethode, Rechnungen.",
   "settings.section.notifications": "Benachrichtigungen",
   "settings.section.team": "Team & Rollen",
   "settings.section.danger": "Gefahrenzone",
@@ -1660,16 +1709,16 @@ const de: Partial<Dict> = {
   "page.settings": "Einstellungen",
   "page.profile": "Profil",
   "page.subscription": "Abonnement",
-  "page.subscription.sub": "Plan, Zahlungsmethode und Rechnungen für {workspace}",
+  "page.subscription.sub":
+    "Plan, Zahlungsmethode und Rechnungen für {workspace}",
   "page.talk": "Talk to AI",
-  "page.talk.sub":
-    "Provider · Stimme · Log für den Mikrofon-Button im Header",
+  "page.talk.sub": "Provider · Stimme · Log für den Mikrofon-Button im Header",
   "page.flows": "AI Flow Builder",
   "page.workspaceAgents": "Workspace-Agenten",
   "page.workspaceAgents.sub":
     "Kalender · Umsatz · alle Agenten in diesem Workspace, gruppiert nach Business.",
   "page.workspaceAgents.empty":
-    "Noch keine Agenten in diesem Workspace. Lege einen über ein Business an oder über den \"+ Neuer Agent\"-Button in einer leeren Gruppe.",
+    'Noch keine Agenten in diesem Workspace. Lege einen über ein Business an oder über den "+ Neuer Agent"-Button in einer leeren Gruppe.',
   "page.workspaceAgents.workspaceGroup": "Workspace",
   "page.workspaceAgents.workspaceGroupSub": "Nicht an ein Business gebunden",
   "page.workspaceAgents.businessGroupSub": "Business-Agenten",
@@ -1714,7 +1763,7 @@ const de: Partial<Dict> = {
     "Die rechte obere Ecke des Headers zeigt einen Wetter-Chip pro Workspace.",
   "settings.section.ollama": "Lokales Ollama",
   "settings.section.ollama.desc":
-    "Host + Port deines eigenen Ollama-Servers. Klicke auf \"Modelle scannen\", um die verfügbaren Modelle abzurufen — sie sind dann überall in der App auswählbar (Chat-Panel, Talk-Seite, Agenten).",
+    'Host + Port deines eigenen Ollama-Servers. Klicke auf "Modelle scannen", um die verfügbaren Modelle abzurufen — sie sind dann überall in der App auswählbar (Chat-Panel, Talk-Seite, Agenten).',
   "settings.section.apiKeys": "API-Keys",
   "settings.section.apiKeys.desc":
     "Workspace-Standards oder Overrides pro Business oder Topic. Verschlüsselung via pgcrypto.",
@@ -1736,8 +1785,7 @@ const de: Partial<Dict> = {
   "settings.section.customIntegrations": "Eigene Integrationen",
   "settings.section.customIntegrations.desc":
     "Allgemeine HTTP-Webhooks / API-Calls. Mustache-Platzhalter für Run-Daten.",
-  "settings.section.notifs.desc":
-    "Web Push für HITL-Items auf diesem Gerät.",
+  "settings.section.notifs.desc": "Web Push für HITL-Items auf diesem Gerät.",
   "settings.section.team.desc":
     "Wer darf was. Owner bist immer du; Admins, Editors und Viewers können hinzugefügt werden.",
   "settings.section.danger.desc":
@@ -1833,12 +1881,11 @@ const de: Partial<Dict> = {
   "agent.field.notifyEmail": "E-Mail (überschreibt Workspace-Default)",
   "agent.field.topic": "Topics (optional)",
   "agent.field.topic.business": "Keine Topics - gesamtes Business",
-  "agent.tools.title":
-    "AIO-Control-Tools — was darf dieser Agent aufrufen",
+  "agent.tools.title": "AIO-Control-Tools — was darf dieser Agent aufrufen",
   "agent.tools.desc":
     "Read-Tools (list_*, get_*) sind sicher + nie destruktiv. Write-Tools (create_*, update_*) erfordern deine Bestätigung im Chat vor der Ausführung.",
   "agent.tools.useDefault":
-    "Standard-Set für \"{kind}\"-Agenten verwenden ({count} Tools)",
+    'Standard-Set für "{kind}"-Agenten verwenden ({count} Tools)',
   "agent.chain.title": "Kette — was läuft nach diesem Agenten?",
   "agent.chain.onDone": "Bei DONE → Agent starten",
   "agent.chain.onFail": "Bei FAIL → Agent starten (Triage)",
@@ -1847,7 +1894,8 @@ const de: Partial<Dict> = {
   "agent.chain.note":
     "Der nächste Agent erhält den Output dieses Runs als Eingabe-Prompt — ideal für Extract → Translate → Publish Chains.",
 
-  "tg.intro": "Bot-Token setzt du in Einstellungen → API Keys als Provider \"Telegram\". Hier konfigurierst du, wohin Berichte gehen.",
+  "tg.intro":
+    'Bot-Token setzt du in Einstellungen → API Keys als Provider "Telegram". Hier konfigurierst du, wohin Berichte gehen.',
   "tg.topology.title": "Topologie — wie soll Telegram strukturiert sein?",
   "tg.topology.manual": "Manuell",
   "tg.topology.manual.desc":
@@ -1858,7 +1906,7 @@ const de: Partial<Dict> = {
   "tg.topology.perBizAndNode": "Auto-Topic pro Business + pro Nav-Node",
   "tg.topology.perBizAndNode.desc":
     "Gleiche Supergroup; neue Businesses + neue Topics in der Rail bekommen jeweils ein Forum-Topic.",
-  "tg.empty": "Noch keine Telegram-Kanäle. Klicke auf \"+ Kanal hinzufügen\".",
+  "tg.empty": 'Noch keine Telegram-Kanäle. Klicke auf "+ Kanal hinzufügen".',
   "tg.add": "+ Kanal hinzufügen",
   "tg.row.test": "Test",
   "tg.row.delete": "Löschen",
@@ -1874,10 +1922,8 @@ const de: Partial<Dict> = {
   "tg.field.scope.navnode": "Topic",
   "tg.field.chatId": "Chat-ID (beginnt mit -100… für Gruppen)",
   "tg.field.topicId": "Topic-ID (optional — nur für Forum-Gruppen)",
-  "tg.field.allowlist":
-    "Allowlist (komma-getrennte Usernames, optional)",
-  "tg.field.denylist":
-    "Denylist (komma-getrennte Usernames, optional)",
+  "tg.field.allowlist": "Allowlist (komma-getrennte Usernames, optional)",
+  "tg.field.denylist": "Denylist (komma-getrennte Usernames, optional)",
   "tg.disclosure.title": "🪄 Auto-Topic pro Business — Setup",
   "tg.disclosure.step1":
     "Erstelle eine Telegram-Supergroup und aktiviere unter Manage → Topics die Option Topics.",
@@ -1886,13 +1932,13 @@ const de: Partial<Dict> = {
   "tg.disclosure.step3":
     "Hol die chat_id (startet mit -100…) via @RawDataBot, füge hier einen neuen Kanal mit Scope = Workspace-Default hinzu und lass topic_id leer.",
   "tg.disclosure.step4":
-    "Hake \"Forum-Topic pro neuem Business automatisch erstellen\" in der Zeile unten an.",
+    'Hake "Forum-Topic pro neuem Business automatisch erstellen" in der Zeile unten an.',
   "tg.disclosure.step5":
     "Fertig — jedes neue Business bekommt jetzt sein eigenes Forum-Topic. Existierende Businesses bekommen NICHT automatisch ein Topic.",
 
   "keys.intro":
     "API-Keys auf Workspace-Ebene setzen (Standard für alle Agenten) oder pro Business / Topic überschreiben. Reihenfolge: Topic → Business → Workspace → Env-Var-Fallback.",
-  "keys.empty": "Noch keine Keys. Klicke auf \"+ Key hinzufügen\".",
+  "keys.empty": 'Noch keine Keys. Klicke auf "+ Key hinzufügen".',
   "keys.add": "+ Key hinzufügen",
   "keys.row.set": "gesetzt",
   "keys.row.empty": "leer",
@@ -1946,6 +1992,7 @@ const de: Partial<Dict> = {
   "queue.menu.copyTitle": "Titel kopieren",
   "queue.state.manualCheck": "Manuelle Pruefung",
   "queue.state.review": "Review (HITL)",
+  "queue.state.fail": "Fehlgeschlagen",
   "queue.state.auto": "Auto",
   "queue.confidence": "Vertrauen",
   "queue.action.skip": "Ueberspringen",

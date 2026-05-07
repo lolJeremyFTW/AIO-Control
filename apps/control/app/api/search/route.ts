@@ -4,6 +4,13 @@
 
 import { NextResponse } from "next/server";
 
+import {
+  translateAgentRows,
+  translateBusinessRows,
+  translateContentBatch,
+  translateQueueRows,
+} from "../../../lib/i18n/content-translations";
+import { LOCALES, translate, type Locale } from "../../../lib/i18n/dict";
 import { createSupabaseServerClient } from "../../../lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -21,10 +28,13 @@ export async function GET(req: Request) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!user)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const url = new URL(req.url);
   const q = (url.searchParams.get("q") ?? "").trim();
+  const locale = normalizeLocale(url.searchParams.get("locale"));
+  const workspaceSlug = url.searchParams.get("workspace") || null;
   // Optional scope filters. The search modal passes these so the user
   // can narrow to a single business or workspace-global.
   //   business=<uuid>  → restrict businesses/agents/queue to that biz
@@ -42,15 +52,32 @@ export async function GET(req: Request) {
   // For now keep it simple: pull all workspaces the user can see and
   // search across them, but restrict the href to the user's first slug
   // for the default workspace.
-  const { data: ws } = await supabase
-    .from("workspace_members")
-    .select("workspaces:workspace_id(slug, id)")
-    .order("joined_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  const slug =
-    (ws as unknown as { workspaces?: { slug: string; id: string } } | null)
-      ?.workspaces?.slug ?? "";
+  let workspace: { id: string; slug: string } | null = null;
+  if (workspaceSlug) {
+    const { data: workspaceRow } = await supabase
+      .from("workspaces")
+      .select("id, slug")
+      .eq("slug", workspaceSlug)
+      .maybeSingle();
+    workspace = (workspaceRow as { id: string; slug: string } | null) ?? null;
+  }
+  if (!workspace) {
+    const { data: ws } = await supabase
+      .from("workspace_members")
+      .select("workspaces:workspace_id(slug, id)")
+      .order("joined_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    workspace =
+      (ws as unknown as { workspaces?: { slug: string; id: string } } | null)
+        ?.workspaces ?? null;
+  }
+  const slug = workspace?.slug ?? "";
+  const workspaceId = workspace?.id ?? null;
+  const businessScopeId =
+    businessFilter && workspaceId
+      ? await resolveBusinessScopeId(supabase, workspaceId, businessFilter)
+      : businessFilter;
 
   // ilike with %q% scans all text columns. Postgres' trigram + GIN
   // indexes would make this faster at scale; for now we cap at LIMIT 6
@@ -61,33 +88,37 @@ export async function GET(req: Request) {
   // throw away.
   const bizQuery = supabase
     .from("businesses")
-    .select("id, slug, name, sub")
+    .select("id, workspace_id, slug, name, sub")
     .ilike("name", like)
     .limit(6);
-  if (businessFilter) bizQuery.eq("id", businessFilter);
+  if (workspaceId) bizQuery.eq("workspace_id", workspaceId);
+  if (businessScopeId) bizQuery.eq("id", businessScopeId);
 
   const agentsQuery = supabase
     .from("agents")
-    .select("id, name, business_id, provider")
+    .select("id, workspace_id, name, business_id, provider")
     .or(`name.ilike.${like},provider.ilike.${like}`)
     .is("archived_at", null)
     .limit(6);
-  if (businessFilter) agentsQuery.eq("business_id", businessFilter);
+  if (workspaceId) agentsQuery.eq("workspace_id", workspaceId);
+  if (businessScopeId) agentsQuery.eq("business_id", businessScopeId);
   if (scopeFilter === "global") agentsQuery.is("business_id", null);
 
   const queueQuery = supabase
     .from("queue_items")
-    .select("id, title, business_id, state")
+    .select("id, workspace_id, title, business_id, state")
     .ilike("title", like)
     .is("resolved_at", null)
     .limit(6);
-  if (businessFilter) queueQuery.eq("business_id", businessFilter);
+  if (workspaceId) queueQuery.eq("workspace_id", workspaceId);
+  if (businessScopeId) queueQuery.eq("business_id", businessScopeId);
 
   const [biz, agents, queue, marketplace] = await Promise.all([
     bizQuery.then(
       (r) =>
         (r.data ?? []) as {
           id: string;
+          workspace_id: string;
           slug: string;
           name: string;
           sub: string | null;
@@ -97,6 +128,7 @@ export async function GET(req: Request) {
       (r) =>
         (r.data ?? []) as {
           id: string;
+          workspace_id: string;
           name: string;
           business_id: string | null;
           provider: string;
@@ -106,6 +138,7 @@ export async function GET(req: Request) {
       (r) =>
         (r.data ?? []) as {
           id: string;
+          workspace_id: string;
           title: string;
           business_id: string;
           state: string;
@@ -133,15 +166,31 @@ export async function GET(req: Request) {
   // Reserved for the future; reference the var so linters don't whine.
   void topicFilter;
 
+  const [bizRows, agentRows, queueRows, marketplaceRows] =
+    locale && workspaceId
+      ? await Promise.all([
+          translateBusinessRows(workspaceId, locale, biz, {
+            credentialOwnerUserId: user.id,
+          }),
+          translateAgentRows(workspaceId, locale, agents, {
+            credentialOwnerUserId: user.id,
+          }),
+          translateQueueRows(workspaceId, locale, queue, {
+            credentialOwnerUserId: user.id,
+          }),
+          translateMarketplaceRows(workspaceId, locale, marketplace, user.id),
+        ])
+      : [biz, agents, queue, marketplace];
+
   const hits: Hit[] = [
-    ...biz.map((b) => ({
+    ...bizRows.map((b) => ({
       kind: "business" as const,
       id: b.id,
       title: b.name,
       sub: b.sub ?? undefined,
       href: `/${slug}/business/${b.slug}`,
     })),
-    ...agents.map((a) => ({
+    ...agentRows.map((a) => ({
       kind: "agent" as const,
       id: a.id,
       title: a.name,
@@ -150,14 +199,14 @@ export async function GET(req: Request) {
         ? `/${slug}/business/${a.business_id}/agents`
         : `/${slug}/dashboard`,
     })),
-    ...queue.map((qi) => ({
+    ...queueRows.map((qi) => ({
       kind: "queue" as const,
       id: qi.id,
       title: qi.title,
-      sub: qi.state,
+      sub: locale ? queueStateLabel(locale, qi.state) : qi.state,
       href: `/${slug}/business/${qi.business_id}`,
     })),
-    ...marketplace.map((m) => ({
+    ...marketplaceRows.map((m) => ({
       kind: "marketplace" as const,
       id: m.id,
       title: m.name,
@@ -167,4 +216,91 @@ export async function GET(req: Request) {
   ];
 
   return NextResponse.json({ hits });
+}
+
+function normalizeLocale(value: string | null): Locale | null {
+  return value && LOCALES.includes(value as Locale) ? (value as Locale) : null;
+}
+
+async function resolveBusinessScopeId(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  workspaceId: string,
+  business: string,
+): Promise<string> {
+  if (isUuid(business)) return business;
+  const { data } = await supabase
+    .from("businesses")
+    .select("id")
+    .eq("workspace_id", workspaceId)
+    .eq("slug", business)
+    .maybeSingle();
+  return (data as { id?: string } | null)?.id ?? business;
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value,
+  );
+}
+
+async function translateMarketplaceRows<
+  T extends {
+    id: string;
+    name: string;
+    tagline: string;
+    marketplace_kind: string;
+  },
+>(
+  workspaceId: string,
+  locale: Locale,
+  rows: T[],
+  userId: string,
+): Promise<T[]> {
+  const copies = rows.map((row) => ({ ...row }));
+  const inputs: Array<{
+    sourceKind: string;
+    sourceId: string;
+    field: string;
+    text: string;
+  }> = [];
+  const setters: Array<(value: string) => void> = [];
+
+  for (const row of copies) {
+    inputs.push({
+      sourceKind: "marketplace_agent",
+      sourceId: row.id,
+      field: "name",
+      text: row.name,
+    });
+    setters.push((value) => {
+      row.name = value;
+    });
+    inputs.push({
+      sourceKind: "marketplace_agent",
+      sourceId: row.id,
+      field: "tagline",
+      text: row.tagline,
+    });
+    setters.push((value) => {
+      row.tagline = value;
+    });
+  }
+
+  const values = await translateContentBatch(workspaceId, locale, inputs, {
+    credentialOwnerUserId: userId,
+  });
+  values.forEach((value, index) => setters[index]?.(value));
+  return copies;
+}
+
+function queueStateLabel(locale: Locale, state: string): string {
+  const key =
+    state === "review"
+      ? "queue.state.review"
+      : state === "fail"
+        ? "queue.state.fail"
+        : state === "auto"
+          ? "queue.state.auto"
+          : null;
+  return key ? translate(locale, key) : state;
 }

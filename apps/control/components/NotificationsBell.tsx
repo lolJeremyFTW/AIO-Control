@@ -6,6 +6,7 @@
 
 import { useRouter } from "next/navigation";
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -15,6 +16,8 @@ import {
 
 import { BellIcon, ChevronRightIcon, getAppIcon } from "@aio/ui/icon";
 
+import { translate } from "../lib/i18n/dict";
+import { useLocale } from "../lib/i18n/client";
 import { getSupabaseBrowserClient } from "../lib/supabase/client";
 
 type Notif = {
@@ -115,6 +118,11 @@ export function NotificationsBell({
   onItemsChange,
 }: Props) {
   const router = useRouter();
+  const locale = useLocale();
+  const t = (key: string, vars?: Record<string, string | number>) =>
+    translate(locale, key, vars);
+  const dateLocale =
+    locale === "en" ? "en-US" : locale === "de" ? "de-DE" : "nl-NL";
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<Notif[]>([]);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
@@ -148,14 +156,17 @@ export function NotificationsBell({
     }));
   }, [businesses, items]);
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-    const res = await fetch(`${base}/api/notifications`).catch(() => null);
+    const params = new URLSearchParams({ workspace: workspaceId, locale });
+    const res = await fetch(
+      `${base}/api/notifications?${params.toString()}`,
+    ).catch(() => null);
     if (res?.ok) {
       const data = (await res.json()) as { items: Notif[] };
       setItems(data.items);
     }
-  };
+  }, [locale, workspaceId]);
 
   const persistCollapsedGroups = (next: Set<string>) => {
     try {
@@ -232,7 +243,7 @@ export function NotificationsBell({
 
   useEffect(() => {
     void refresh();
-  }, []);
+  }, [refresh]);
 
   useEffect(() => {
     try {
@@ -260,11 +271,10 @@ export function NotificationsBell({
     } catch {
       return;
     }
-    type Payload = { eventType: "INSERT" | "UPDATE" | "DELETE" };
     const ch = supabase
       .channel(`notifs:${workspaceId}`)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .on(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         "postgres_changes" as any,
         {
           event: "*",
@@ -272,10 +282,10 @@ export function NotificationsBell({
           table: "queue_items",
           filter: `workspace_id=eq.${workspaceId}`,
         },
-        (_p: Payload) => void refresh(),
+        () => void refresh(),
       )
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .on(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         "postgres_changes" as any,
         {
           event: "*",
@@ -283,13 +293,13 @@ export function NotificationsBell({
           table: "runs",
           filter: `workspace_id=eq.${workspaceId}`,
         },
-        (_p: Payload) => void refresh(),
+        () => void refresh(),
       )
       .subscribe();
     return () => {
       void supabase.removeChannel(ch);
     };
-  }, [workspaceId]);
+  }, [workspaceId, refresh]);
 
   useEffect(() => {
     if (!open) return;
@@ -335,7 +345,7 @@ export function NotificationsBell({
     <div ref={ref} style={{ position: "relative" }}>
       <button
         className="ibtn"
-        aria-label="Notifications"
+        aria-label={t("notifications.aria")}
         onClick={() => setOpen((v) => !v)}
       >
         <BellIcon />
@@ -369,7 +379,7 @@ export function NotificationsBell({
                 margin: 0,
               }}
             >
-              Niets om te reviewen - geen open queue items en geen failed runs.
+              {t("notifications.empty")}
             </p>
           ) : (
             <div
@@ -391,7 +401,7 @@ export function NotificationsBell({
                   color: "var(--app-fg-3)",
                 }}
               >
-                {items.length} open
+                {t("notifications.openCount", { count: items.length })}
               </span>
               <button
                 type="button"
@@ -413,11 +423,13 @@ export function NotificationsBell({
                 }}
                 title={
                   confirmingClear
-                    ? "Klik nogmaals om te bevestigen"
-                    : "Wis alle notificaties voor jou"
+                    ? t("notifications.clear.confirmTitle")
+                    : t("notifications.clear.title")
                 }
               >
-                {confirmingClear ? "Bevestig?" : "Wis alles"}
+                {confirmingClear
+                  ? t("notifications.clear.confirm")
+                  : t("notifications.clear")}
               </button>
             </div>
           )}
@@ -499,7 +511,7 @@ export function NotificationsBell({
                     )}
                   </span>
                   <span style={{ flex: 1 }}>
-                    {biz ? biz.name : "Workspace"}
+                    {biz ? biz.name : t("notifications.workspace")}
                   </span>
                   <span
                     style={{
@@ -576,8 +588,10 @@ export function NotificationsBell({
                             marginLeft: 16,
                           }}
                         >
-                          {n.kind === "run" ? "Run failed" : "Wachtrij"} -{" "}
-                          {new Date(n.created_at).toLocaleString("nl-NL")}
+                          {n.kind === "run"
+                            ? t("notifications.kind.runFailed")
+                            : t("notifications.kind.queue")}{" "}
+                          - {new Date(n.created_at).toLocaleString(dateLocale)}
                         </span>
                       </a>
                     );

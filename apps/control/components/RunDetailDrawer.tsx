@@ -7,6 +7,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { useLocale } from "../lib/i18n/client";
 import type { RunStep } from "../lib/runs/message-history";
 import { getRunScheduleLabel } from "../lib/runs/schedule-label";
 import { getSupabaseBrowserClient } from "../lib/supabase/client";
@@ -17,6 +18,7 @@ type RunDetail = {
   workspace_id: string;
   agent_id: string;
   business_id: string | null;
+  nav_node_id: string | null;
   schedule_id: string | null;
   triggered_by: string;
   status: string;
@@ -34,7 +36,12 @@ type RunDetail = {
   attempt?: number | null;
   max_attempts?: number | null;
   next_retry_at?: string | null;
-  agents: { id: string; name: string; provider: string; model: string | null } | null;
+  agents: {
+    id: string;
+    name: string;
+    provider: string;
+    model: string | null;
+  } | null;
   schedules: {
     title: string | null;
     kind: string | null;
@@ -53,6 +60,7 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
   // the new run carries the prior message_history forward, so the
   // drawer keeps showing the full thread without juggling external state.
   const [currentRunId, setCurrentRunId] = useState(runId);
+  const locale = useLocale();
   // Reset to the prop's run when the parent opens a different one.
   useEffect(() => {
     setCurrentRunId(runId);
@@ -105,7 +113,10 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
     setLoading(tick === 0);
     setError(null);
     const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-    fetch(`${base}/api/runs/${currentRunId}`, { signal: ctl.signal })
+    const params = new URLSearchParams({ locale });
+    fetch(`${base}/api/runs/${currentRunId}?${params.toString()}`, {
+      signal: ctl.signal,
+    })
       .then(async (res) => {
         if (!res.ok) throw new Error(await res.text());
         return res.json() as Promise<{ run: RunDetail }>;
@@ -118,7 +129,7 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
       })
       .finally(() => setLoading(false));
     return () => ctl.abort();
-  }, [currentRunId, tick]);
+  }, [currentRunId, tick, locale]);
 
   // Subscribe to changes on this specific run row — fires as the
   // dispatcher promotes queued → running → done and writes message_history.
@@ -131,8 +142,8 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
     }
     const ch = supabase
       .channel(`run-detail:${currentRunId}`)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .on(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         "postgres_changes" as any,
         {
           event: "UPDATE",
@@ -331,30 +342,29 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
                 attempt {run.attempt}/{run.max_attempts}
               </span>
             )}
-          {run &&
-            (run.status === "queued" || run.status === "running") && (
-              <button
-                type="button"
-                onClick={() => void stopRun()}
-                disabled={stopping}
-                aria-label="Stop deze run"
-                style={{
-                  padding: "6px 10px",
-                  border: "1.5px solid var(--rose)",
-                  background: stopping
-                    ? "rgba(230,82,107,0.18)"
-                    : "rgba(230,82,107,0.08)",
-                  color: "var(--rose)",
-                  borderRadius: 8,
-                  fontWeight: 700,
-                  fontSize: 12,
-                  cursor: stopping ? "wait" : "pointer",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {stopping ? "Stoppen…" : "■ Stop"}
-              </button>
-            )}
+          {run && (run.status === "queued" || run.status === "running") && (
+            <button
+              type="button"
+              onClick={() => void stopRun()}
+              disabled={stopping}
+              aria-label="Stop deze run"
+              style={{
+                padding: "6px 10px",
+                border: "1.5px solid var(--rose)",
+                background: stopping
+                  ? "rgba(230,82,107,0.18)"
+                  : "rgba(230,82,107,0.08)",
+                color: "var(--rose)",
+                borderRadius: 8,
+                fontWeight: 700,
+                fontSize: 12,
+                cursor: stopping ? "wait" : "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {stopping ? "Stoppen…" : "■ Stop"}
+            </button>
+          )}
           {run && (run.status === "failed" || run.status === "done") && (
             <button
               type="button"
@@ -538,7 +548,9 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
 
 function RunBody({ run, showTools }: { run: RunDetail; showTools: boolean }) {
   const allSteps = stepsFor(run);
-  const steps = showTools ? allSteps : allSteps.filter((s) => s.kind !== "tool_call");
+  const steps = showTools
+    ? allSteps
+    : allSteps.filter((s) => s.kind !== "tool_call");
   const isLive = run.status === "queued" || run.status === "running";
   const publishedDashboard = findPublishedDashboard(allSteps);
 
@@ -628,7 +640,9 @@ function PublishedDashboardCard({
       }}
     >
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 12.5, fontWeight: 800, color: "var(--tt-green)" }}>
+        <div
+          style={{ fontSize: 12.5, fontWeight: 800, color: "var(--tt-green)" }}
+        >
           Dashboard gepubliceerd
         </div>
         <div
@@ -738,9 +752,10 @@ function stepsFor(run: RunDetail): RunStep[] {
   }
   // Fallback for legacy runs (no message_history captured).
   const fallback: RunStep[] = [];
-  const input = run.input as
-    | { prompt?: string; messages?: { role: string; content: string }[] }
-    | null;
+  const input = run.input as {
+    prompt?: string;
+    messages?: { role: string; content: string }[];
+  } | null;
   if (input?.messages) {
     for (const m of input.messages) {
       fallback.push({
@@ -924,15 +939,13 @@ function Bubble({
   );
 }
 
-function ToolCallCard({
-  step,
-}: {
-  step: RunStep & { kind: "tool_call" };
-}) {
+function ToolCallCard({ step }: { step: RunStep & { kind: "tool_call" } }) {
   const [open, setOpen] = useState(false);
   const argsPreview = previewJson(step.args, open ? 20_000 : 2_000);
   const resultPreview =
-    step.result !== undefined ? previewJson(step.result, open ? 20_000 : 2_000) : null;
+    step.result !== undefined
+      ? previewJson(step.result, open ? 20_000 : 2_000)
+      : null;
   return (
     <div
       style={{
@@ -977,7 +990,13 @@ function ToolCallCard({
             {fmtTime(step.at)}
           </span>
         )}
-        <span style={{ color: "var(--app-fg-3)", fontSize: 11, marginLeft: step.at ? 8 : "auto" }}>
+        <span
+          style={{
+            color: "var(--app-fg-3)",
+            fontSize: 11,
+            marginLeft: step.at ? 8 : "auto",
+          }}
+        >
           {open ? "▾" : "▸"}
         </span>
       </div>
@@ -1016,13 +1035,7 @@ function truncatePreview(value: string, maxChars: number): string {
   return `${value.slice(0, maxChars)}\n... ${omitted.toLocaleString("nl-NL")} tekens verborgen`;
 }
 
-function StatusPill({
-  status,
-  run,
-}: {
-  status: string;
-  run?: RunDetail;
-}) {
+function StatusPill({ status, run }: { status: string; run?: RunDetail }) {
   // Special case: a run that was killed by a service restart or zombie
   // sweep is fundamentally different from an agent that "failed" — it
   // never got to finish. Render it in a softer amber tone so users can
@@ -1136,21 +1149,28 @@ function getRunTokenUsage(run: RunDetail): {
 }
 
 function estimateRunInputTokens(run: RunDetail): number {
-  const input = run.input as
-    | { prompt?: string; messages?: { content?: string }[]; payload?: unknown }
-    | null;
+  const input = run.input as {
+    prompt?: string;
+    messages?: { content?: string }[];
+    payload?: unknown;
+  } | null;
   if (input?.messages) {
-    return estimateTokens(input.messages.map((m) => m.content ?? "").join("\n"));
+    return estimateTokens(
+      input.messages.map((m) => m.content ?? "").join("\n"),
+    );
   }
   if (typeof input?.prompt === "string") return estimateTokens(input.prompt);
-  if (input?.payload !== undefined) return estimateTokens(JSON.stringify(input.payload));
+  if (input?.payload !== undefined)
+    return estimateTokens(JSON.stringify(input.payload));
   return 0;
 }
 
 function estimateRunOutputTokens(run: RunDetail): number {
   const historyText =
     run.message_history
-      ?.filter((s): s is RunStep & { kind: "assistant" } => s.kind === "assistant")
+      ?.filter(
+        (s): s is RunStep & { kind: "assistant" } => s.kind === "assistant",
+      )
       .map((s) => s.text)
       .join("\n") ?? "";
   return estimateTokens(historyText || run.output?.text || "");
