@@ -5,7 +5,10 @@
 
 import { NextRequest, NextResponse } from "next/server";
 
-import { generateFlowPlan } from "@aio/ai/flow-planner";
+import {
+  generateBusinessBlueprintPlan,
+  generateFlowPlan,
+} from "@aio/ai/flow-planner";
 import type { FlowPlanProvider } from "@aio/ai/flow-planner";
 
 import { getCurrentUser } from "../../../../lib/auth/workspace";
@@ -17,6 +20,7 @@ export type {
   AgentPlan,
   SchedulePlan,
   SkillPlan,
+  BusinessBlueprintPlan,
 } from "@aio/ai/flow-planner";
 
 export async function POST(req: NextRequest) {
@@ -26,6 +30,8 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const description: string = body?.description ?? "";
   const workspaceId: string = body?.workspace_id ?? "";
+  const mode: "automation" | "business" =
+    body?.mode === "business" ? "business" : "automation";
 
   if (!description.trim()) {
     return NextResponse.json({ error: "description is verplicht" }, { status: 400 });
@@ -71,8 +77,11 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const plan = await generateFlowPlan(description, apiKey, provider);
-    return NextResponse.json({ ok: true, plan });
+    const plan =
+      mode === "business"
+        ? await generateBusinessBlueprintPlan(description, apiKey, provider)
+        : await generateFlowPlan(description, apiKey, provider);
+    return NextResponse.json({ ok: true, plan, plan_kind: mode });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Genereren mislukt.";
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });

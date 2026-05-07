@@ -236,6 +236,7 @@ export async function createManualSchedule(input: {
   workspace_id: string;
   agent_id: string;
   business_id?: string | null;
+  nav_node_id?: string | null;
   title?: string | null;
   description?: string | null;
   instructions?: string | null;
@@ -251,6 +252,7 @@ export async function createManualSchedule(input: {
       title: input.title ?? null,
       description: input.description ?? null,
       instructions: input.instructions ?? null,
+      nav_node_id: input.nav_node_id ?? null,
     })
     .select("id")
     .single();

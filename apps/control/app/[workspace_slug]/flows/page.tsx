@@ -1,5 +1,5 @@
-// AI Flow Builder page — describe an automation, AI generates the complete
-// setup (agent + schedule + skills), user reviews and creates in one click.
+// AI Flow Builder page: describe an automation or full business, then create
+// the generated setup after review.
 
 import { notFound, redirect } from "next/navigation";
 
@@ -52,9 +52,10 @@ export default async function FlowsPage({ params }: Props) {
             lineHeight: 1.55,
           }}
         >
-          Beschrijf een automatisering in gewoon Nederlands. AI genereert een
-          compleet plan met een agent, een schedule en herbruikbare skills.
-          Bekijk het plan, pas aan waar nodig, en maak alles in één klik aan.
+          Beschrijf een automatisering of een volledige business. AI genereert
+          een uitvoerbaar plan met agents, schedules, skills, MCP servers en
+          integrations. Bekijk het plan, pas aan waar nodig, en maak alles in
+          een klik aan.
         </p>
       </header>
 
