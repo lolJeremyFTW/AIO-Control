@@ -17,6 +17,13 @@ import { isEmailConfigured, parseRecipients, sendEmail } from "./email";
 import { sendDiscordText } from "./providers/discord";
 import { sendSlackText } from "./providers/slack";
 import type { NotificationTarget } from "./providers/types";
+import {
+  formatRunDiscordComponents,
+  formatRunDiscordEmbeds,
+  formatRunPlainText,
+  formatRunSlackBlocks,
+  type RunMessageLink,
+} from "./run-message";
 import { sendTelegram } from "./telegram";
 import { getServiceRoleSupabase } from "../supabase/service";
 
@@ -511,7 +518,8 @@ async function fireNotificationTargets(
   );
   if (targets.length === 0) return { slack: false, discord: false };
 
-  const text = await formatRunMessageWithLinks(supabase, run, agent, event);
+  const links = await runLinks(supabase, run);
+  const text = formatRunPlainText({ run, agent, event, links });
   const results = await Promise.all(
     targets.map(async (target) => {
       const res =
@@ -520,11 +528,14 @@ async function fireNotificationTargets(
               workspace_id: run.workspace_id,
               target,
               text,
+              blocks: formatRunSlackBlocks({ run, agent, event, links }),
             })
           : await sendDiscordText({
               workspace_id: run.workspace_id,
               target,
               text,
+              embeds: formatRunDiscordEmbeds({ run, agent, event, links }),
+              components: formatRunDiscordComponents({ agent, links }),
             });
       if (!res.ok) {
         console.error(`${target.provider} notification failed`, {
@@ -735,25 +746,25 @@ function dedupeTargets(
   return [...byId.values()];
 }
 
-async function formatRunMessageWithLinks(
+async function runLinks(
   supabase: ReturnType<typeof getServiceRoleSupabase>,
   run: RunRow,
-  agent: AgentLite | null,
-  event: "done" | "failed",
-): Promise<string> {
-  const text = formatRunMessage(run, agent, event);
+): Promise<RunMessageLink[]> {
   const origin = process.env.NEXT_PUBLIC_TRIGGER_ORIGIN ?? "";
-  if (!origin) return text;
+  if (!origin) return [];
 
   const slug = await workspaceSlug(supabase, run.workspace_id);
-  if (!slug) return text;
+  if (!slug) return [];
 
-  const links: string[] = [];
+  const links: RunMessageLink[] = [];
   if (run.business_id) {
-    links.push(`Open business: ${origin}/${slug}/business/${run.business_id}`);
+    links.push({
+      label: "Open business",
+      url: `${origin}/${slug}/business/${run.business_id}`,
+    });
   }
-  links.push(`All runs: ${origin}/${slug}/runs`);
-  return `${text}\n\n${links.join("\n")}`;
+  links.push({ label: "All runs", url: `${origin}/${slug}/runs` });
+  return links;
 }
 
 function escapeHtml(s: string): string {
@@ -765,25 +776,7 @@ function formatRunMessage(
   agent: AgentLite | null,
   event: "done" | "failed",
 ): string {
-  const head = event === "done" ? "✅ Run done" : "❌ Run failed";
-  const lines: string[] = [
-    `${head} — ${agent?.name ?? "(agent)"}`,
-    `Status: ${run.status}`,
-  ];
-  if (run.cost_cents != null && run.cost_cents > 0) {
-    lines.push(`Cost: €${(run.cost_cents / 100).toFixed(4)}`);
-  }
-  if (run.duration_ms != null && run.duration_ms > 0) {
-    lines.push(`Duration: ${(run.duration_ms / 1000).toFixed(1)}s`);
-  }
-  if (event === "failed" && run.error_text) {
-    lines.push(`\n${stripMarkdown(truncate(run.error_text, 800))}`);
-  }
-  if (event === "done") {
-    const out = extractText(run.output);
-    if (out) lines.push(`\n${stripMarkdown(truncate(out, 800))}`);
-  }
-  return lines.join("\n");
+  return formatRunPlainText({ run, agent, event });
 }
 
 function extractText(output: unknown): string | null {
@@ -792,15 +785,6 @@ function extractText(output: unknown): string | null {
   if (typeof o.text === "string") return o.text;
   if (typeof o.message === "string") return o.message;
   return null;
-}
-
-function truncate(s: string, max: number) {
-  if (s.length <= max) return s;
-  return s.slice(0, max - 1) + "…";
-}
-
-function stripMarkdown(s: string): string {
-  return s.replace(/[*_`]/g, "");
 }
 
 // Tiny in-process cache so we don't hammer the workspaces table with

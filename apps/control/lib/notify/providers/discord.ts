@@ -7,11 +7,14 @@ import {
   type NotificationTarget,
   type SendResult,
 } from "./types";
+import type { DiscordComponent, DiscordEmbed } from "../run-message";
 
 export async function sendDiscordText(opts: {
   workspace_id: string;
   target: NotificationTarget;
   text: string;
+  embeds?: DiscordEmbed[];
+  components?: DiscordComponent[];
 }): Promise<SendResult> {
   if (!opts.target.enabled) return { ok: false, error: "target_disabled" };
 
@@ -35,6 +38,8 @@ async function sendDiscordBotText(opts: {
   workspace_id: string;
   target: NotificationTarget;
   text: string;
+  embeds?: DiscordEmbed[];
+  components?: DiscordComponent[];
 }): Promise<SendResult> {
   const channelId = stringValue(opts.target.config.channel_id);
   const threadId = stringValue(opts.target.config.thread_id);
@@ -62,6 +67,12 @@ async function sendDiscordBotText(opts: {
         },
         body: JSON.stringify({
           content: truncateMessage(opts.text, 1900),
+          ...(opts.embeds && opts.embeds.length > 0
+            ? { embeds: opts.embeds }
+            : {}),
+          ...(opts.components && opts.components.length > 0
+            ? { components: opts.components }
+            : {}),
         }),
       },
     );
@@ -82,6 +93,7 @@ async function sendDiscordWebhookText(opts: {
   workspace_id: string;
   target: NotificationTarget;
   text: string;
+  embeds?: DiscordEmbed[];
 }): Promise<SendResult> {
   const secretProvider = stringValue(
     opts.target.config.webhook_url_secret_provider,
@@ -117,7 +129,12 @@ async function sendDiscordWebhookText(opts: {
     const res = await fetch(url, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ content: truncateMessage(opts.text, 1900) }),
+      body: JSON.stringify({
+        content: truncateMessage(opts.text, 1900),
+        ...(opts.embeds && opts.embeds.length > 0
+          ? { embeds: opts.embeds }
+          : {}),
+      }),
     });
     if (!res.ok) {
       const text = await res.text().catch(() => res.statusText);

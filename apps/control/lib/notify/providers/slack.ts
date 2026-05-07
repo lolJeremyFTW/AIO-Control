@@ -7,6 +7,7 @@ import {
   type NotificationTarget,
   type SendResult,
 } from "./types";
+import type { SlackBlock } from "../run-message";
 
 type SlackApiResponse = {
   ok?: boolean;
@@ -19,6 +20,7 @@ export async function sendSlackText(opts: {
   workspace_id: string;
   target: NotificationTarget;
   text: string;
+  blocks?: SlackBlock[];
 }): Promise<SendResult> {
   if (!opts.target.enabled) return { ok: false, error: "target_disabled" };
 
@@ -44,6 +46,7 @@ async function sendSlackBotText(opts: {
   workspace_id: string;
   target: NotificationTarget;
   text: string;
+  blocks?: SlackBlock[];
 }): Promise<SendResult> {
   const channel = stringValue(opts.target.config.channel_id);
   const threadTs = stringValue(opts.target.config.thread_ts);
@@ -70,6 +73,9 @@ async function sendSlackBotText(opts: {
       body: JSON.stringify({
         channel,
         text: truncateMessage(opts.text, 3900),
+        ...(opts.blocks && opts.blocks.length > 0
+          ? { blocks: opts.blocks }
+          : {}),
         ...(threadTs ? { thread_ts: threadTs } : {}),
         unfurl_links: false,
         unfurl_media: false,
@@ -105,6 +111,7 @@ async function sendSlackWebhookText(opts: {
   workspace_id: string;
   target: NotificationTarget;
   text: string;
+  blocks?: SlackBlock[];
 }): Promise<SendResult> {
   const secretProvider = stringValue(
     opts.target.config.webhook_url_secret_provider,
@@ -139,6 +146,9 @@ async function sendSlackWebhookText(opts: {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         text: truncateMessage(opts.text, 3900),
+        ...(opts.blocks && opts.blocks.length > 0
+          ? { blocks: opts.blocks }
+          : {}),
         ...(threadTs ? { thread_ts: threadTs } : {}),
       }),
     });
