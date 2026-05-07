@@ -8,7 +8,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import type { CSSProperties } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { ChatIcon } from "@aio/ui/icon";
 import type { AGUIEvent, ChatMessage } from "@aio/ai/ag-ui";
@@ -68,8 +70,17 @@ type UIMessage = {
   createdAt: Date;
 };
 
+const chatboxDockStyle: CSSProperties = {
+  position: "fixed",
+  right: 18,
+  bottom: 18,
+  left: "auto",
+  top: "auto",
+};
+
 export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
   const [agentId, setAgentId] = useState<string | null>(
     agents[0]?.id ?? null,
@@ -84,6 +95,10 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
   const listRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Reload thread list whenever the open agent changes.
   useEffect(() => {
@@ -520,10 +535,11 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
     // No agents yet — clicking the bubble routes the user straight to the
     // marketplace so they can install (or sees the empty marketplace if
     // somehow that's also empty). Better than a dead-end alert.
-    return (
+    const emptyBubble = (
       <div
         className="chatbox"
         title="Voeg eerst een agent toe — klik om naar de marketplace te gaan"
+        style={chatboxDockStyle}
         onClick={() => {
           if (firstBusinessId && workspaceSlug) {
             router.push(
@@ -537,15 +553,17 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
         <ChatIcon />
       </div>
     );
+
+    return mounted ? createPortal(emptyBubble, document.body) : null;
   }
 
-  return (
+  const chatPanel = (
     <>
       <div
         className="chatbox"
         title="Chat met AI"
         onClick={() => setOpen((v) => !v)}
-        style={{ position: "relative" }}
+        style={chatboxDockStyle}
       >
         <ChatIcon />
         {unreadPingCount > 0 && (
@@ -1158,6 +1176,8 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
       )}
     </>
   );
+
+  return mounted ? createPortal(chatPanel, document.body) : null;
 }
 
 function estimateTokens(text: string): number {
