@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 type Props = {
   /** Base href for the topic, e.g. /ws/business/biz/n/outreach */
   baseHref: string;
-  /** Current nav_node name shown as the "active section" label */
+  /** Current nav_node name shown as the section label */
   topicName: string;
 };
 
@@ -26,21 +26,20 @@ export function TopicTabs({ baseHref, topicName }: Props) {
         alignItems: "center",
         gap: 4,
         marginBottom: 16,
-        borderBottom: "1px solid var(--app-border-2)",
+        borderBottom: "2px solid var(--app-border-2)",
         flexWrap: "wrap",
       }}
     >
-      {/* Topic label */}
+      {/* Topic name as the left anchor */}
       <span
         style={{
-          fontSize: 11,
-          fontWeight: 700,
-          color: "var(--app-fg-3)",
-          letterSpacing: "0.08em",
-          textTransform: "uppercase",
-          padding: "8px 12px 8px 0",
+          fontSize: 13,
+          fontWeight: 800,
+          color: "var(--app-fg)",
+          padding: "8px 14px 8px 0",
           marginRight: 4,
           borderRight: "1px solid var(--app-border-2)",
+          whiteSpace: "nowrap",
         }}
       >
         {topicName}
@@ -48,9 +47,10 @@ export function TopicTabs({ baseHref, topicName }: Props) {
 
       {SUB_TABS.map(({ label, suffix }) => {
         const href = `${baseHref}${suffix}`;
-        const active = suffix === ""
-          ? path === baseHref
-          : path === href || path.startsWith(`${href}/`);
+        const active =
+          suffix === ""
+            ? path === baseHref || path === `${baseHref}/`
+            : path === href || path.startsWith(`${href}/`);
         return (
           <Link
             key={label}
@@ -66,7 +66,7 @@ export function TopicTabs({ baseHref, topicName }: Props) {
               borderBottom: active
                 ? "2px solid var(--tt-green)"
                 : "2px solid transparent",
-              transform: "translateY(1px)",
+              transform: "translateY(2px)",
             }}
           >
             {label}
