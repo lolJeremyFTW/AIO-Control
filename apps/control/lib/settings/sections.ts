@@ -14,6 +14,7 @@ export type SettingsSectionId =
   | "api-keys"
   | "mcp-tools"
   | "spend-limits"
+  | "channels"
   | "telegram"
   | "email"
   | "custom-integrations"
@@ -125,6 +126,12 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   },
 
   // ── Notificaties ────────────────────────────────────────────────
+  {
+    id: "channels",
+    labelKey: "settings.section.channels",
+    descKey: "settings.section.channels.desc",
+    group: "notif",
+  },
   {
     id: "telegram",
     labelKey: "settings.section.telegram",

@@ -33,6 +33,10 @@ const ENV_FALLBACK: Record<string, string | undefined> = {
   azure_speech: "AZURE_SPEECH_API_KEY",
   brave: "BRAVE_API_KEY",
   firecrawl: "FIRECRAWL_API_KEY",
+  slack_bot_token: "SLACK_BOT_TOKEN",
+  slack_signing_secret: "SLACK_SIGNING_SECRET",
+  discord_bot_token: "DISCORD_BOT_TOKEN",
+  discord_public_key: "DISCORD_PUBLIC_KEY",
 };
 
 export async function resolveApiKey(

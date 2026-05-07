@@ -44,6 +44,10 @@ const PROVIDERS = [
   // Talk Settings page's "Beheer →" link landed nowhere useful.
   { id: "elevenlabs", label: "ElevenLabs (TTS)" },
   { id: "telegram", label: "Telegram bot token" },
+  { id: "slack_bot_token", label: "Slack bot token" },
+  { id: "slack_signing_secret", label: "Slack signing secret" },
+  { id: "discord_bot_token", label: "Discord bot token" },
+  { id: "discord_public_key", label: "Discord public key" },
   { id: "custom_webhook", label: "Custom webhook secret" },
   // SMTP creds zijn een speciale set; meestal config je ze via de
   // Email Settings panel maar je kunt 'm hier handmatig overschrijven.
