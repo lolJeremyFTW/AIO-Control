@@ -1,14 +1,13 @@
 // Header bell + popover. Pulls open queue items + recent failed runs
-// from /api/notifications and shows them as a clickable list. Auto-
-// refreshes via Supabase Realtime postgres_changes the moment a row
-// lands — same channel as RunsToaster, just consumed differently.
+// from /api/notifications and shows them as a clickable list. Auto-refreshes
+// via Supabase Realtime postgres_changes the moment a row lands.
 
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import { BellIcon } from "@aio/ui/icon";
+import { BellIcon, ChevronRightIcon } from "@aio/ui/icon";
 
 import { getSupabaseBrowserClient } from "../lib/supabase/client";
 
@@ -37,8 +36,7 @@ type BusinessLookup = {
 type Props = {
   workspaceSlug: string;
   workspaceId: string;
-  /** Workspace businesses — used to render a per-business header
-   *  (avatar dot + name) above each notification group. */
+  /** Workspace businesses, used to render a per-business header. */
   businesses?: BusinessLookup[];
   navNodes?: Array<{
     id: string;
@@ -46,8 +44,7 @@ type Props = {
     parent_id: string | null;
     slug: string;
   }>;
-  /** Called whenever the items list changes so the caller can sync
-   *  rail badges without a page reload. */
+  /** Called whenever the items list changes so the caller can sync rail badges. */
   onItemsChange?: (
     items: Array<{ business_id: string | null; nav_node_id: string | null }>,
   ) => void;
@@ -63,12 +60,36 @@ export function NotificationsBell({
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<Notif[]>([]);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
+    () => new Set(),
+  );
   const ref = useRef<HTMLDivElement>(null);
-  // Two-step confirm for the bulk dismiss — avoids the "I clicked the
-  // wrong button and lost my whole list" footgun. First click flips the
-  // label; a second click within 4 s commits, otherwise it resets.
+  // Two-step confirm for bulk dismiss so a misclick does not wipe the list.
   const [confirmingClear, setConfirmingClear] = useState(false);
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const collapseStorageKey = `aio:notifs:collapsed:${workspaceId}`;
+
+  const groupedItems = useMemo(() => {
+    const groups = new Map<string, Notif[]>();
+    for (const n of items) {
+      const key = n.business_id ?? "_global";
+      const arr = groups.get(key) ?? [];
+      arr.push(n);
+      groups.set(key, arr);
+    }
+
+    const order = ["_global", ...businesses.map((b) => b.id)];
+    const known = new Set(order);
+    return [
+      ...order.filter((id) => groups.has(id)),
+      ...Array.from(groups.keys()).filter((id) => !known.has(id)),
+    ].map((id) => ({
+      id,
+      items: groups.get(id)!,
+      business:
+        id === "_global" ? null : (businesses.find((b) => b.id === id) ?? null),
+    }));
+  }, [businesses, items]);
 
   const refresh = async () => {
     const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
@@ -79,10 +100,29 @@ export function NotificationsBell({
     }
   };
 
+  const persistCollapsedGroups = (next: Set<string>) => {
+    try {
+      window.localStorage.setItem(
+        collapseStorageKey,
+        JSON.stringify(Array.from(next)),
+      );
+    } catch {
+      // Non-critical browser preference; the popover still works.
+    }
+  };
+
+  const toggleGroup = (groupId: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
+      persistCollapsedGroups(next);
+      return next;
+    });
+  };
+
   // Mark a notification as dismissed for the current user. Notifications
-  // are synthesized from queue_items + failed runs — dismissal is per-user
-  // (POST writes notification_dismissals). We optimistically remove it
-  // locally so the bell empties out instantly when the user clicks.
+  // are synthesized from queue_items + failed runs; dismissal is per-user.
   const dismiss = (kind: "queue" | "run", id: string) => {
     setItems((prev) => prev.filter((n) => !(n.kind === kind && n.id === id)));
     const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
@@ -92,8 +132,7 @@ export function NotificationsBell({
       credentials: "same-origin",
       body: JSON.stringify({ kind, id }),
     }).catch(() => {
-      // On failure the next refresh() will repopulate it — better than
-      // leaving the user staring at a stale list. Silent retry next tick.
+      // On failure the next refresh() will repopulate it.
     });
   };
 
@@ -111,7 +150,6 @@ export function NotificationsBell({
     }
   };
 
-  // Two-step confirm: first click arms, second click within 4s commits.
   const armOrClearAll = () => {
     if (confirmingClear) {
       if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
@@ -127,8 +165,6 @@ export function NotificationsBell({
     }, 4000);
   };
 
-  // Always reset the arm state when the popover closes so the user
-  // doesn't reopen it later and hit a hot button by accident.
   useEffect(() => {
     if (!open) {
       if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
@@ -141,16 +177,25 @@ export function NotificationsBell({
     void refresh();
   }, []);
 
-  // Propagate live items to parent so rail badges stay in sync
-  // without requiring a full page reload.
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(collapseStorageKey);
+      const parsed = raw ? (JSON.parse(raw) as unknown) : null;
+      if (Array.isArray(parsed)) {
+        setCollapsedGroups(
+          new Set(parsed.filter((value) => typeof value === "string")),
+        );
+      }
+    } catch {
+      setCollapsedGroups(new Set());
+    }
+  }, [collapseStorageKey]);
+
   useEffect(() => {
     onItemsChange?.(items);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items]);
 
-  // Refresh whenever a queue_items or runs row changes for this
-  // workspace. Realtime gives us the push, then we re-fetch the list
-  // (cheaper than maintaining client-side state for partial updates).
   useEffect(() => {
     let supabase: ReturnType<typeof getSupabaseBrowserClient>;
     try {
@@ -189,7 +234,6 @@ export function NotificationsBell({
     };
   }, [workspaceId]);
 
-  // Click-outside dismiss.
   useEffect(() => {
     if (!open) return;
     const t = setTimeout(() => {
@@ -268,197 +312,197 @@ export function NotificationsBell({
                 margin: 0,
               }}
             >
-              Niets om te reviewen — geen open queue items en geen failed runs.
+              Niets om te reviewen - geen open queue items en geen failed runs.
             </p>
           ) : (
-            <>
-              <div
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "8px 12px 4px",
+                borderBottom: "1px solid var(--app-border-2)",
+                marginBottom: 4,
+              }}
+            >
+              <span
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  padding: "8px 12px 4px",
-                  borderBottom: "1px solid var(--app-border-2)",
-                  marginBottom: 4,
+                  fontSize: 10.5,
+                  fontWeight: 800,
+                  letterSpacing: 0.6,
+                  textTransform: "uppercase",
+                  color: "var(--app-fg-3)",
                 }}
               >
-                <span
+                {items.length} open
+              </span>
+              <button
+                type="button"
+                onClick={armOrClearAll}
+                style={{
+                  background: confirmingClear
+                    ? "rgba(230,82,107,0.12)"
+                    : "transparent",
+                  border: confirmingClear
+                    ? "1px solid rgba(230,82,107,0.5)"
+                    : "1px solid transparent",
+                  color: confirmingClear ? "var(--rose)" : "var(--app-fg-2)",
+                  fontSize: 11,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  padding: "2px 8px",
+                  borderRadius: 6,
+                  transition: "background 0.12s, color 0.12s",
+                }}
+                title={
+                  confirmingClear
+                    ? "Klik nogmaals om te bevestigen"
+                    : "Wis alle notificaties voor jou"
+                }
+              >
+                {confirmingClear ? "Bevestig?" : "Wis alles"}
+              </button>
+            </div>
+          )}
+          {groupedItems.map(({ id, items: arr, business: biz }) => {
+            const collapsed = collapsedGroups.has(id);
+            return (
+              <div key={id} style={{ marginBottom: 4 }}>
+                <button
+                  type="button"
+                  aria-expanded={!collapsed}
+                  onClick={() => toggleGroup(id)}
                   style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    width: "100%",
+                    padding: "8px 12px 4px",
+                    background: "transparent",
+                    border: "none",
+                    cursor: "pointer",
                     fontSize: 10.5,
                     fontWeight: 800,
                     letterSpacing: 0.6,
                     textTransform: "uppercase",
                     color: "var(--app-fg-3)",
+                    textAlign: "left",
                   }}
                 >
-                  {items.length} open
-                </span>
-                <button
-                  type="button"
-                  onClick={armOrClearAll}
-                  style={{
-                    background: confirmingClear
-                      ? "rgba(230,82,107,0.12)"
-                      : "transparent",
-                    border: confirmingClear
-                      ? "1px solid rgba(230,82,107,0.5)"
-                      : "1px solid transparent",
-                    color: confirmingClear ? "var(--rose)" : "var(--app-fg-2)",
-                    fontSize: 11,
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    padding: "2px 8px",
-                    borderRadius: 6,
-                    transition: "background 0.12s, color 0.12s",
-                  }}
-                  title={
-                    confirmingClear
-                      ? "Klik nogmaals om te bevestigen"
-                      : "Wis alle notificaties voor jou"
-                  }
-                >
-                  {confirmingClear ? "Bevestig?" : "Wis alles"}
+                  <span
+                    aria-hidden
+                    style={{
+                      width: 12,
+                      height: 12,
+                      color: "var(--app-fg-3)",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      transform: collapsed ? "rotate(0deg)" : "rotate(90deg)",
+                      transition: "transform 0.12s ease",
+                    }}
+                  >
+                    <ChevronRightIcon size={12} />
+                  </span>
+                  <span
+                    aria-hidden
+                    style={{
+                      width: 14,
+                      height: 14,
+                      borderRadius: "50%",
+                      background:
+                        biz?.color_hex ??
+                        (biz
+                          ? `var(--${biz.variant}, var(--tt-green))`
+                          : "var(--app-fg-3)"),
+                      color: "#fff",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 9,
+                      fontWeight: 800,
+                    }}
+                  >
+                    {biz ? biz.letter : "."}
+                  </span>
+                  <span style={{ flex: 1 }}>
+                    {biz ? biz.name : "Workspace"}
+                  </span>
+                  <span
+                    style={{
+                      fontFamily: "ui-monospace, Menlo, monospace",
+                      fontSize: 10,
+                      color: "var(--app-fg-2)",
+                    }}
+                  >
+                    {arr.length}
+                  </span>
                 </button>
-              </div>
-            </>
-          )}
-          {items.length > 0 &&
-            (() => {
-              // Group items by business_id so the user sees per-
-              // business sections — same shape they'll recognise from
-              // the rail badges. Workspace-wide items (business_id IS
-              // NULL) get a "Workspace" header at the top.
-              const groups = new Map<string | "_global", Notif[]>();
-              for (const n of items) {
-                const k = (n.business_id ?? "_global") as string | "_global";
-                const arr = groups.get(k) ?? [];
-                arr.push(n);
-                groups.set(k, arr);
-              }
-              const order = ["_global", ...businesses.map((b) => b.id)];
-              return order
-                .filter((id) => groups.has(id))
-                .map((id) => {
-                  const arr = groups.get(id)!;
-                  const biz =
-                    id === "_global"
-                      ? null
-                      : (businesses.find((b) => b.id === id) ?? null);
-                  return (
-                    <div key={id} style={{ marginBottom: 4 }}>
+                {!collapsed &&
+                  arr.map((n) => (
+                    <button
+                      key={`${n.kind}:${n.id}`}
+                      onClick={() => {
+                        dismiss(n.kind, n.id);
+                        setOpen(false);
+                        router.push(routeForNotification(n));
+                      }}
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        width: "100%",
+                        padding: "8px 12px",
+                        background: "transparent",
+                        border: "none",
+                        borderRadius: 8,
+                        cursor: "pointer",
+                        textAlign: "left",
+                      }}
+                      onMouseEnter={(e) =>
+                        (e.currentTarget.style.background = "var(--app-card-2)")
+                      }
+                      onMouseLeave={(e) =>
+                        (e.currentTarget.style.background = "transparent")
+                      }
+                    >
                       <div
                         style={{
                           display: "flex",
                           alignItems: "center",
                           gap: 8,
-                          padding: "8px 12px 4px",
-                          fontSize: 10.5,
-                          fontWeight: 800,
-                          letterSpacing: 0.6,
-                          textTransform: "uppercase",
-                          color: "var(--app-fg-3)",
                         }}
                       >
                         <span
-                          aria-hidden
                           style={{
-                            width: 14,
-                            height: 14,
-                            borderRadius: "50%",
+                            width: 8,
+                            height: 8,
+                            borderRadius: 999,
                             background:
-                              biz?.color_hex ??
-                              (biz
-                                ? `var(--${biz.variant}, var(--tt-green))`
-                                : "var(--app-fg-3)"),
-                            color: "#fff",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            fontSize: 9,
-                            fontWeight: 800,
+                              n.state === "fail" || n.state === "failed"
+                                ? "var(--rose)"
+                                : "var(--amber)",
                           }}
-                        >
-                          {biz ? biz.letter : "·"}
-                        </span>
-                        <span style={{ flex: 1 }}>
-                          {biz ? biz.name : "Workspace"}
-                        </span>
-                        <span
-                          style={{
-                            fontFamily: "ui-monospace, Menlo, monospace",
-                            fontSize: 10,
-                            color: "var(--app-fg-2)",
-                          }}
-                        >
-                          {arr.length}
+                        />
+                        <span style={{ fontSize: 13, fontWeight: 600 }}>
+                          {n.title}
                         </span>
                       </div>
-                      {arr.map((n) => (
-                        <button
-                          key={`${n.kind}:${n.id}`}
-                          onClick={() => {
-                            dismiss(n.kind, n.id);
-                            setOpen(false);
-                            router.push(routeForNotification(n));
-                          }}
-                          style={{
-                            display: "flex",
-                            flexDirection: "column",
-                            width: "100%",
-                            padding: "8px 12px",
-                            background: "transparent",
-                            border: "none",
-                            borderRadius: 8,
-                            cursor: "pointer",
-                            textAlign: "left",
-                          }}
-                          onMouseEnter={(e) =>
-                            (e.currentTarget.style.background =
-                              "var(--app-card-2)")
-                          }
-                          onMouseLeave={(e) =>
-                            (e.currentTarget.style.background = "transparent")
-                          }
-                        >
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 8,
-                            }}
-                          >
-                            <span
-                              style={{
-                                width: 8,
-                                height: 8,
-                                borderRadius: 999,
-                                background:
-                                  n.state === "fail" || n.state === "failed"
-                                    ? "var(--rose)"
-                                    : "var(--amber)",
-                              }}
-                            />
-                            <span style={{ fontSize: 13, fontWeight: 600 }}>
-                              {n.title}
-                            </span>
-                          </div>
-                          <span
-                            style={{
-                              fontSize: 11,
-                              color: "var(--app-fg-3)",
-                              marginTop: 2,
-                              marginLeft: 16,
-                            }}
-                          >
-                            {n.kind === "run" ? "Run failed" : "Wachtrij"} ·{" "}
-                            {new Date(n.created_at).toLocaleString("nl-NL")}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  );
-                });
-            })()}
+                      <span
+                        style={{
+                          fontSize: 11,
+                          color: "var(--app-fg-3)",
+                          marginTop: 2,
+                          marginLeft: 16,
+                        }}
+                      >
+                        {n.kind === "run" ? "Run failed" : "Wachtrij"} -{" "}
+                        {new Date(n.created_at).toLocaleString("nl-NL")}
+                      </span>
+                    </button>
+                  ))}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
