@@ -8,6 +8,7 @@ import { notFound, redirect } from "next/navigation";
 
 import {
   getCurrentUser,
+  getProfile,
   getWorkspaceBySlug,
 } from "../../../lib/auth/workspace";
 import { getDict } from "../../../lib/i18n/server";
@@ -26,6 +27,7 @@ export default async function SettingsLayout({ children, params }: Props) {
   const workspace = await getWorkspaceBySlug(workspace_slug);
   if (!workspace) notFound();
 
+  const profile = await getProfile(user.id);
   const { locale } = await getDict();
 
   // No global "Settings" page-title — every sub-page renders its
@@ -43,7 +45,11 @@ export default async function SettingsLayout({ children, params }: Props) {
           alignItems: "start",
         }}
       >
-        <SettingsSidebar workspaceSlug={workspace.slug} locale={locale} />
+        <SettingsSidebar
+          workspaceSlug={workspace.slug}
+          locale={locale}
+          isAdmin={!!profile?.is_admin}
+        />
 
         <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
           {children}

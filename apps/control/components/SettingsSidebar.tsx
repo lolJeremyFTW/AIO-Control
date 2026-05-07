@@ -20,9 +20,14 @@ import {
 type Props = {
   workspaceSlug: string;
   locale: Locale;
+  isAdmin?: boolean;
 };
 
-export function SettingsSidebar({ workspaceSlug, locale }: Props) {
+export function SettingsSidebar({
+  workspaceSlug,
+  locale,
+  isAdmin = false,
+}: Props) {
   const pathname = usePathname() ?? "";
   const t = (k: string) => translate(locale, k);
 
@@ -31,6 +36,7 @@ export function SettingsSidebar({ workspaceSlug, locale }: Props) {
   // order; group order is fixed in SETTINGS_GROUP_ORDER.
   const byGroup = new Map<SettingsGroup, typeof SETTINGS_SECTIONS>();
   for (const s of SETTINGS_SECTIONS) {
+    if (s.id === "server-files" && !isAdmin) continue;
     const arr = byGroup.get(s.group) ?? [];
     arr.push(s);
     byGroup.set(s.group, arr);
