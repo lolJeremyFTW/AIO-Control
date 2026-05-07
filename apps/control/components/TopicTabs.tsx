@@ -22,16 +22,6 @@ const BUILT_IN_TABS = [
   { label: "Runs", suffix: "/runs" },
 ] as const;
 
-function internalAioPath(url: string): string | null {
-  if (url.startsWith("/")) return url;
-  try {
-    const parsed = new URL(url);
-    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
-  } catch {
-    return null;
-  }
-}
-
 export function TopicTabs({
   baseHref,
   topicName,
@@ -180,12 +170,8 @@ export function TopicTabs({
         })}
 
         {customTabs.map((tab) => {
-          const internalPath = internalAioPath(tab.url);
-          const href = internalPath ?? tab.url;
-          const external = !internalPath;
-          const active =
-            !!internalPath &&
-            (path === internalPath || path.startsWith(`${internalPath}/`));
+          const href = `${baseHref}/tab/${tab.id}`;
+          const active = path === href || path.startsWith(`${href}/`);
           return (
             <span
               key={tab.id}
@@ -198,10 +184,8 @@ export function TopicTabs({
                   : "2px solid transparent",
               }}
             >
-              <a
+              <Link
                 href={href}
-                target={external ? "_blank" : undefined}
-                rel={external ? "noopener noreferrer" : undefined}
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
@@ -213,10 +197,13 @@ export function TopicTabs({
                 }}
               >
                 {tab.label}
-              </a>
+              </Link>
               <button
                 type="button"
-                onClick={() => handleDelete(tab.id)}
+                onClick={() => {
+                  void handleDelete(tab.id);
+                  if (active) window.location.href = baseHref;
+                }}
                 disabled={deleting === tab.id}
                 title="Verwijder tab"
                 style={{

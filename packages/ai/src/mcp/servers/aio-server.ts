@@ -110,11 +110,14 @@ const SendTelegramSchema = z.object({
 
 const AIO_DASHBOARD_STYLE_GUIDE = `
 Use AIO Control dashboard styling only:
+- Return a dashboard fragment by default: one <main class="aio-dashboard">...</main> with optional scoped <style>. Do not build a standalone marketing page.
+- The dashboard is embedded inside the existing AIO business/topic shell; do not add your own global navigation, browser-sized blank canvas, or unrelated page chrome.
 - Use CSS variables: --app-bg, --app-fg, --app-fg-2, --app-fg-3, --app-border, --app-border-2, --app-card, --app-card-2, --tt-green, --rose, --amber, --type.
 - Support both body[data-theme="dark"] and body[data-theme="light"].
 - Use compact KPI tiles, 8-12px radii, subtle borders, no unrelated gradients/orbs/stock visuals.
 - Do not hardcode a dark-only or light-only palette; prefer var(...) for every surface/text/border.
 - Match the AIO dashboard feel: quiet operator UI, card grid, dense tables, clear status pills.
+- When this is for a topic (for example Outreach), pass nav_node_id or use publish_topic_dashboard so it appears as a topic tab instead of only a separate public URL.
 `.trim();
 
 function aioDashboardShell(html: string): string {
@@ -484,6 +487,71 @@ function randomSlug(len = 16): string {
   return s;
 }
 
+function slugPart(value: string | null | undefined): string {
+  return (value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+}
+
+function isLegacyRandomSlug(value: string): boolean {
+  return /^[a-z0-9]{16}$/.test(value);
+}
+
+async function dashboardSlugBase(input: {
+  business_id: string;
+  nav_node_id?: string;
+  label: string;
+}): Promise<string> {
+  const [{ data: workspace }, { data: business }] = await Promise.all([
+    supabaseAio
+      .from("workspaces")
+      .select("slug, name")
+      .eq("id", WORKSPACE_ID)
+      .maybeSingle(),
+    supabaseAio
+      .from("businesses")
+      .select("slug, name")
+      .eq("id", input.business_id)
+      .eq("workspace_id", WORKSPACE_ID)
+      .maybeSingle(),
+  ]);
+
+  const parts = [
+    slugPart((workspace?.slug as string | null) ?? (workspace?.name as string | null)),
+    slugPart((business?.slug as string | null) ?? (business?.name as string | null)),
+  ];
+
+  if (input.nav_node_id) {
+    const chain = await navNodeSlugChain(input.nav_node_id, input.business_id);
+    if (!("error" in chain)) {
+      parts.push(...chain.slugs.map((slug) => slugPart(slug)));
+    }
+  }
+
+  parts.push(slugPart(input.label));
+  return parts.filter(Boolean).join("-").slice(0, 110) || `dashboard-${randomSlug(6)}`;
+}
+
+async function uniqueDashboardSlug(
+  base: string,
+  existingId?: string,
+): Promise<string> {
+  const cleanBase = slugPart(base).slice(0, 110) || `dashboard-${randomSlug(6)}`;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const slug = attempt === 0 ? cleanBase : `${cleanBase}-${randomSlug(4)}`;
+    const { data, error } = await supabaseAio
+      .from("agent_dashboards")
+      .select("id")
+      .eq("slug", slug)
+      .maybeSingle();
+    if (error) return `${cleanBase}-${randomSlug(6)}`;
+    if (!data || data.id === existingId) return slug;
+  }
+  return `${cleanBase}-${randomSlug(8)}`;
+}
+
 async function publishDashboard(args: unknown): Promise<string> {
   const parsed = PublishDashboardSchema.safeParse(args);
   if (!parsed.success) {
@@ -492,6 +560,7 @@ async function publishDashboard(args: unknown): Promise<string> {
   const { business_id, label } = parsed.data;
   const html_content = aioDashboardShell(parsed.data.html_content);
   const navNodeId = parsed.data.nav_node_id ?? (CURRENT_NAV_NODE_ID || undefined);
+  const slugBase = await dashboardSlugBase({ business_id, nav_node_id: navNodeId, label });
 
   // Check if a dashboard with this label already exists for the business
   // so we can keep the same slug (stable URL on re-publish).
@@ -505,14 +574,17 @@ async function publishDashboard(args: unknown): Promise<string> {
 
   let slug: string;
   if (existing) {
-    slug = existing.slug as string;
+    const existingSlug = existing.slug as string;
+    slug = isLegacyRandomSlug(existingSlug)
+      ? await uniqueDashboardSlug(slugBase, existing.id as string)
+      : existingSlug;
     const { error } = await supabaseAio
       .from("agent_dashboards")
-      .update({ html_content, updated_at: new Date().toISOString() })
+      .update({ html_content, slug, updated_at: new Date().toISOString() })
       .eq("id", existing.id);
     if (error) return JSON.stringify({ error: "db_error", message: error.message });
   } else {
-    slug = randomSlug();
+    slug = await uniqueDashboardSlug(slugBase);
     const { error } = await supabaseAio.from("agent_dashboards").insert({
       workspace_id: WORKSPACE_ID,
       business_id,
@@ -1035,9 +1107,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: "publish_dashboard",
       description:
-        "Sla een HTML-dashboard op en pin het als tab in de BusinessTabs-nav van de business. " +
+        "Sla een AIO-styled HTML-dashboard op en pin het als tab in de BusinessTabs-nav van de business. " +
         "Geeft {url, tab_id, slug} terug. Zelfde label = update HTML in-place (stabiele URL). " +
         "Gebruik voor rijke visuele samenvattingen, statistieken, KPI-overzichten. " +
+        "Voor topic-dashboards MOET nav_node_id mee zodat de tab in de topic-shell verschijnt. " +
         AIO_DASHBOARD_STYLE_GUIDE,
       inputSchema: {
         type: "object",
@@ -1061,9 +1134,9 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           html_content: {
             type: "string",
             description:
-              "Volledige HTML-pagina (incl. <html>, <head>, <body>). " +
-              "Mag inline CSS en vanilla JS bevatten. Geen externe iframes. " +
-              "Gebruik AIO CSS variables en body[data-theme] voor light/dark compatibility.",
+              "HTML-fragment heeft voorkeur: <main class=\"aio-dashboard\">...</main> met optioneel scoped <style>. " +
+              "Een volledige HTML-pagina mag ook, maar de inhoud wordt alsnog in AIO-dashboard styling gewrapt. " +
+              "Geen externe iframes. Gebruik AIO CSS variables en body[data-theme] voor light/dark compatibility.",
           },
         },
         required: ["business_id", "label", "html_content"],
@@ -1073,7 +1146,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: "publish_topic_dashboard",
       description:
-        "Maak of update een HTML-dashboard voor een topic in een business, zonder UUIDs nodig te hebben. Voorbeeld: business='TrompTechDesigns', topic='outreach'. Het dashboard wordt opgeslagen, aan de topic-banner/tab gekoppeld en als publiek /d/<slug> dashboard beschikbaar gemaakt. " +
+        "Maak of update een AIO-styled HTML-dashboard voor een topic in een business, zonder UUIDs nodig te hebben. Voorbeeld: business='TrompTechDesigns', topic='outreach'. Het dashboard wordt opgeslagen, als tab in de bestaande topic-shell gekoppeld en daarnaast als publiek /d/<slug> dashboard beschikbaar gemaakt. " +
         AIO_DASHBOARD_STYLE_GUIDE,
       inputSchema: {
         type: "object",
@@ -1095,7 +1168,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           html_content: {
             type: "string",
             description:
-              "Volledige HTML-pagina (incl. <html>, <head>, <body>). Mag inline CSS en vanilla JS bevatten. Gebruik AIO CSS variables en body[data-theme] voor light/dark compatibility.",
+              "HTML-fragment heeft voorkeur: <main class=\"aio-dashboard\">...</main> met optioneel scoped <style>. Mag inline CSS en vanilla JS bevatten. Gebruik AIO CSS variables en body[data-theme] voor light/dark compatibility.",
           },
         },
         required: ["business", "topic", "label", "html_content"],

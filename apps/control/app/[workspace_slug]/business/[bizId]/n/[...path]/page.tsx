@@ -68,12 +68,18 @@ export default async function NavNodePage({ params, searchParams }: Props) {
 
   // Detect reserved sub-route at the end of the path.
   const lastSeg = path[path.length - 1] ?? "";
+  const customTabId =
+    path.length >= 3 && path[path.length - 2] === "tab" ? lastSeg : null;
   const subRoute: TopicSubroute | null = (
     TOPIC_SUBROUTES as readonly string[]
-  ).includes(lastSeg)
+  ).includes(lastSeg) && !customTabId
     ? (lastSeg as TopicSubroute)
     : null;
-  const navPath = subRoute ? path.slice(0, -1) : path;
+  const navPath = customTabId
+    ? path.slice(0, -2)
+    : subRoute
+      ? path.slice(0, -1)
+      : path;
 
   // Require at least one nav segment (sub-route alone → 404).
   if (navPath.length === 0) notFound();
@@ -201,6 +207,44 @@ export default async function NavNodePage({ params, searchParams }: Props) {
   }
 
   // ── Overview (default) ──────────────────────────────────────────────
+  if (customTabId) {
+    const supabase = await createSupabaseServerClient();
+    const { data: tab } = await supabase
+      .from("custom_tabs")
+      .select("label, url")
+      .eq("id", customTabId)
+      .eq("business_id", biz.id)
+      .eq("nav_node_id", current.id)
+      .maybeSingle();
+
+    if (!tab) notFound();
+
+    return (
+      <>
+        <TopicTabs
+          baseHref={topicBaseHref}
+          topicName={current.name}
+          navNodeId={current.id}
+          workspaceId={workspace.id}
+        />
+        <div className="content">
+          <iframe
+            src={tab.url}
+            title={tab.label}
+            style={{
+              width: "100%",
+              height: "calc(100vh - 174px)",
+              border: "1px solid var(--app-border-2)",
+              borderRadius: 10,
+              background: "var(--app-card)",
+            }}
+            allow="fullscreen"
+          />
+        </div>
+      </>
+    );
+  }
+
   const [children, savedDashboard] = await Promise.all([
     current ? listNavNodes(biz.id, current.id) : Promise.resolve([]),
     Promise.resolve(savedDashboardForTabs),
