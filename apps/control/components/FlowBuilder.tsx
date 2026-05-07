@@ -337,7 +337,7 @@ export function FlowBuilder({ workspaceSlug, workspaceId, businesses }: Props) {
               border: "none",
               background: generating || !description.trim()
                 ? "var(--app-border)"
-                : "var(--brand)",
+                : "var(--tt-green)",
               color: generating || !description.trim()
                 ? "var(--app-fg-3)"
                 : "#fff",
@@ -1215,8 +1215,8 @@ function ModeButton({
         padding: "7px 12px",
         border: "none",
         borderRight: "1px solid var(--app-border)",
-        background: active ? "var(--app-fg)" : "transparent",
-        color: active ? "var(--app-bg)" : "var(--app-fg-2)",
+        background: active ? "var(--tt-green)" : "transparent",
+        color: active ? "#fff" : "var(--app-fg-2)",
         fontSize: 12.5,
         fontWeight: 700,
         cursor: "pointer",
