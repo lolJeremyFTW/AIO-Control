@@ -105,6 +105,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
   const [commandIndex, setCommandIndex] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const restoredThreadRef = useRef(false);
   const autoLoadedThreadRef = useRef(false);
@@ -113,6 +114,47 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const id = window.setTimeout(() => inputRef.current?.focus(), 0);
+    return () => window.clearTimeout(id);
+  }, [open]);
+
+  useEffect(() => {
+    if (!mounted || agents.length === 0) return;
+    const handleShortcut = (event: KeyboardEvent) => {
+      if (
+        !event.ctrlKey ||
+        !event.altKey ||
+        event.metaKey ||
+        event.shiftKey ||
+        event.key.toLowerCase() !== "c"
+      ) {
+        return;
+      }
+
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      if (
+        tag === "input" ||
+        tag === "textarea" ||
+        tag === "select" ||
+        target?.isContentEditable
+      ) {
+        return;
+      }
+      if (window.getSelection()?.toString()) return;
+
+      event.preventDefault();
+      setOpen(true);
+      setShowSidebar(false);
+      window.setTimeout(() => inputRef.current?.focus(), 0);
+    };
+
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, [agents.length, mounted]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -363,12 +405,14 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
 
   const applyCommand = useCallback(
     (item: CommandItem) => {
+      setOpen(true);
       setInput((current) =>
         current.replace(/(?:^|\s)\/([^\s]*)$/, (match) => {
           const prefix = match.startsWith(" ") ? " " : "";
           return `${prefix}${item.command} `;
         }),
       );
+      window.setTimeout(() => inputRef.current?.focus(), 0);
     },
     [],
   );
@@ -1321,6 +1365,14 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
                   padding: 6,
                   zIndex: 2,
                 }}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
               >
                 {slashCommands.map((item, idx) => (
                   <button
@@ -1328,7 +1380,12 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
                     type="button"
                     onMouseDown={(e) => {
                       e.preventDefault();
-                      applyCommand(item);
+                      e.stopPropagation();
+                      window.setTimeout(() => applyCommand(item), 0);
+                    }}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
                     }}
                     style={{
                       width: "100%",
@@ -1400,6 +1457,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
               </div>
             )}
             <input
+              ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
