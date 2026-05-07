@@ -11,6 +11,7 @@ import {
   useState,
   useTransition,
   useCallback,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
 
@@ -172,6 +173,19 @@ function renderNodeIcon(
   // Legacy emoji or stray text — render with the right line-height so
   // it sits centered in the circular node.
   return <span style={{ fontSize: size }}>{value}</span>;
+}
+
+function isPlainLeftClick(e: ReactMouseEvent<HTMLElement>) {
+  return e.button === 0 && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
+}
+
+function handleNavLinkClick(
+  e: ReactMouseEvent<HTMLAnchorElement>,
+  navigate: () => void,
+) {
+  if (!isPlainLeftClick(e)) return;
+  e.preventDefault();
+  navigate();
 }
 
 export function WorkspaceShell({
@@ -347,6 +361,7 @@ export function WorkspaceShell({
 
     const appendVisible = (parentId: string | null, depth: number) => {
       for (const n of navContext.childrenByParent.get(parentId) ?? []) {
+        const path = `/n/${navContext.pathToNode(n).join("/")}`;
         topics.push({
           id: n.id,
           // Drop the emoji from the label — we render it as the node icon
@@ -354,7 +369,8 @@ export function WorkspaceShell({
           label: n.name,
           // Path appended to /[ws]/business/<bizSlug>: nav drill always goes
           // under /n/, with all currently-selected slugs preserved.
-          path: `/n/${navContext.pathToNode(n).join("/")}`,
+          path,
+          href: `/${workspace.slug}/business/${drilledBiz.biz.slug}${path}`,
           depth,
           variant: (n.variant as Topic["variant"]) ?? "dashed",
           // Prefer a registered SVG icon (icon name like "video"). Old
@@ -371,7 +387,7 @@ export function WorkspaceShell({
 
     appendVisible(null, 0);
     return topics;
-  }, [drilledBiz, effectiveTopicCounts, navContext]);
+  }, [drilledBiz, effectiveTopicCounts, navContext, workspace.slug]);
 
   const selectedTopicId = useMemo(() => {
     if (!drilledBiz) return null;
@@ -409,6 +425,7 @@ export function WorkspaceShell({
     id: "me",
     name: profile.displayName,
     sub: "Owner",
+    href: `/${workspace.slug}/profile`,
     letter: profile.letter,
     variant: (profile.variant ?? "orange") as RailItem["variant"],
     logoUrl: profile.avatarUrl ?? null,
@@ -458,6 +475,7 @@ export function WorkspaceShell({
       id: b.id,
       name: b.name,
       sub: b.sub ?? undefined,
+      href: `/${workspace.slug}/business/${b.slug}`,
       letter: b.letter,
       // Resolved via renderNodeIcon: SVG when icon is a known registry
       // name, legacy emoji span when it isn't, undefined when empty.
@@ -489,6 +507,14 @@ export function WorkspaceShell({
       }
     : null;
 
+  const railBackHref = drilledBiz
+    ? drilledBiz.navPath.length > 0
+      ? drilledBiz.navPath.length === 1
+        ? `/${workspace.slug}/business/${drilledBiz.biz.slug}`
+        : `/${workspace.slug}/business/${drilledBiz.biz.slug}/n/${drilledBiz.navPath.slice(0, -1).join("/")}`
+      : `/${workspace.slug}/dashboard`
+    : undefined;
+
   // Breadcrumb chain of nav nodes the user has drilled into
   // (Tromptech → Instagram → Reels → ...). Each item carries its own
   // click handler that navigates back to that level. The deepest item
@@ -497,10 +523,12 @@ export function WorkspaceShell({
     if (!drilledBiz || !navContext) return [];
     return navContext.chain.map((node, i) => {
       const navPathToHere = drilledBiz.navPath.slice(0, i + 1);
+      const href = `/${workspace.slug}/business/${drilledBiz.biz.slug}/n/${navPathToHere.join("/")}`;
       return {
         id: node.id,
         name: node.name,
         sub: node.sub ?? undefined,
+        href,
         letter: node.letter,
         icon: renderNodeIcon(node.icon, 16),
         variant: (node.variant as RailItem["variant"]) ?? "dashed",
@@ -509,9 +537,7 @@ export function WorkspaceShell({
         badge: effectiveTopicCounts[node.id] ?? undefined,
         onClick: () => {
           closeRail();
-          router.push(
-            `/${workspace.slug}/business/${drilledBiz.biz.slug}/n/${navPathToHere.join("/")}`,
-          );
+          router.push(href);
         },
       };
     });
@@ -879,6 +905,7 @@ export function WorkspaceShell({
               router.push(`/${workspace.slug}/dashboard`);
             }
           }}
+          backHref={railBackHref}
           onSelectTopic={(t) => {
             if (!drilledBiz) return;
             closeRail();
@@ -896,14 +923,17 @@ export function WorkspaceShell({
             closeRail();
             router.push(`/${workspace.slug}/settings`);
           }}
+          settingsHref={`/${workspace.slug}/settings`}
           onOpenWorkspaceAgents={() => {
             closeRail();
             router.push(`/${workspace.slug}/agents`);
           }}
+          workspaceAgentsHref={`/${workspace.slug}/agents`}
           onOpenWorkspaceFlows={() => {
             closeRail();
             router.push(`/${workspace.slug}/flows`);
           }}
+          workspaceFlowsHref={`/${workspace.slug}/flows`}
           onCreateBusiness={() => {
             closeRail();
             setNewBusinessOpen(true);
@@ -991,10 +1021,16 @@ export function WorkspaceShell({
               pageSub: drilledBiz?.biz.sub ?? undefined,
             }}
             searchPlaceholder={t("header.searchPlaceholder")}
+            crumbWorkspaceHref={`/${workspace.slug}/dashboard`}
             onCrumbWorkspaceClick={() => {
               closeRail();
               router.push(`/${workspace.slug}/dashboard`);
             }}
+            crumbPageHref={
+              drilledBiz
+                ? `/${workspace.slug}/business/${drilledBiz.biz.slug}`
+                : undefined
+            }
             onCrumbPageClick={
               drilledBiz
                 ? () => {
@@ -1062,55 +1098,83 @@ export function WorkspaceShell({
             }
             userMenu={
               <>
-                <button
-                  type="button"
+                <a
                   role="menuitem"
-                  onClick={() => router.push(`/${workspace.slug}/profile`)}
+                  href={`/${workspace.slug}/profile`}
+                  onClick={(e) =>
+                    handleNavLinkClick(e, () =>
+                      router.push(`/${workspace.slug}/profile`),
+                    )
+                  }
                 >
                   {t("nav.profile")}
-                </button>
-                <button
-                  type="button"
+                </a>
+                <a
                   role="menuitem"
-                  onClick={() => router.push(`/${workspace.slug}/settings`)}
+                  href={`/${workspace.slug}/settings`}
+                  onClick={(e) =>
+                    handleNavLinkClick(e, () =>
+                      router.push(`/${workspace.slug}/settings`),
+                    )
+                  }
                 >
                   {t("nav.settings")}
-                </button>
-                <button
-                  type="button"
+                </a>
+                <a
                   role="menuitem"
-                  onClick={() => router.push(`/${workspace.slug}/queue`)}
+                  href={`/${workspace.slug}/queue`}
+                  onClick={(e) =>
+                    handleNavLinkClick(e, () =>
+                      router.push(`/${workspace.slug}/queue`),
+                    )
+                  }
                 >
                   {t("nav.queue")}
-                </button>
-                <button
-                  type="button"
+                </a>
+                <a
                   role="menuitem"
-                  onClick={() => router.push(`/${workspace.slug}/runs`)}
+                  href={`/${workspace.slug}/runs`}
+                  onClick={(e) =>
+                    handleNavLinkClick(e, () =>
+                      router.push(`/${workspace.slug}/runs`),
+                    )
+                  }
                 >
                   {t("nav.runs")}
-                </button>
-                <button
-                  type="button"
+                </a>
+                <a
                   role="menuitem"
-                  onClick={() => router.push(`/${workspace.slug}/activity`)}
+                  href={`/${workspace.slug}/activity`}
+                  onClick={(e) =>
+                    handleNavLinkClick(e, () =>
+                      router.push(`/${workspace.slug}/activity`),
+                    )
+                  }
                 >
                   {t("nav.activity")}
-                </button>
-                <button
-                  type="button"
+                </a>
+                <a
                   role="menuitem"
-                  onClick={() => router.push(`/${workspace.slug}/cost`)}
+                  href={`/${workspace.slug}/cost`}
+                  onClick={(e) =>
+                    handleNavLinkClick(e, () =>
+                      router.push(`/${workspace.slug}/cost`),
+                    )
+                  }
                 >
                   {t("nav.cost")}
-                </button>
-                <button
-                  type="button"
+                </a>
+                <a
                   role="menuitem"
-                  onClick={() => router.push(`/${workspace.slug}/marketplace`)}
+                  href={`/${workspace.slug}/marketplace`}
+                  onClick={(e) =>
+                    handleNavLinkClick(e, () =>
+                      router.push(`/${workspace.slug}/marketplace`),
+                    )
+                  }
                 >
                   {t("nav.marketplace")}
-                </button>
+                </a>
                 <div className="sep" />
                 <form action={signOutAction}>
                   <button type="submit" role="menuitem">

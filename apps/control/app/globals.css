@@ -170,6 +170,8 @@ body[data-theme="light"] .rail-drill-stack {
   cursor: pointer;
   position: relative;
   min-height: 52px;
+  color: inherit;
+  text-decoration: none;
 }
 .nav-row:hover {
   background: rgba(255, 255, 255, 0.05);
@@ -648,6 +650,8 @@ button.crumb-cta,
   font: inherit;
   cursor: pointer;
   letter-spacing: inherit;
+  color: inherit;
+  text-decoration: none;
   transition:
     color 0.15s ease,
     transform 0.15s ease,

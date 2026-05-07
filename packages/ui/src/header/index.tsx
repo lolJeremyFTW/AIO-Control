@@ -5,7 +5,13 @@
 
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+} from "react";
 
 import {
   BellIcon,
@@ -27,9 +33,13 @@ export type Lang = "NL" | "EN" | "DE";
 
 type Props = {
   crumb: Crumb;
+  /** Native link target for browser actions such as middle-click. */
+  crumbWorkspaceHref?: string;
   /** Click-handler for the workspace name in the breadcrumb. When set
    *  the workspace half becomes a button; when omitted it stays a span. */
   onCrumbWorkspaceClick?: () => void;
+  /** Native link target for browser actions such as middle-click. */
+  crumbPageHref?: string;
   /** Click-handler for the page title (right side) in the breadcrumb.
    *  Used to jump back from a drilled business → all businesses. */
   onCrumbPageClick?: () => void;
@@ -68,9 +78,24 @@ type Props = {
   children?: ReactNode; // optional row 2 content
 };
 
+function isPlainLeftClick(e: ReactMouseEvent<HTMLElement>) {
+  return e.button === 0 && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
+}
+
+function handleAnchorClick(
+  e: ReactMouseEvent<HTMLAnchorElement>,
+  onClick?: () => void,
+) {
+  if (!onClick || !isPlainLeftClick(e)) return;
+  e.preventDefault();
+  onClick();
+}
+
 export function Header({
   crumb,
+  crumbWorkspaceHref,
   onCrumbWorkspaceClick,
+  crumbPageHref,
   onCrumbPageClick,
   lang = "NL",
   onLangChange,
@@ -133,7 +158,17 @@ export function Header({
           </button>
         )}
         <div className="crumb">
-          {onCrumbWorkspaceClick ? (
+          {crumbWorkspaceHref ? (
+            <a
+              className="biz biz-clickable"
+              href={crumbWorkspaceHref}
+              onClick={(e) => handleAnchorClick(e, onCrumbWorkspaceClick)}
+              title="Terug naar workspace dashboard"
+            >
+              <span className="swatch">{crumb.workspaceLetter}</span>{" "}
+              {crumb.workspaceName}
+            </a>
+          ) : onCrumbWorkspaceClick ? (
             <button
               type="button"
               className="biz biz-clickable"
@@ -153,7 +188,16 @@ export function Header({
             <ChevronRightIcon />
           </span>
           <span className="topic-with-status">
-            {onCrumbPageClick ? (
+            {crumbPageHref ? (
+              <a
+                className="topic topic-clickable"
+                href={crumbPageHref}
+                onClick={(e) => handleAnchorClick(e, onCrumbPageClick)}
+                title="Terug naar alle businesses"
+              >
+                {crumb.pageTitle}
+              </a>
+            ) : onCrumbPageClick ? (
               <button
                 type="button"
                 className="topic topic-clickable"

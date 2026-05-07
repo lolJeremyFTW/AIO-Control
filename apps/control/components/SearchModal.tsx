@@ -14,7 +14,13 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 
 import { translate } from "../lib/i18n/dict";
 import { useLocale } from "../lib/i18n/client";
@@ -40,6 +46,19 @@ type Template = {
    *  (and replace {bizId} in href). */
   requiresBusiness?: boolean;
 };
+
+function isPlainLeftClick(e: ReactMouseEvent<HTMLElement>) {
+  return e.button === 0 && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
+}
+
+function handleNavLinkClick(
+  e: ReactMouseEvent<HTMLAnchorElement>,
+  navigate: () => void,
+) {
+  if (!isPlainLeftClick(e)) return;
+  e.preventDefault();
+  navigate();
+}
 
 const TEMPLATES: Template[] = [
   // Workspace-wide.
@@ -291,9 +310,10 @@ export function SearchModal({ workspaceSlug }: Props) {
               }}
             >
               {visibleTemplates.map((tpl) => (
-                <button
+                <a
                   key={tpl.labelKey}
-                  onClick={() => go(tpl.fullHref)}
+                  href={tpl.fullHref}
+                  onClick={(e) => handleNavLinkClick(e, () => go(tpl.fullHref))}
                   style={{
                     display: "flex",
                     flexDirection: "column",
@@ -305,6 +325,7 @@ export function SearchModal({ workspaceSlug }: Props) {
                     cursor: "pointer",
                     textAlign: "left",
                     color: "var(--app-fg)",
+                    textDecoration: "none",
                     transition:
                       "border-color 0.12s ease, background 0.12s ease",
                   }}
@@ -322,7 +343,7 @@ export function SearchModal({ workspaceSlug }: Props) {
                   <span style={{ fontSize: 11, color: "var(--app-fg-3)" }}>
                     {t(tpl.hintKey)}
                   </span>
-                </button>
+                </a>
               ))}
             </div>
           </div>
@@ -335,9 +356,10 @@ export function SearchModal({ workspaceSlug }: Props) {
         )}
 
         {hits.map((h) => (
-          <button
+          <a
             key={`${h.kind}:${h.id}`}
-            onClick={() => goHit(h)}
+            href={h.href}
+            onClick={(e) => handleNavLinkClick(e, () => goHit(h))}
             style={{
               display: "flex",
               flexDirection: "column",
@@ -350,6 +372,7 @@ export function SearchModal({ workspaceSlug }: Props) {
               cursor: "pointer",
               textAlign: "left",
               color: "var(--app-fg)",
+              textDecoration: "none",
             }}
             onMouseEnter={(e) =>
               (e.currentTarget.style.background = "var(--app-card-2)")
@@ -384,7 +407,7 @@ export function SearchModal({ workspaceSlug }: Props) {
                 {h.sub}
               </span>
             )}
-          </button>
+          </a>
         ))}
       </div>
       <div

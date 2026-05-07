@@ -6,6 +6,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import type { MouseEvent as ReactMouseEvent } from "react";
 
 import type { WorkspaceListItem } from "../lib/auth/workspace";
 
@@ -13,6 +14,10 @@ type Props = {
   current: { slug: string; name: string };
   workspaces: WorkspaceListItem[];
 };
+
+function isPlainLeftClick(e: ReactMouseEvent<HTMLElement>) {
+  return e.button === 0 && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
+}
 
 export function WorkspaceSwitcher({ current, workspaces }: Props) {
   const router = useRouter();
@@ -65,9 +70,14 @@ export function WorkspaceSwitcher({ current, workspaces }: Props) {
         }}
       >
         {workspaces.map((w) => (
-          <button
+          <a
             key={w.id}
-            onClick={() => router.push(`/${w.slug}/dashboard`)}
+            href={`/${w.slug}/dashboard`}
+            onClick={(e) => {
+              if (!isPlainLeftClick(e)) return;
+              e.preventDefault();
+              router.push(`/${w.slug}/dashboard`);
+            }}
             style={{
               display: "flex",
               width: "100%",
@@ -89,6 +99,7 @@ export function WorkspaceSwitcher({ current, workspaces }: Props) {
               fontWeight: 600,
               cursor: "pointer",
               textAlign: "left",
+              textDecoration: "none",
             }}
           >
             <span>{w.name}</span>
@@ -103,7 +114,7 @@ export function WorkspaceSwitcher({ current, workspaces }: Props) {
             >
               {w.role}
             </span>
-          </button>
+          </a>
         ))}
       </div>
     </details>

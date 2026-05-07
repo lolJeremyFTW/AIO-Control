@@ -32,6 +32,8 @@ export type RailItem = {
   id: string;
   name: string;
   sub?: string;
+  /** Native link target for browser actions such as middle-click. */
+  href?: string;
   letter: string;
   variant: NodeVariant;
   badge?: number | "dot";
@@ -45,6 +47,8 @@ export type RailItem = {
 export type Topic = {
   id: string;
   label: string;
+  /** Native link target for browser actions such as middle-click. */
+  href?: string;
   /** Where clicking the topic should navigate, relative to the workspace. */
   path: string;
   /** Visual nesting level inside the business topic tree. */
@@ -86,13 +90,17 @@ type Props = {
   onSelectTopic?: (topic: Topic) => void;
   /** Tap handler for the back row in drill-in mode. */
   onBack?: () => void;
+  backHref?: string;
   onCreateBusiness?: () => void;
   onOpenSettings?: () => void;
+  settingsHref?: string;
   /** Optional handler for the "Workspace agents" rail-bottom row.
    *  When omitted the row hides — used in early phases. */
   onOpenWorkspaceAgents?: () => void;
+  workspaceAgentsHref?: string;
   /** Optional handler for the "AI Flow Builder" rail-bottom row. */
   onOpenWorkspaceFlows?: () => void;
+  workspaceFlowsHref?: string;
   page?: "dashboard" | "settings" | "profile" | "agents" | "flows";
   /** Right-click handlers — surface a custom context menu in the shell. */
   onContextMenuRail?: (e: ReactMouseEvent, origin: ContextMenuOrigin) => void;
@@ -138,15 +146,19 @@ export function Rail({
   onSelectBusiness,
   onSelectTopic,
   onBack,
+  backHref,
   onCreateBusiness,
   onOpenSettings,
+  settingsHref,
   page = "dashboard",
   onContextMenuRail,
   onReorderTopic,
   onReorderBusiness,
   onCreateTopic,
   onOpenWorkspaceAgents,
+  workspaceAgentsHref,
   onOpenWorkspaceFlows,
+  workspaceFlowsHref,
   emptyTopicsLabel,
   labels,
 }: Props) {
@@ -276,6 +288,7 @@ export function Rail({
             selected={drillChain.length === 0}
             backLabel={L.allBusinesses}
             onBack={onBack}
+            href={backHref}
             onContextMenu={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -464,6 +477,7 @@ export function Rail({
             expanded={expanded}
             selected={page === "agents"}
             onClick={onOpenWorkspaceAgents}
+            href={workspaceAgentsHref}
           />
         )}
         {onOpenWorkspaceFlows && (
@@ -486,6 +500,7 @@ export function Rail({
             expanded={expanded}
             selected={page === "flows"}
             onClick={onOpenWorkspaceFlows}
+            href={workspaceFlowsHref}
           />
         )}
         <ActionRow
@@ -494,10 +509,24 @@ export function Rail({
           expanded={expanded}
           selected={page === "settings"}
           onClick={onOpenSettings}
+          href={settingsHref}
         />
       </div>
     </div>
   );
+}
+
+function isPlainLeftClick(e: ReactMouseEvent<HTMLElement>) {
+  return e.button === 0 && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
+}
+
+function handleAnchorClick(
+  e: ReactMouseEvent<HTMLAnchorElement>,
+  onClick?: () => void,
+) {
+  if (!onClick || !isPlainLeftClick(e)) return;
+  e.preventDefault();
+  onClick();
 }
 
 type NavRowProps = {
@@ -524,6 +553,7 @@ function DrilledBackRow({
   selected,
   backLabel,
   onBack,
+  href,
   onContextMenu,
 }: {
   business: RailItem;
@@ -531,6 +561,7 @@ function DrilledBackRow({
   selected: boolean;
   backLabel: string;
   onBack?: () => void;
+  href?: string;
   onContextMenu?: (e: ReactMouseEvent) => void;
 }) {
   const [hover, setHover] = useState(false);
@@ -556,7 +587,7 @@ function DrilledBackRow({
       onMouseLeave={() => setHover(false)}
     >
       <NavRow
-        item={display}
+        item={{ ...display, href }}
         expanded={expanded}
         selected={selected}
         onClick={onBack}
@@ -577,13 +608,73 @@ function NavRow({
 }: NavRowProps) {
   const [dropActive, setDropActive] = useState(false);
   const mimeType = dataType ? `text/aio-${dataType}` : null;
+  const className =
+    "nav-row " +
+    (selected ? "selected " : "") +
+    (dropActive ? "drop-active" : "");
+  const content = (
+    <>
+      <div className="nav-row-circle">
+        <Node
+          variant={item.variant}
+          letter={item.icon || item.logoUrl ? undefined : item.letter}
+          icon={item.icon}
+          colorHex={item.colorHex}
+          logoUrl={item.logoUrl}
+          badge={item.badge ?? null}
+          selected={selected ?? false}
+          tooltip={!expanded ? item.name : null}
+        />
+      </div>
+      <div className="nav-row-text" aria-hidden={!expanded}>
+        <div className="nav-row-name">{item.name}</div>
+        {item.sub && <div className="nav-row-sub">{item.sub}</div>}
+      </div>
+      {typeof item.badge === "number" && item.badge > 0 && (
+        <div className="nav-row-meta" aria-hidden={!expanded}>
+          {item.badge}
+        </div>
+      )}
+    </>
+  );
+
+  if (item.href) {
+    return (
+      <a
+        className={className}
+        href={item.href}
+        onClick={(e) => handleAnchorClick(e, onClick)}
+        onContextMenu={onContextMenu}
+        draggable={!!onDropOn && !!mimeType}
+        onDragStart={(e) => {
+          if (!mimeType) return;
+          e.dataTransfer.setData(mimeType, item.id);
+          e.dataTransfer.effectAllowed = "move";
+        }}
+        onDragOver={(e) => {
+          if (!onDropOn || !mimeType) return;
+          if (!e.dataTransfer.types.includes(mimeType)) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+          setDropActive(true);
+        }}
+        onDragLeave={() => setDropActive(false)}
+        onDrop={(e) => {
+          if (!onDropOn || !mimeType) return;
+          e.preventDefault();
+          setDropActive(false);
+          const sourceId = e.dataTransfer.getData(mimeType);
+          if (sourceId && sourceId !== item.id) onDropOn(sourceId);
+        }}
+      >
+        {content}
+      </a>
+    );
+  }
+
   return (
     <div
-      className={
-        "nav-row " +
-        (selected ? "selected " : "") +
-        (dropActive ? "drop-active" : "")
-      }
+      className={className}
       onClick={onClick}
       onContextMenu={onContextMenu}
       role="button"
@@ -610,27 +701,7 @@ function NavRow({
         if (sourceId && sourceId !== item.id) onDropOn(sourceId);
       }}
     >
-      <div className="nav-row-circle">
-        <Node
-          variant={item.variant}
-          letter={item.icon || item.logoUrl ? undefined : item.letter}
-          icon={item.icon}
-          colorHex={item.colorHex}
-          logoUrl={item.logoUrl}
-          badge={item.badge ?? null}
-          selected={selected ?? false}
-          tooltip={!expanded ? item.name : null}
-        />
-      </div>
-      <div className="nav-row-text" aria-hidden={!expanded}>
-        <div className="nav-row-name">{item.name}</div>
-        {item.sub && <div className="nav-row-sub">{item.sub}</div>}
-      </div>
-      {typeof item.badge === "number" && item.badge > 0 && (
-        <div className="nav-row-meta" aria-hidden={!expanded}>
-          {item.badge}
-        </div>
-      )}
+      {content}
     </div>
   );
 }
@@ -662,14 +733,75 @@ function TopicRow({
   const letter = topic.label.slice(0, 1).toUpperCase();
   const variant = topic.variant ?? "dashed";
   const isSubtopic = (topic.depth ?? 0) > 0;
+  const className =
+    "nav-row " +
+    (isSubtopic ? "subtopic " : "") +
+    (selected ? "selected " : "") +
+    (dropActive ? "drop-active" : "");
+  const content = (
+    <>
+      <div className="nav-row-circle">
+        <Node
+          variant={variant}
+          letter={topic.icon || topic.logoUrl ? undefined : letter}
+          icon={topic.icon}
+          colorHex={topic.colorHex}
+          logoUrl={topic.logoUrl}
+          selected={selected}
+          size={isSubtopic ? 34 : 44}
+          tooltip={!expanded ? topic.label : null}
+          badge={topic.badge ?? null}
+        />
+      </div>
+      <div className="nav-row-text" aria-hidden={!expanded}>
+        <div className="nav-row-name">{topic.label}</div>
+      </div>
+      {typeof topic.badge === "number" && topic.badge > 0 && (
+        <div className="nav-row-meta" aria-hidden={!expanded}>
+          {topic.badge}
+        </div>
+      )}
+    </>
+  );
+
+  if (topic.href) {
+    return (
+      <a
+        className={className}
+        href={topic.href}
+        onClick={(e) => handleAnchorClick(e, onClick)}
+        onContextMenu={onContextMenu}
+        draggable={!!onDropOn}
+        onDragStart={(e) => {
+          if (!onDropOn) return;
+          e.dataTransfer.setData("text/aio-topic", topic.id);
+          e.dataTransfer.effectAllowed = "move";
+        }}
+        onDragOver={(e) => {
+          if (!onDropOn) return;
+          if (!e.dataTransfer.types.includes("text/aio-topic")) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+          setDropActive(true);
+        }}
+        onDragLeave={() => setDropActive(false)}
+        onDrop={(e) => {
+          if (!onDropOn) return;
+          e.preventDefault();
+          setDropActive(false);
+          const sourceId = e.dataTransfer.getData("text/aio-topic");
+          if (sourceId && sourceId !== topic.id) onDropOn(sourceId);
+        }}
+        title="Sleep om volgorde te wijzigen"
+      >
+        {content}
+      </a>
+    );
+  }
+
   return (
     <div
-      className={
-        "nav-row " +
-        (isSubtopic ? "subtopic " : "") +
-        (selected ? "selected " : "") +
-        (dropActive ? "drop-active" : "")
-      }
+      className={className}
       onClick={onClick}
       onContextMenu={onContextMenu}
       role="button"
@@ -697,27 +829,7 @@ function TopicRow({
       }}
       title="Sleep om volgorde te wijzigen"
     >
-      <div className="nav-row-circle">
-        <Node
-          variant={variant}
-          letter={topic.icon || topic.logoUrl ? undefined : letter}
-          icon={topic.icon}
-          colorHex={topic.colorHex}
-          logoUrl={topic.logoUrl}
-          selected={selected}
-          size={isSubtopic ? 34 : 44}
-          tooltip={!expanded ? topic.label : null}
-          badge={topic.badge ?? null}
-        />
-      </div>
-      <div className="nav-row-text" aria-hidden={!expanded}>
-        <div className="nav-row-name">{topic.label}</div>
-      </div>
-      {typeof topic.badge === "number" && topic.badge > 0 && (
-        <div className="nav-row-meta" aria-hidden={!expanded}>
-          {topic.badge}
-        </div>
-      )}
+      {content}
     </div>
   );
 }
@@ -765,6 +877,7 @@ type ActionRowProps = {
   expanded: boolean;
   selected?: boolean;
   onClick?: () => void;
+  href?: string;
 };
 
 function ActionRow({
@@ -773,14 +886,10 @@ function ActionRow({
   expanded,
   selected,
   onClick,
+  href,
 }: ActionRowProps) {
-  return (
-    <div
-      className={"nav-row " + (selected ? "selected" : "")}
-      onClick={onClick}
-      role="button"
-      tabIndex={0}
-    >
+  const content = (
+    <>
       <div className="nav-row-circle">
         <Node
           variant="dashed"
@@ -792,6 +901,29 @@ function ActionRow({
       <div className="nav-row-text">
         <div className="nav-row-name">{label}</div>
       </div>
+    </>
+  );
+
+  if (href) {
+    return (
+      <a
+        className={"nav-row " + (selected ? "selected" : "")}
+        href={href}
+        onClick={(e) => handleAnchorClick(e, onClick)}
+      >
+        {content}
+      </a>
+    );
+  }
+
+  return (
+    <div
+      className={"nav-row " + (selected ? "selected" : "")}
+      onClick={onClick}
+      role="button"
+      tabIndex={0}
+    >
+      {content}
     </div>
   );
 }

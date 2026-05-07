@@ -5,7 +5,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 
 import { BellIcon, ChevronRightIcon, getAppIcon } from "@aio/ui/icon";
 
@@ -34,6 +40,10 @@ type BusinessLookup = {
   /** Optional custom hex (overrides variant). */
   color_hex?: string | null;
 };
+
+function isPlainLeftClick(e: ReactMouseEvent<HTMLElement>) {
+  return e.button === 0 && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
+}
 
 const NODE_VARIANT_COLORS: Record<string, string> = {
   brand: "var(--tt-green)",
@@ -502,67 +512,76 @@ export function NotificationsBell({
                   </span>
                 </button>
                 {!collapsed &&
-                  arr.map((n) => (
-                    <button
-                      key={`${n.kind}:${n.id}`}
-                      onClick={() => {
-                        dismiss(n.kind, n.id);
-                        setOpen(false);
-                        router.push(routeForNotification(n));
-                      }}
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        width: "100%",
-                        padding: "8px 12px",
-                        background: "transparent",
-                        border: "none",
-                        borderRadius: 8,
-                        cursor: "pointer",
-                        textAlign: "left",
-                      }}
-                      onMouseEnter={(e) =>
-                        (e.currentTarget.style.background = "var(--app-card-2)")
-                      }
-                      onMouseLeave={(e) =>
-                        (e.currentTarget.style.background = "transparent")
-                      }
-                    >
-                      <div
+                  arr.map((n) => {
+                    const href = routeForNotification(n);
+                    return (
+                      <a
+                        key={`${n.kind}:${n.id}`}
+                        href={href}
+                        onClick={(e) => {
+                          if (!isPlainLeftClick(e)) return;
+                          e.preventDefault();
+                          dismiss(n.kind, n.id);
+                          setOpen(false);
+                          router.push(href);
+                        }}
                         style={{
                           display: "flex",
-                          alignItems: "center",
-                          gap: 8,
+                          flexDirection: "column",
+                          width: "100%",
+                          padding: "8px 12px",
+                          background: "transparent",
+                          border: "none",
+                          borderRadius: 8,
+                          cursor: "pointer",
+                          textAlign: "left",
+                          color: "var(--app-fg)",
+                          textDecoration: "none",
                         }}
+                        onMouseEnter={(e) =>
+                          (e.currentTarget.style.background =
+                            "var(--app-card-2)")
+                        }
+                        onMouseLeave={(e) =>
+                          (e.currentTarget.style.background = "transparent")
+                        }
                       >
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                          }}
+                        >
+                          <span
+                            style={{
+                              width: 8,
+                              height: 8,
+                              borderRadius: 999,
+                              background:
+                                n.state === "fail" || n.state === "failed"
+                                  ? "var(--rose)"
+                                  : "var(--amber)",
+                            }}
+                          />
+                          <span style={{ fontSize: 13, fontWeight: 600 }}>
+                            {n.title}
+                          </span>
+                        </div>
                         <span
                           style={{
-                            width: 8,
-                            height: 8,
-                            borderRadius: 999,
-                            background:
-                              n.state === "fail" || n.state === "failed"
-                                ? "var(--rose)"
-                                : "var(--amber)",
+                            fontSize: 11,
+                            color: "var(--app-fg-3)",
+                            marginTop: 2,
+                            marginLeft: 16,
                           }}
-                        />
-                        <span style={{ fontSize: 13, fontWeight: 600 }}>
-                          {n.title}
+                        >
+                          {n.kind === "run" ? "Run failed" : "Wachtrij"} -{" "}
+                          {new Date(n.created_at).toLocaleString("nl-NL")}
                         </span>
-                      </div>
-                      <span
-                        style={{
-                          fontSize: 11,
-                          color: "var(--app-fg-3)",
-                          marginTop: 2,
-                          marginLeft: 16,
-                        }}
-                      >
-                        {n.kind === "run" ? "Run failed" : "Wachtrij"} -{" "}
-                        {new Date(n.created_at).toLocaleString("nl-NL")}
-                      </span>
-                    </button>
-                  ))}
+                      </a>
+                    );
+                  })}
               </div>
             );
           })}
