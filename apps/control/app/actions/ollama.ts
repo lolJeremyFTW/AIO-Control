@@ -15,10 +15,14 @@
 import { revalidatePath } from "next/cache";
 
 import { createSupabaseServerClient } from "../../lib/supabase/server";
+import {
+  recordProviderConnectionLog,
+  type ProviderConnectionLog,
+} from "../../lib/provider-connection-logs";
 
 type Result<T> =
-  | { ok: true; data: T }
-  | { ok: false; error: string };
+  | { ok: true; data: T; log?: ProviderConnectionLog | null }
+  | { ok: false; error: string; log?: ProviderConnectionLog | null };
 
 export type OllamaModel = {
   name: string;
@@ -59,7 +63,7 @@ export async function saveOllamaEndpoint(input: {
   workspace_slug: string;
   host: string | null;
   port: number | null;
-}): Promise<Result<null>> {
+}): Promise<Result<{ log: ProviderConnectionLog | null }>> {
   const auth = await requireWorkspaceMember(input.workspace_id);
   if (!auth.ok) return auth;
 
@@ -71,12 +75,42 @@ export async function saveOllamaEndpoint(input: {
       ollama_port: input.port ?? null,
     })
     .eq("id", input.workspace_id);
-  if (error) return { ok: false, error: error.message };
+  if (error) {
+    const log = await recordProviderConnectionLog({
+      workspaceId: input.workspace_id,
+      actorId: auth.data.userId,
+      provider: "ollama",
+      eventType: "save",
+      status: "error",
+      message: error.message,
+      metadata: {
+        host_set: Boolean(input.host?.trim()),
+        port: input.port ?? 11434,
+      },
+    });
+    return { ok: false, error: error.message, log };
+  }
+
+  const log = await recordProviderConnectionLog({
+    workspaceId: input.workspace_id,
+    actorId: auth.data.userId,
+    provider: "ollama",
+    eventType: "save",
+    status: "success",
+    message: input.host?.trim()
+      ? "Ollama endpoint opgeslagen."
+      : "Ollama endpoint override gewist.",
+    metadata: {
+      host_set: Boolean(input.host?.trim()),
+      port: input.port ?? 11434,
+    },
+  });
 
   revalidatePath(`/${input.workspace_slug}/settings`);
   revalidatePath(`/${input.workspace_slug}/settings/ollama`);
+  revalidatePath(`/${input.workspace_slug}/settings/providers`);
   revalidatePath(`/${input.workspace_slug}/settings/talk`);
-  return { ok: true, data: null };
+  return { ok: true, data: { log }, log };
 }
 
 /**
@@ -96,6 +130,7 @@ export async function scanOllamaModels(input: {
   if (!auth.ok) return auth;
 
   const supabase = await createSupabaseServerClient();
+  const startedAt = Date.now();
 
   let host = input.host ?? null;
   let port = input.port ?? null;
@@ -131,18 +166,42 @@ export async function scanOllamaModels(input: {
     } catch (err) {
       clearTimeout(timer);
       if (timedOut) {
+        const message = `Geen verbinding met ${endpoint}: timeout na 5s. Klopt host + poort? Draait Ollama?`;
+        const log = await recordProviderConnectionLog({
+          workspaceId: input.workspace_id,
+          actorId: auth.data.userId,
+          provider: "ollama",
+          eventType: "scan",
+          status: "error",
+          latencyMs: Date.now() - startedAt,
+          message,
+          metadata: { endpoint },
+        });
         return {
           ok: false,
-          error: `Geen verbinding met ${endpoint}: timeout na 5s. Klopt host + poort? Draait Ollama?`,
+          error: message,
+          log,
         };
       }
       throw err;
     }
     clearTimeout(timer);
     if (!r.ok) {
+      const message = `Ollama antwoordde met ${r.status} ${r.statusText}.`;
+      const log = await recordProviderConnectionLog({
+        workspaceId: input.workspace_id,
+        actorId: auth.data.userId,
+        provider: "ollama",
+        eventType: "scan",
+        status: "error",
+        latencyMs: Date.now() - startedAt,
+        message,
+        metadata: { endpoint, status_code: r.status },
+      });
       return {
         ok: false,
-        error: `Ollama antwoordde met ${r.status} ${r.statusText}.`,
+        error: message,
+        log,
       };
     }
     const json = (await r.json()) as {
@@ -161,11 +220,23 @@ export async function scanOllamaModels(input: {
       parameter_size: m.details?.parameter_size,
     }));
   } catch (err) {
+    const message = `Geen verbinding met ${endpoint}: ${
+      err instanceof Error ? err.message : String(err)
+    }`;
+    const log = await recordProviderConnectionLog({
+      workspaceId: input.workspace_id,
+      actorId: auth.data.userId,
+      provider: "ollama",
+      eventType: "scan",
+      status: "error",
+      latencyMs: Date.now() - startedAt,
+      message,
+      metadata: { endpoint },
+    });
     return {
       ok: false,
-      error: `Geen verbinding met ${endpoint}: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
+      error: message,
+      log,
     };
   }
 
@@ -180,10 +251,34 @@ export async function scanOllamaModels(input: {
       ollama_last_scan_at: new Date().toISOString(),
     })
     .eq("id", input.workspace_id);
-  if (updErr) return { ok: false, error: updErr.message };
+  if (updErr) {
+    const log = await recordProviderConnectionLog({
+      workspaceId: input.workspace_id,
+      actorId: auth.data.userId,
+      provider: "ollama",
+      eventType: "scan",
+      status: "error",
+      latencyMs: Date.now() - startedAt,
+      message: updErr.message,
+      metadata: { endpoint, model_count: models.length },
+    });
+    return { ok: false, error: updErr.message, log };
+  }
+
+  const log = await recordProviderConnectionLog({
+    workspaceId: input.workspace_id,
+    actorId: auth.data.userId,
+    provider: "ollama",
+    eventType: "scan",
+    status: "success",
+    latencyMs: Date.now() - startedAt,
+    message: `${models.length} Ollama modellen gevonden.`,
+    metadata: { endpoint, model_count: models.length },
+  });
 
   revalidatePath(`/${input.workspace_slug}/settings`);
   revalidatePath(`/${input.workspace_slug}/settings/ollama`);
+  revalidatePath(`/${input.workspace_slug}/settings/providers`);
   revalidatePath(`/${input.workspace_slug}/settings/talk`);
-  return { ok: true, data: { models, endpoint } };
+  return { ok: true, data: { models, endpoint }, log };
 }

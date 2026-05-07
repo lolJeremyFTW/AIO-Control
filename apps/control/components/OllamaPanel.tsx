@@ -19,6 +19,8 @@ import {
 } from "../app/actions/ollama";
 import { translate } from "../lib/i18n/dict";
 import { useLocale } from "../lib/i18n/client";
+import { ProviderConnectionLogs } from "./ProviderConnectionLogs";
+import type { ProviderConnectionLog } from "../lib/provider-connection-logs";
 
 export type OllamaInitial = {
   host: string | null;
@@ -31,9 +33,15 @@ type Props = {
   workspaceId: string;
   workspaceSlug: string;
   initial: OllamaInitial;
+  initialLogs?: ProviderConnectionLog[];
 };
 
-export function OllamaPanel({ workspaceId, workspaceSlug, initial }: Props) {
+export function OllamaPanel({
+  workspaceId,
+  workspaceSlug,
+  initial,
+  initialLogs = [],
+}: Props) {
   const locale = useLocale();
   const t = (key: string, vars?: Record<string, string | number>) =>
     translate(locale, key, vars);
@@ -45,11 +53,19 @@ export function OllamaPanel({ workspaceId, workspaceSlug, initial }: Props) {
   const [lastScanAt, setLastScanAt] = useState(initial.lastScanAt);
   const [resolvedEndpoint, setResolvedEndpoint] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [logs, setLogs] = useState(initialLogs);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [scanPending, startScan] = useTransition();
   const [savePending, startSave] = useTransition();
 
   const portNum = port.trim() ? Number(port) : null;
+  const prependLog = (log?: ProviderConnectionLog | null) => {
+    if (!log) return;
+    setLogs((current) => [
+      log,
+      ...current.filter((item) => item.id !== log.id),
+    ].slice(0, 12));
+  };
 
   const onScan = () => {
     setError(null);
@@ -61,10 +77,12 @@ export function OllamaPanel({ workspaceId, workspaceSlug, initial }: Props) {
         port: portNum,
       });
       if (res.ok) {
+        prependLog(res.log);
         setModels(res.data.models);
         setResolvedEndpoint(res.data.endpoint);
         setLastScanAt(new Date().toISOString());
       } else {
+        prependLog(res.log);
         setError(res.error);
       }
     });
@@ -80,9 +98,11 @@ export function OllamaPanel({ workspaceId, workspaceSlug, initial }: Props) {
         port: portNum,
       });
       if (res.ok) {
+        prependLog(res.log);
         setSavedAt(Date.now());
         setTimeout(() => setSavedAt(null), 2000);
       } else {
+        prependLog(res.log);
         setError(res.error);
       }
     });
@@ -276,6 +296,12 @@ export function OllamaPanel({ workspaceId, workspaceSlug, initial }: Props) {
           {t("ollama.empty")}
         </p>
       )}
+
+      <ProviderConnectionLogs
+        providerLabel="Ollama"
+        logs={logs}
+        emptyText="Nog geen Ollama scans of endpoint-wijzigingen."
+      />
     </div>
   );
 }

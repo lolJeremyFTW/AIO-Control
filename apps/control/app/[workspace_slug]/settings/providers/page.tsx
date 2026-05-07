@@ -13,8 +13,10 @@ import {
 import { createSupabaseServerClient } from "../../../../lib/supabase/server";
 import { getDict } from "../../../../lib/i18n/server";
 import { listApiKeys } from "../../../actions/api-keys";
+import type { OllamaModel } from "../../../actions/ollama";
 import { ProvidersOnboardingPanel } from "../../../../components/ProvidersOnboardingPanel";
 import { SettingsSectionCard } from "../../../../components/SettingsSectionCard";
+import { listProviderConnectionLogs } from "../../../../lib/provider-connection-logs";
 
 type Props = { params: Promise<{ workspace_slug: string }> };
 
@@ -27,7 +29,7 @@ export default async function ProvidersSettingsPage({ params }: Props) {
   if (!workspace) notFound();
 
   const supabase = await createSupabaseServerClient();
-  const [{ data: ws }, apiKeys] = await Promise.all([
+  const [{ data: ws }, apiKeys, ollamaLogs] = await Promise.all([
     supabase
       .from("workspaces")
       .select(
@@ -36,6 +38,7 @@ export default async function ProvidersSettingsPage({ params }: Props) {
       .eq("id", workspace.id)
       .maybeSingle(),
     listApiKeys(workspace.id),
+    listProviderConnectionLogs(workspace.id, "ollama", 12),
   ]);
 
   // Workspace-scoped provider keys → drives the green ✓ on each
@@ -52,6 +55,9 @@ export default async function ProvidersSettingsPage({ params }: Props) {
     )
     .map((k) => k.provider);
 
+  const ollamaModels = Array.isArray(ws?.ollama_models_cached)
+    ? (ws?.ollama_models_cached as OllamaModel[])
+    : [];
   const { t } = await getDict();
 
   return (
@@ -66,12 +72,12 @@ export default async function ProvidersSettingsPage({ params }: Props) {
           workspaceId={workspace.id}
           workspaceSlug={workspace.slug}
           cloudKeysSet={cloudKeysSet}
+          ollamaLogs={ollamaLogs}
           initial={{
             ollama_host: (ws?.ollama_host as string | null) ?? null,
             ollama_port: (ws?.ollama_port as number | null) ?? null,
-            ollama_models_count: Array.isArray(ws?.ollama_models_cached)
-              ? (ws?.ollama_models_cached as unknown[]).length
-              : 0,
+            ollama_models: ollamaModels,
+            ollama_models_count: ollamaModels.length,
             ollama_last_scan_at:
               (ws?.ollama_last_scan_at as string | null) ?? null,
             hermes_endpoint:

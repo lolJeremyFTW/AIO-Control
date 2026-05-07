@@ -3,6 +3,8 @@
 import { useState, useTransition } from "react";
 
 import { saveMcpToolKey, testMcpToolKey } from "../app/actions/mcp-tools";
+import { ProviderConnectionLogs } from "./ProviderConnectionLogs";
+import type { ProviderConnectionLog } from "../lib/provider-connection-logs";
 
 type ToolConfig = {
   id: string;
@@ -20,7 +22,7 @@ const MCP_TOOLS: ToolConfig[] = [
     desc: "Hoge-kwaliteit web + nieuws zoekopdrachten via de Brave Search API. Gratis tier: 2.000 queries/maand.",
     docsUrl: "https://api.search.brave.com/app/keys",
     keyLabel: "Brave Search API Key",
-    keyPlaceholder: "BSA…",
+    keyPlaceholder: "BSA...",
   },
   {
     id: "firecrawl",
@@ -28,7 +30,7 @@ const MCP_TOOLS: ToolConfig[] = [
     desc: "Scrape & crawl elke website naar clean markdown. Ondersteunt JS-rendering, volledige site-crawl en deep research mode.",
     docsUrl: "https://www.firecrawl.dev/app/api-keys",
     keyLabel: "Firecrawl API Key",
-    keyPlaceholder: "fc-…",
+    keyPlaceholder: "fc-...",
   },
 ];
 
@@ -36,9 +38,32 @@ type Props = {
   workspaceId: string;
   workspaceSlug: string;
   keysSet: string[];
+  firecrawlLogs?: ProviderConnectionLog[];
 };
 
-export function McpToolsSetupPanel({ workspaceId, workspaceSlug, keysSet }: Props) {
+export function McpToolsSetupPanel({
+  workspaceId,
+  workspaceSlug,
+  keysSet,
+  firecrawlLogs = [],
+}: Props) {
+  const [logsByTool, setLogsByTool] = useState<
+    Record<string, ProviderConnectionLog[]>
+  >({
+    firecrawl: firecrawlLogs,
+  });
+
+  const prependLog = (tool: string, log?: ProviderConnectionLog | null) => {
+    if (!log) return;
+    setLogsByTool((current) => ({
+      ...current,
+      [tool]: [
+        log,
+        ...(current[tool] ?? []).filter((item) => item.id !== log.id),
+      ].slice(0, 12),
+    }));
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {MCP_TOOLS.map((tool) => (
@@ -48,6 +73,8 @@ export function McpToolsSetupPanel({ workspaceId, workspaceSlug, keysSet }: Prop
           workspaceId={workspaceId}
           workspaceSlug={workspaceSlug}
           initialConfigured={keysSet.includes(tool.id)}
+          logs={logsByTool[tool.id] ?? []}
+          onLog={(log) => prependLog(tool.id, log)}
         />
       ))}
     </div>
@@ -59,11 +86,15 @@ function McpToolCard({
   workspaceId,
   workspaceSlug,
   initialConfigured,
+  logs,
+  onLog,
 }: {
   tool: ToolConfig;
   workspaceId: string;
   workspaceSlug: string;
   initialConfigured: boolean;
+  logs: ProviderConnectionLog[];
+  onLog: (log?: ProviderConnectionLog | null) => void;
 }) {
   const [configured, setConfigured] = useState(initialConfigured);
   const [editing, setEditing] = useState(!initialConfigured);
@@ -79,29 +110,35 @@ function McpToolCard({
     setTestState("testing");
     setTestDetail("");
     startTransition(async () => {
-      // Test first
-      const testRes = await testMcpToolKey({ tool: tool.id, value });
+      const testRes = await testMcpToolKey({
+        workspace_slug: workspaceSlug,
+        workspace_id: workspaceId,
+        tool: tool.id,
+        value,
+      });
+      onLog(testRes.log);
       if (!testRes.ok) {
         setTestState("error");
         setTestDetail(testRes.error);
         return;
       }
-      // Save if test passed
+
       const saveRes = await saveMcpToolKey({
         workspace_slug: workspaceSlug,
         workspace_id: workspaceId,
         tool: tool.id,
         value,
       });
+      onLog(saveRes.log);
       if (!saveRes.ok) {
         setTestState("error");
         setTestDetail(saveRes.error);
         return;
       }
+
       setTestState("ok");
       setTestDetail(
-        testRes.data.detail ??
-          `Verbonden in ${testRes.data.latencyMs}ms`,
+        testRes.data.detail ?? `Verbonden in ${testRes.data.latencyMs}ms`,
       );
       setConfigured(true);
       setEditing(false);
@@ -120,8 +157,14 @@ function McpToolCard({
         gap: 10,
       }}
     >
-      {/* Header row */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          gap: 12,
+        }}
+      >
         <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontWeight: 700, fontSize: 14 }}>{tool.label}</span>
@@ -139,27 +182,49 @@ function McpToolCard({
                   textTransform: "uppercase",
                 }}
               >
-                ✓ Actief
+                Actief
               </span>
             )}
           </div>
-          <span style={{ fontSize: 12, color: "var(--app-fg-3)", lineHeight: 1.5 }}>
+          <span
+            style={{
+              fontSize: 12,
+              color: "var(--app-fg-3)",
+              lineHeight: 1.5,
+            }}
+          >
             {tool.desc}
           </span>
         </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0, marginLeft: 12 }}>
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            alignItems: "center",
+            flexShrink: 0,
+            marginLeft: 12,
+          }}
+        >
           <a
             href={tool.docsUrl}
             target="_blank"
             rel="noopener noreferrer"
-            style={{ fontSize: 11.5, color: "var(--tt-green)", fontWeight: 600 }}
+            style={{
+              fontSize: 11.5,
+              color: "var(--tt-green)",
+              fontWeight: 600,
+            }}
           >
-            API key ophalen →
+            API key ophalen
           </a>
           {configured && !editing && (
             <button
               type="button"
-              onClick={() => { setEditing(true); setTestState("idle"); setTestDetail(""); }}
+              onClick={() => {
+                setEditing(true);
+                setTestState("idle");
+                setTestDetail("");
+              }}
               style={{
                 fontSize: 11.5,
                 color: "var(--app-fg-2)",
@@ -175,15 +240,20 @@ function McpToolCard({
         </div>
       </div>
 
-      {/* Input + buttons when editing */}
       {editing && (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <input
               type="password"
               value={value}
-              onChange={(e) => { setValue(e.target.value); setTestState("idle"); setTestDetail(""); }}
-              onKeyDown={(e) => { if (e.key === "Enter") handleSaveAndTest(); }}
+              onChange={(e) => {
+                setValue(e.target.value);
+                setTestState("idle");
+                setTestDetail("");
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSaveAndTest();
+              }}
               placeholder={tool.keyPlaceholder}
               autoComplete="off"
               style={{
@@ -214,12 +284,17 @@ function McpToolCard({
                 whiteSpace: "nowrap",
               }}
             >
-              {testState === "testing" ? "Testen…" : "Opslaan & testen"}
+              {testState === "testing" ? "Testen..." : "Opslaan & testen"}
             </button>
             {configured && (
               <button
                 type="button"
-                onClick={() => { setEditing(false); setTestState("idle"); setTestDetail(""); setValue(""); }}
+                onClick={() => {
+                  setEditing(false);
+                  setTestState("idle");
+                  setTestDetail("");
+                  setValue("");
+                }}
                 style={{
                   padding: "7px 10px",
                   fontSize: 12,
@@ -234,18 +309,25 @@ function McpToolCard({
             )}
           </div>
 
-          {/* Test result feedback */}
           {testState === "ok" && (
             <p style={{ margin: 0, fontSize: 12, color: "var(--tt-green)" }}>
-              ✓ {testDetail}
+              {testDetail}
             </p>
           )}
           {testState === "error" && (
             <p style={{ margin: 0, fontSize: 12, color: "var(--rose)" }}>
-              ✗ {testDetail}
+              {testDetail}
             </p>
           )}
         </div>
+      )}
+
+      {tool.id === "firecrawl" && (
+        <ProviderConnectionLogs
+          providerLabel="Firecrawl"
+          logs={logs}
+          emptyText="Nog geen Firecrawl tests of key-wijzigingen."
+        />
       )}
     </div>
   );

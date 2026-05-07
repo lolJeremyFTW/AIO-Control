@@ -6,11 +6,9 @@
 
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
 
-import { OpenIcon } from "@aio/ui/icon";
-
+import { OllamaPanel, type OllamaInitial } from "./OllamaPanel";
 import {
   saveHermesEndpoint,
   saveOpenClawEndpoint,
@@ -30,6 +28,7 @@ import {
   runtimeInstallCommand,
   type RuntimeAgentProvider,
 } from "../lib/providers/runtime";
+import type { ProviderConnectionLog } from "../lib/provider-connection-logs";
 
 type Tr = (
   key: string,
@@ -39,6 +38,7 @@ type Tr = (
 type Initial = {
   ollama_host: string | null;
   ollama_port: number | null;
+  ollama_models: OllamaInitial["models"];
   ollama_models_count: number;
   ollama_last_scan_at: string | null;
   hermes_endpoint: string | null;
@@ -57,6 +57,7 @@ type Props = {
   initial: Initial;
   /** Provider names that already have a workspace-scoped key set. */
   cloudKeysSet?: string[];
+  ollamaLogs?: ProviderConnectionLog[];
 };
 
 export function ProvidersOnboardingPanel({
@@ -64,6 +65,7 @@ export function ProvidersOnboardingPanel({
   workspaceSlug,
   initial,
   cloudKeysSet = [],
+  ollamaLogs = [],
 }: Props) {
   const locale: Locale = useLocale();
   const t: Tr = (key, vars) => translate(locale, key, vars);
@@ -101,11 +103,14 @@ export function ProvidersOnboardingPanel({
 
       <OllamaCard
         t={t}
+        workspaceId={workspaceId}
         workspaceSlug={workspaceSlug}
         host={initial.ollama_host}
         port={initial.ollama_port}
+        models={initial.ollama_models}
         modelsCount={initial.ollama_models_count}
         lastScanAt={initial.ollama_last_scan_at}
+        logs={ollamaLogs}
       />
       <HermesCard
         t={t}
@@ -1103,18 +1108,24 @@ function ConfiguredProviderCard({
 
 function OllamaCard({
   t,
+  workspaceId,
   workspaceSlug,
   host,
   port,
+  models,
   modelsCount,
   lastScanAt,
+  logs,
 }: {
   t: Tr;
+  workspaceId: string;
   workspaceSlug: string;
   host: string | null;
   port: number | null;
+  models: OllamaInitial["models"];
   modelsCount: number;
   lastScanAt: string | null;
+  logs: ProviderConnectionLog[];
 }) {
   const configured = !!host;
   return (
@@ -1143,21 +1154,12 @@ function OllamaCard({
         t("providers.ollama.step4"),
       ]}
     >
-      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <Link
-          href={`/${workspaceSlug}/settings/ollama`}
-          style={ctaStyle("primary")}
-        >
-          <OpenIcon /> {t("providers.ollama.gotoSettings")}
-        </Link>
-        {host && (
-          <span style={{ fontSize: 12, color: "var(--app-fg-3)" }}>
-            <code>
-              http://{host}:{port ?? 11434}
-            </code>
-          </span>
-        )}
-      </div>
+      <OllamaPanel
+        workspaceId={workspaceId}
+        workspaceSlug={workspaceSlug}
+        initial={{ host, port, models, lastScanAt }}
+        initialLogs={logs}
+      />
     </ProviderCard>
   );
 }

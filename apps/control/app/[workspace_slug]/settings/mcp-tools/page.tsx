@@ -8,6 +8,7 @@ import { listApiKeys } from "../../../actions/api-keys";
 import { getDict } from "../../../../lib/i18n/server";
 import { McpToolsSetupPanel } from "../../../../components/McpToolsSetupPanel";
 import { SettingsSectionCard } from "../../../../components/SettingsSectionCard";
+import { listProviderConnectionLogs } from "../../../../lib/provider-connection-logs";
 
 type Props = { params: Promise<{ workspace_slug: string }> };
 
@@ -19,7 +20,10 @@ export default async function McpToolsSettingsPage({ params }: Props) {
   const workspace = await getWorkspaceBySlug(workspace_slug);
   if (!workspace) notFound();
 
-  const apiKeys = await listApiKeys(workspace.id);
+  const [apiKeys, firecrawlLogs] = await Promise.all([
+    listApiKeys(workspace.id),
+    listProviderConnectionLogs(workspace.id, "firecrawl", 12),
+  ]);
 
   // Which MCP tool keys are already set at workspace scope?
   const keysSet = apiKeys
@@ -45,6 +49,7 @@ export default async function McpToolsSettingsPage({ params }: Props) {
           workspaceId={workspace.id}
           workspaceSlug={workspace.slug}
           keysSet={keysSet}
+          firecrawlLogs={firecrawlLogs}
         />
       </SettingsSectionCard>
     </>
