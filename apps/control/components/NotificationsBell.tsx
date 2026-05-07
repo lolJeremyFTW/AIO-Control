@@ -33,6 +33,28 @@ type BusinessLookup = {
   color_hex?: string | null;
 };
 
+const NODE_VARIANT_COLORS: Record<string, string> = {
+  brand: "var(--tt-green)",
+  orange: "var(--orange)",
+  indigo: "#5b6cff",
+  blue: "#2f8fce",
+  violet: "#8a4dd6",
+  rose: "var(--rose)",
+  amber: "var(--amber)",
+  teal: "#14b8a6",
+  lime: "#84cc16",
+  magenta: "#d946ef",
+  sky: "#38bdf8",
+  coral: "#fb7185",
+  slate: "#475569",
+  gold: "#ca8a04",
+};
+
+function businessColor(biz: BusinessLookup | null) {
+  if (!biz) return "var(--app-fg-3)";
+  return biz.color_hex ?? NODE_VARIANT_COLORS[biz.variant] ?? "var(--tt-green)";
+}
+
 type Props = {
   workspaceSlug: string;
   workspaceId: string;
@@ -410,11 +432,7 @@ export function NotificationsBell({
                       width: 14,
                       height: 14,
                       borderRadius: "50%",
-                      background:
-                        biz?.color_hex ??
-                        (biz
-                          ? `var(--${biz.variant}, var(--tt-green))`
-                          : "var(--app-fg-3)"),
+                      background: businessColor(biz),
                       color: "#fff",
                       display: "inline-flex",
                       alignItems: "center",
