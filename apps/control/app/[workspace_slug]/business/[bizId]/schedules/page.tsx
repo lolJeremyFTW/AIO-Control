@@ -108,27 +108,29 @@ export default async function BusinessSchedulesPage({ params }: Props) {
         hideCreateForm={agents.length > 0}
       />
 
-      <h2
+      <div
         style={{
-          fontFamily: "var(--hand)",
-          fontSize: 22,
-          fontWeight: 700,
+          display: "flex",
+          alignItems: "baseline",
+          justifyContent: "space-between",
+          gap: 12,
           margin: "28px 0 10px",
         }}
       >
-        Recente runs
-      </h2>
-      <RunsTimeline
-        runs={runs}
-        agents={agents}
-        businessId={biz.id}
-        workspaceId={biz.workspace_id}
-      />
-      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
-        <Link
-          href={`/${workspace.slug}/business/${biz.id}/runs`}
+        <h2
           style={{
-            padding: "9px 15px",
+            fontFamily: "var(--hand)",
+            fontSize: 22,
+            fontWeight: 700,
+            margin: 0,
+          }}
+        >
+          Recente runs
+        </h2>
+        <Link
+          href={`/${workspace.slug}/business/${biz.slug}/runs`}
+          style={{
+            padding: "8px 14px",
             border: "1.5px solid var(--app-border)",
             background: "var(--app-card-2)",
             color: "var(--app-fg)",
@@ -138,9 +140,15 @@ export default async function BusinessSchedulesPage({ params }: Props) {
             textDecoration: "none",
           }}
         >
-          alle runs
+          Alle runs
         </Link>
       </div>
+      <RunsTimeline
+        runs={runs}
+        agents={agents}
+        businessId={biz.id}
+        workspaceId={biz.workspace_id}
+      />
     </div>
   );
 }
