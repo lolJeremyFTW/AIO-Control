@@ -251,8 +251,18 @@ export async function POST(req: Request) {
     .select("hermes_agent_name, openclaw_agent_name")
     .eq("id", workspace_id)
     .maybeSingle();
+  const { data: businessRuntimeRow } = agent.business_id
+    ? await getServiceRoleSupabase()
+        .from("businesses")
+        .select("openclaw_agent_name")
+        .eq("id", agent.business_id)
+        .maybeSingle()
+    : { data: null };
   const hermesAgentName = (runtimeRow?.hermes_agent_name as string | null) ?? null;
-  const openclawAgentName = (runtimeRow?.openclaw_agent_name as string | null) ?? null;
+  const openclawAgentName =
+    ((businessRuntimeRow?.openclaw_agent_name as string | null) ||
+      (runtimeRow?.openclaw_agent_name as string | null)) ??
+    null;
 
   const talkMcpServers: string[] =
     ((agent as { config?: { mcpServers?: string[] } }).config?.mcpServers) ?? [];

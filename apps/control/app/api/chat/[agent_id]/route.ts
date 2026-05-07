@@ -225,10 +225,19 @@ export async function POST(
     .select("hermes_agent_name, openclaw_agent_name")
     .eq("id", agent.workspace_id)
     .maybeSingle();
+  const { data: businessRuntimeRow } = agent.business_id
+    ? await supabase
+        .from("businesses")
+        .select("openclaw_agent_name")
+        .eq("id", agent.business_id)
+        .maybeSingle()
+    : { data: null };
   const hermesAgentName =
     (runtimeRow?.hermes_agent_name as string | null) ?? null;
   const openclawAgentName =
-    (runtimeRow?.openclaw_agent_name as string | null) ?? null;
+    ((businessRuntimeRow?.openclaw_agent_name as string | null) ||
+      (runtimeRow?.openclaw_agent_name as string | null)) ??
+    null;
 
   const encoder = new TextEncoder();
   const finishedAt = { ts: 0 };

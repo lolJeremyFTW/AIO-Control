@@ -16,6 +16,13 @@ export function defaultRuntimeAgentName(workspaceSlug: string): string {
   return `aio-${safe}`;
 }
 
+/** Conventional per-business OpenClaw agent name. Prefixing with
+ *  `aio-biz-` keeps it separate from workspace-level runtime agents. */
+export function defaultBusinessOpenClawAgentName(businessSlug: string): string {
+  const safe = businessSlug.toLowerCase().replace(/[^a-z0-9-]/g, "-");
+  return `aio-biz-${safe}`.slice(0, 41);
+}
+
 /** Validation rule for runtime-agent names. Must mirror what the
  *  runtimes themselves accept. Server action enforces too. */
 export const RUNTIME_AGENT_NAME_RE = /^[a-z][a-z0-9_-]{1,40}$/;
@@ -38,4 +45,9 @@ export function runtimeInstallCommand(
   // be added; we keep the dir conventional under ~/.aio-control so
   // all per-workspace agents land in one place.
   return `mkdir -p ~/.aio-control && cd ~/.aio-control && openclaw init && openclaw agents add ${name}`;
+}
+
+/** Non-interactive command used by the business-level create action. */
+export function openclawBusinessAgentCommand(name: string): string {
+  return `openclaw agents add ${name} --non-interactive --workspace ~/.openclaw/workspace --json`;
 }

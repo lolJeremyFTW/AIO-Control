@@ -4,6 +4,12 @@
 
 "use server";
 
+import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import { copyFile, mkdir } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
+
 import { revalidatePath } from "next/cache";
 
 import {
@@ -12,6 +18,10 @@ import {
   telegramEditForumTopic,
 } from "../../lib/notify/telegram";
 import { generateUniqueBusinessSlug } from "../../lib/queries/businesses";
+import {
+  defaultBusinessOpenClawAgentName,
+  RUNTIME_AGENT_NAME_RE,
+} from "../../lib/providers/runtime";
 import { createSupabaseServerClient } from "../../lib/supabase/server";
 import { getServiceRoleSupabase } from "../../lib/supabase/service";
 
@@ -38,6 +48,132 @@ const HEX_RE = /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
 export type ActionResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: string };
+
+type BinaryRunResult =
+  | { ok: true; stdout: string; stderr: string; latencyMs: number }
+  | { ok: false; error: string };
+
+async function runBinary(
+  binary: string,
+  args: string[],
+  opts: { cwd?: string; timeoutMs?: number } = {},
+): Promise<BinaryRunResult> {
+  const t0 = Date.now();
+  return new Promise<BinaryRunResult>((resolve) => {
+    let resolved = false;
+    let stdout = "";
+    let stderr = "";
+
+    const finish = (out: BinaryRunResult) => {
+      if (resolved) return;
+      resolved = true;
+      resolve(out);
+    };
+
+    const child = spawn(binary, args, {
+      cwd: opts.cwd,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    const timer = setTimeout(() => {
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        // ignore
+      }
+      finish({
+        ok: false,
+        error: `Timeout (${binary} ${args.join(" ")} reageerde niet binnen ${Math.round((opts.timeoutMs ?? 30_000) / 1000)}s).`,
+      });
+    }, opts.timeoutMs ?? 30_000);
+
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
+    child.stdout?.on("data", (c: string) => (stdout += c));
+    child.stderr?.on("data", (c: string) => (stderr += c));
+    child.once("error", (err) => {
+      clearTimeout(timer);
+      finish({
+        ok: false,
+        error:
+          `Spawn van "${binary}" faalde: ${err.message}. ` +
+          "Check of de binary in PATH staat of zet OPENCLAW_BIN.",
+      });
+    });
+    child.once("close", (code) => {
+      clearTimeout(timer);
+      const latencyMs = Date.now() - t0;
+      if (typeof code === "number" && code === 0) {
+        finish({ ok: true, stdout, stderr, latencyMs });
+      } else {
+        finish({
+          ok: false,
+          error: `${binary} ${args.join(" ")} eindigde met exit ${code}. ${
+            stderr.trim().slice(0, 400) || stdout.trim().slice(0, 400) || ""
+          }`.trim(),
+        });
+      }
+    });
+  });
+}
+
+async function requireBusinessAdmin(
+  businessId: string,
+): Promise<
+  ActionResult<{
+    supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>;
+    business: {
+      id: string;
+      workspace_id: string;
+      slug: string;
+      name: string;
+      openclaw_agent_name: string | null;
+    };
+  }>
+> {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Niet ingelogd." };
+
+  const { data: business, error: bizError } = await supabase
+    .from("businesses")
+    .select("id, workspace_id, slug, name, openclaw_agent_name")
+    .eq("id", businessId)
+    .maybeSingle();
+  if (bizError || !business) {
+    return { ok: false, error: bizError?.message ?? "Business niet gevonden." };
+  }
+
+  const { data: member } = await supabase
+    .from("workspace_members")
+    .select("role")
+    .eq("workspace_id", business.workspace_id as string)
+    .eq("user_id", user.id)
+    .in("role", ["owner", "admin"])
+    .maybeSingle();
+  if (!member) {
+    return {
+      ok: false,
+      error: "Alleen workspace owners/admins kunnen OpenClaw runtime-agents beheren.",
+    };
+  }
+
+  return {
+    ok: true,
+    data: {
+      supabase,
+      business: business as {
+        id: string;
+        workspace_id: string;
+        slug: string;
+        name: string;
+        openclaw_agent_name: string | null;
+      },
+    },
+  };
+}
 
 export async function createBusiness(
   input: BusinessInput,
@@ -228,6 +364,216 @@ export async function updateBusiness(input: {
     (patch.slug as string | undefined) ?? input.business_slug ?? input.id;
   revalidatePath(`/${input.workspace_slug}/business/${bizPathId}`, "layout");
   return { ok: true, data: null };
+}
+
+export async function setBusinessOpenClawAgentName(input: {
+  workspace_slug: string;
+  business_id: string;
+  name: string | null;
+}): Promise<ActionResult<null>> {
+  const auth = await requireBusinessAdmin(input.business_id);
+  if (!auth.ok) return auth;
+
+  const trimmed = input.name?.trim().toLowerCase() || null;
+  if (trimmed && !RUNTIME_AGENT_NAME_RE.test(trimmed)) {
+    return {
+      ok: false,
+      error:
+        "Agent-naam: kleine letters, cijfers, _ of -, 2-41 chars, beginnen met letter.",
+    };
+  }
+
+  const { error } = await auth.data.supabase
+    .from("businesses")
+    .update({
+      openclaw_agent_name: trimmed,
+      openclaw_agent_initialized_at: null,
+    })
+    .eq("id", input.business_id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath(
+    `/${input.workspace_slug}/business/${auth.data.business.slug}`,
+    "layout",
+  );
+  return { ok: true, data: null };
+}
+
+export async function verifyBusinessOpenClawAgent(input: {
+  workspace_slug: string;
+  business_id: string;
+}): Promise<ActionResult<{ name: string; latencyMs: number }>> {
+  const auth = await requireBusinessAdmin(input.business_id);
+  if (!auth.ok) return auth;
+
+  const name =
+    auth.data.business.openclaw_agent_name ??
+    defaultBusinessOpenClawAgentName(auth.data.business.slug);
+  const binary = process.env.OPENCLAW_BIN || "openclaw";
+  const exists = await openclawAgentExists(binary, name);
+  if (!exists.ok) return exists;
+  if (!exists.data.exists) {
+    return {
+      ok: false,
+      error: `OpenClaw-agent "${name}" niet gevonden op deze server. Klik eerst Create on VPS.`,
+    };
+  }
+
+  const initializedAt = new Date().toISOString();
+  const { error } = await auth.data.supabase
+    .from("businesses")
+    .update({
+      openclaw_agent_name: name,
+      openclaw_agent_initialized_at: initializedAt,
+    })
+    .eq("id", input.business_id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath(
+    `/${input.workspace_slug}/business/${auth.data.business.slug}`,
+    "layout",
+  );
+  return { ok: true, data: { name, latencyMs: exists.data.latencyMs } };
+}
+
+export async function createBusinessOpenClawAgent(input: {
+  workspace_slug: string;
+  business_id: string;
+  name?: string | null;
+}): Promise<ActionResult<{ name: string; mirroredFrom: string | null }>> {
+  const auth = await requireBusinessAdmin(input.business_id);
+  if (!auth.ok) return auth;
+
+  const name = (
+    input.name?.trim() ||
+    auth.data.business.openclaw_agent_name ||
+    defaultBusinessOpenClawAgentName(auth.data.business.slug)
+  ).toLowerCase();
+  if (!RUNTIME_AGENT_NAME_RE.test(name)) {
+    return {
+      ok: false,
+      error:
+        "Agent-naam: kleine letters, cijfers, _ of -, 2-41 chars, beginnen met letter.",
+    };
+  }
+
+  const binary = process.env.OPENCLAW_BIN || "openclaw";
+  const workspaceDir =
+    process.env.OPENCLAW_WORKSPACE_DIR ||
+    join(homedir(), ".openclaw", "workspace");
+  const existing = await openclawAgentExists(binary, name);
+  if (!existing.ok) return existing;
+
+  if (!existing.data.exists) {
+    const created = await runBinary(
+      binary,
+      [
+        "agents",
+        "add",
+        name,
+        "--non-interactive",
+        "--workspace",
+        workspaceDir,
+        "--json",
+      ],
+      { timeoutMs: 45_000 },
+    );
+    if (!created.ok) {
+      const afterFailure = await openclawAgentExists(binary, name);
+      if (!afterFailure.ok || !afterFailure.data.exists) {
+        return { ok: false, error: created.error };
+      }
+    }
+  }
+
+  const { data: ws } = await auth.data.supabase
+    .from("workspaces")
+    .select("openclaw_agent_name")
+    .eq("id", auth.data.business.workspace_id)
+    .maybeSingle();
+  const sourceName =
+    (ws?.openclaw_agent_name as string | null) ?? "aio-admin";
+  const mirroredFrom = await mirrorOpenclawAgentFiles(sourceName, name);
+
+  const { error } = await auth.data.supabase
+    .from("businesses")
+    .update({
+      openclaw_agent_name: name,
+      openclaw_agent_initialized_at: new Date().toISOString(),
+    })
+    .eq("id", input.business_id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath(
+    `/${input.workspace_slug}/business/${auth.data.business.slug}`,
+    "layout",
+  );
+  return { ok: true, data: { name, mirroredFrom } };
+}
+
+async function openclawAgentExists(
+  binary: string,
+  name: string,
+): Promise<ActionResult<{ exists: boolean; latencyMs: number }>> {
+  const r = await runBinary(binary, ["agents", "list", "--json"], {
+    timeoutMs: 30_000,
+  });
+  if (!r.ok) return { ok: false, error: r.error };
+
+  let matched = false;
+  try {
+    const parsed = JSON.parse(r.stdout);
+    const list: unknown[] = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray((parsed as { agents?: unknown[] })?.agents)
+        ? (parsed as { agents: unknown[] }).agents
+        : [];
+    matched = list.some((it) => {
+      if (!it || typeof it !== "object") return false;
+      const o = it as Record<string, unknown>;
+      return o.name === name || o.id === name;
+    });
+  } catch {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    matched = new RegExp(`(^|\\s)${escaped}(\\s|$)`, "m").test(r.stdout);
+  }
+
+  return { ok: true, data: { exists: matched, latencyMs: r.latencyMs } };
+}
+
+async function mirrorOpenclawAgentFiles(
+  preferredSourceName: string,
+  targetName: string,
+): Promise<string | null> {
+  if (preferredSourceName === targetName) return targetName;
+
+  const agentsRoot = join(homedir(), ".openclaw", "agents");
+  const targetDir = join(agentsRoot, targetName, "agent");
+  await mkdir(targetDir, { recursive: true });
+
+  const sourceNames = [
+    preferredSourceName,
+    "aio-admin",
+    "main",
+  ].filter((v, i, arr) => !!v && arr.indexOf(v) === i);
+
+  for (const sourceName of sourceNames) {
+    if (sourceName === targetName) continue;
+    const sourceDir = join(agentsRoot, sourceName, "agent");
+    const models = join(sourceDir, "models.json");
+    const auth = join(sourceDir, "auth-profiles.json");
+    if (!existsSync(models) && !existsSync(auth)) continue;
+
+    if (existsSync(models)) {
+      await copyFile(models, join(targetDir, "models.json"));
+    }
+    if (existsSync(auth)) {
+      await copyFile(auth, join(targetDir, "auth-profiles.json"));
+    }
+    return sourceName;
+  }
+
+  return null;
 }
 
 export async function duplicateBusiness(input: {
