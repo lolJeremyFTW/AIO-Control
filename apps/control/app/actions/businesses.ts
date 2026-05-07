@@ -17,6 +17,7 @@ import {
   telegramCreateForumTopic,
   telegramEditForumTopic,
 } from "../../lib/notify/telegram";
+import { upsertGenericTelegramTarget } from "../../lib/notify/telegram-target-mirror";
 import { generateUniqueBusinessSlug } from "../../lib/queries/businesses";
 import {
   defaultBusinessOpenClawAgentName,
@@ -117,9 +118,7 @@ async function runBinary(
   });
 }
 
-async function requireBusinessAdmin(
-  businessId: string,
-): Promise<
+async function requireBusinessAdmin(businessId: string): Promise<
   ActionResult<{
     supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>;
     business: {
@@ -156,7 +155,8 @@ async function requireBusinessAdmin(
   if (!member) {
     return {
       ok: false,
-      error: "Alleen workspace owners/admins kunnen OpenClaw runtime-agents beheren.",
+      error:
+        "Alleen workspace owners/admins kunnen OpenClaw runtime-agents beheren.",
     };
   }
 
@@ -491,8 +491,7 @@ export async function createBusinessOpenClawAgent(input: {
     .select("openclaw_agent_name")
     .eq("id", auth.data.business.workspace_id)
     .maybeSingle();
-  const sourceName =
-    (ws?.openclaw_agent_name as string | null) ?? "aio-admin";
+  const sourceName = (ws?.openclaw_agent_name as string | null) ?? "aio-admin";
   const mirroredFrom = await mirrorOpenclawAgentFiles(sourceName, name);
 
   const { error } = await auth.data.supabase
@@ -551,11 +550,9 @@ async function mirrorOpenclawAgentFiles(
   const targetDir = join(agentsRoot, targetName, "agent");
   await mkdir(targetDir, { recursive: true });
 
-  const sourceNames = [
-    preferredSourceName,
-    "aio-admin",
-    "main",
-  ].filter((v, i, arr) => !!v && arr.indexOf(v) === i);
+  const sourceNames = [preferredSourceName, "aio-admin", "main"].filter(
+    (v, i, arr) => !!v && arr.indexOf(v) === i,
+  );
 
   for (const sourceName of sourceNames) {
     if (sourceName === targetName) continue;
@@ -812,6 +809,26 @@ async function autoCreateTelegramTopicForBusiness(opts: {
     };
   }
 
+  const mirror = await upsertGenericTelegramTarget(admin, {
+    id: newTarget.id,
+    workspace_id: opts.workspace_id,
+    scope: "business",
+    scope_id: opts.business_id,
+    name: `Auto: ${opts.business_name}`,
+    chat_id: parent.chat_id,
+    topic_id: created.message_thread_id,
+    enabled: true,
+    send_run_done: true,
+    send_run_fail: true,
+    send_queue_review: true,
+  });
+  if (!mirror.ok) {
+    return {
+      ok: false,
+      error: `Topic aangemaakt, maar generieke notificatieroute faalde: ${mirror.error}`,
+    };
+  }
+
   // Bind the target to the business so we can rename/close later.
   await admin
     .from("businesses")
@@ -852,6 +869,11 @@ async function renameTelegramTopicForBusiness(opts: {
     .from("telegram_targets")
     .update({ name: `Auto: ${opts.new_name}` })
     .eq("id", biz.telegram_topic_target_id);
+  await admin
+    .from("notification_targets")
+    .update({ name: `Auto: ${opts.new_name}` })
+    .eq("id", biz.telegram_topic_target_id)
+    .eq("provider", "telegram");
 }
 
 async function closeTelegramTopicForBusiness(opts: {
@@ -882,6 +904,11 @@ async function closeTelegramTopicForBusiness(opts: {
     .from("telegram_targets")
     .update({ enabled: false })
     .eq("id", biz.telegram_topic_target_id);
+  await admin
+    .from("notification_targets")
+    .update({ enabled: false })
+    .eq("id", biz.telegram_topic_target_id)
+    .eq("provider", "telegram");
 }
 
 export async function toggleBusinessStatus({

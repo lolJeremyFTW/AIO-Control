@@ -44,6 +44,7 @@ export function NotificationTargetsPanel({
   const [channelId, setChannelId] = useState("");
   const [teamId, setTeamId] = useState("");
   const [guildId, setGuildId] = useState("");
+  const [threadRef, setThreadRef] = useState("");
   const [secretName, setSecretName] = useState("");
   const [allowlist, setAllowlist] = useState("");
   const [denylist, setDenylist] = useState("");
@@ -69,15 +70,20 @@ export function NotificationTargetsPanel({
                 mode: effectiveMode,
                 channel_id: channelId,
                 team_id: teamId || null,
+                thread_ts: threadRef || null,
               }
             : {
                 mode: effectiveMode,
                 channel_id: channelId,
                 guild_id: guildId || null,
+                thread_id: threadRef || null,
               }
           : {
               mode: effectiveMode,
               webhook_url_secret_provider: secretName,
+              ...(provider === "slack"
+                ? { thread_ts: threadRef || null }
+                : { thread_id: threadRef || null }),
             };
 
       const res = await createNotificationTarget({
@@ -118,6 +124,7 @@ export function NotificationTargetsPanel({
       setChannelId("");
       setTeamId("");
       setGuildId("");
+      setThreadRef("");
       setSecretName("");
       setAllowlist("");
       setDenylist("");
@@ -327,50 +334,88 @@ export function NotificationTargetsPanel({
           )}
 
           {effectiveMode === "bot_token" ? (
-            <div style={grid2}>
+            <>
+              <div style={grid2}>
+                <Field
+                  label={`${provider === "slack" ? "Slack" : "Discord"} channel_id`}
+                >
+                  <input
+                    value={channelId}
+                    onChange={(e) => setChannelId(e.target.value)}
+                    placeholder={
+                      provider === "slack" ? "C0123..." : "1234567890"
+                    }
+                    style={inp}
+                  />
+                </Field>
+                {provider === "slack" ? (
+                  <Field label="team_id (optioneel)">
+                    <input
+                      value={teamId}
+                      onChange={(e) => setTeamId(e.target.value)}
+                      placeholder="T0123..."
+                      style={inp}
+                    />
+                  </Field>
+                ) : (
+                  <Field label="guild_id (optioneel)">
+                    <input
+                      value={guildId}
+                      onChange={(e) => setGuildId(e.target.value)}
+                      placeholder="1234567890"
+                      style={inp}
+                    />
+                  </Field>
+                )}
+              </div>
               <Field
-                label={`${provider === "slack" ? "Slack" : "Discord"} channel_id`}
+                label={
+                  provider === "slack"
+                    ? "thread_ts (optioneel)"
+                    : "thread_id (optioneel)"
+                }
               >
                 <input
-                  value={channelId}
-                  onChange={(e) => setChannelId(e.target.value)}
-                  placeholder={provider === "slack" ? "C0123..." : "1234567890"}
+                  value={threadRef}
+                  onChange={(e) => setThreadRef(e.target.value)}
+                  placeholder={
+                    provider === "slack" ? "1715000000.000000" : "1234567890"
+                  }
                   style={inp}
                 />
               </Field>
-              {provider === "slack" ? (
-                <Field label="team_id (optioneel)">
-                  <input
-                    value={teamId}
-                    onChange={(e) => setTeamId(e.target.value)}
-                    placeholder="T0123..."
-                    style={inp}
-                  />
-                </Field>
-              ) : (
-                <Field label="guild_id (optioneel)">
-                  <input
-                    value={guildId}
-                    onChange={(e) => setGuildId(e.target.value)}
-                    placeholder="1234567890"
-                    style={inp}
-                  />
-                </Field>
-              )}
-            </div>
+            </>
           ) : (
-            <Field label="Webhook URL secretnaam">
-              <input
-                value={secretName}
-                onChange={(e) => setSecretName(e.target.value)}
-                placeholder={
+            <>
+              <Field label="Webhook URL secretnaam">
+                <input
+                  value={secretName}
+                  onChange={(e) => setSecretName(e.target.value)}
+                  placeholder={
+                    provider === "slack"
+                      ? "SLACK_WEBHOOK_URL_OPS"
+                      : "DISCORD_WEBHOOK_URL_OPS"
+                  }
+                  style={inp}
+                />
+              </Field>
+              <Field
+                label={
                   provider === "slack"
-                    ? "SLACK_WEBHOOK_URL_OPS"
-                    : "DISCORD_WEBHOOK_URL_OPS"
+                    ? "thread_ts (optioneel)"
+                    : "thread_id (optioneel)"
                 }
-                style={inp}
-              />
-            </Field>
+              >
+                <input
+                  value={threadRef}
+                  onChange={(e) => setThreadRef(e.target.value)}
+                  placeholder={
+                    provider === "slack" ? "1715000000.000000" : "1234567890"
+                  }
+                  style={inp}
+                />
+              </Field>
+            </>
           )}
 
           <div style={grid2}>
@@ -426,10 +471,16 @@ function splitList(value: string): string[] {
 function describeConfig(target: NotificationTargetRow): string {
   const mode =
     typeof target.config.mode === "string" ? target.config.mode : "bot_token";
+  const thread =
+    typeof target.config.thread_ts === "string" && target.config.thread_ts
+      ? ` thread ${target.config.thread_ts}`
+      : typeof target.config.thread_id === "string" && target.config.thread_id
+        ? ` thread ${target.config.thread_id}`
+        : "";
   if (mode === "incoming_webhook" || mode === "webhook") {
-    return `webhook secret ${String(target.config.webhook_url_secret_provider ?? "")}`;
+    return `webhook secret ${String(target.config.webhook_url_secret_provider ?? "")}${thread}`;
   }
-  return `channel ${String(target.config.channel_id ?? "")}`;
+  return `channel ${String(target.config.channel_id ?? "")}${thread}`;
 }
 
 function Field({

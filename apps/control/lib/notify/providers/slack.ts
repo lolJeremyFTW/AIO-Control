@@ -46,6 +46,7 @@ async function sendSlackBotText(opts: {
   text: string;
 }): Promise<SendResult> {
   const channel = stringValue(opts.target.config.channel_id);
+  const threadTs = stringValue(opts.target.config.thread_ts);
   if (!channel) return { ok: false, error: "Slack channel_id ontbreekt." };
 
   const token = await resolveApiKey("slack_bot_token", {
@@ -69,6 +70,7 @@ async function sendSlackBotText(opts: {
       body: JSON.stringify({
         channel,
         text: truncateMessage(opts.text, 3900),
+        ...(threadTs ? { thread_ts: threadTs } : {}),
         unfurl_links: false,
         unfurl_media: false,
       }),
@@ -107,6 +109,7 @@ async function sendSlackWebhookText(opts: {
   const secretProvider = stringValue(
     opts.target.config.webhook_url_secret_provider,
   );
+  const threadTs = stringValue(opts.target.config.thread_ts);
   if (!secretProvider) {
     return {
       ok: false,
@@ -134,7 +137,10 @@ async function sendSlackWebhookText(opts: {
     const res = await fetch(webhookUrl, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text: truncateMessage(opts.text, 3900) }),
+      body: JSON.stringify({
+        text: truncateMessage(opts.text, 3900),
+        ...(threadTs ? { thread_ts: threadTs } : {}),
+      }),
     });
     if (!res.ok) {
       const text = await res.text().catch(() => res.statusText);

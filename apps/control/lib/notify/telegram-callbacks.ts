@@ -1,18 +1,10 @@
-// Handles inline_keyboard button clicks. callback_data is a short
-// "verb:arg" string we generate when the run-event dispatcher builds
-// a report. We resolve the verb here, run the action, then reply
-// via answerCallbackQuery (toast at the top of Telegram) + edit the
-// original message to remove the buttons (so users can't double-tap).
-//
-// Verbs supported:
-//   run_again:<agent_id>       → queue another run for the agent
-//   approve:<queue_id>         → resolve queue item with approve
-//   reject:<queue_id>          → resolve queue item with reject
+// Handles Telegram inline-keyboard button clicks. The action verbs are
+// shared with Slack/Discord component payloads through commands.ts.
 
 import "server-only";
 
+import { handleNotificationAction } from "./commands";
 import { resolveApiKey } from "../api-keys/resolve";
-import { dispatchRun } from "../dispatch/runs";
 import { getServiceRoleSupabase } from "../supabase/service";
 
 type TelegramCallback = {
@@ -30,8 +22,6 @@ export async function dispatchTelegramCallback(
 ): Promise<void> {
   if (!cb.data || !cb.message) return;
 
-  // Find which workspace this chat is associated with — we route via
-  // telegram_targets just like the inbound text-message flow.
   const supabase = getServiceRoleSupabase();
   const chatId = String(cb.message.chat.id);
   const { data: targets } = await supabase
@@ -39,23 +29,9 @@ export async function dispatchTelegramCallback(
     .select("id, workspace_id, allowlist, denylist, enabled")
     .eq("chat_id", chatId);
 
-  const target = (targets ?? []).find((t) => {
-    if (!t.enabled) return false;
-    const lc = cb.from.username?.toLowerCase().replace(/^@/, "") ?? "";
-    if (
-      t.denylist?.some(
-        (u: string) => u.toLowerCase().replace(/^@/, "") === lc,
-      )
-    )
-      return false;
-    if (
-      t.allowlist?.length > 0 &&
-      !t.allowlist.some(
-        (u: string) => u.toLowerCase().replace(/^@/, "") === lc,
-      )
-    )
-      return false;
-    return true;
+  const target = (targets ?? []).find((row) => {
+    if (!row.enabled) return false;
+    return userAllowed(cb.from.username ?? null, row.allowlist, row.denylist);
   }) as
     | {
         id: string;
@@ -63,40 +39,55 @@ export async function dispatchTelegramCallback(
       }
     | undefined;
 
-  if (!target) {
-    // Without target we don't know which workspace's bot token to
-    // use for answerCallbackQuery — silently drop. The user just
-    // sees a spinner that times out, which is acceptable for a
-    // not-allowed click.
-    return;
-  }
+  if (!target) return;
 
-  // Resolve the workspace's Telegram bot token now so we can both
-  // answerCallbackQuery and edit the keyboard with the same value.
   const token = await resolveApiKey("telegram", {
     workspaceId: target.workspace_id,
   });
 
-  const [verb, arg] = cb.data.split(":");
+  const { data: inbound } = await supabase
+    .from("notification_inbound")
+    .insert({
+      workspace_id: target.workspace_id,
+      target_id: null,
+      provider: "telegram",
+      external_channel_id: chatId,
+      external_user_id: String(cb.from.id),
+      external_username: cb.from.username ?? null,
+      command: cb.data,
+      text: cb.data,
+      raw: cb as unknown as object,
+    })
+    .select("id")
+    .single();
+
   let resultText = "Klaar.";
   let success = true;
-
   try {
-    if (verb === "run_again" && arg) {
-      const r = await runAgain(target.workspace_id, arg);
-      resultText = r.ok ? `▶ Run gestart (${r.runId.slice(0, 8)})` : r.error;
-      success = r.ok;
-    } else if (verb === "approve" && arg) {
-      const r = await decideQueue(target.workspace_id, arg, "approve");
-      resultText = r.ok ? "✓ Approved" : r.error;
-      success = r.ok;
-    } else if (verb === "reject" && arg) {
-      const r = await decideQueue(target.workspace_id, arg, "reject");
-      resultText = r.ok ? "✗ Rejected" : r.error;
-      success = r.ok;
-    } else {
-      resultText = `Onbekende actie: ${verb}`;
-      success = false;
+    const outcome = await handleNotificationAction(
+      {
+        workspace_id: target.workspace_id,
+        provider: "telegram",
+        target_id: target.id,
+        inbound_id: (inbound as { id?: string } | null)?.id ?? null,
+        external_user_id: String(cb.from.id),
+        external_username: cb.from.username ?? null,
+        reply: async (text) => {
+          resultText = text;
+        },
+      },
+      cb.data,
+    );
+    resultText = outcome.text || resultText;
+    success = outcome.ok;
+    if (outcome.dispatched_to && outcome.dispatched_id && inbound) {
+      await supabase
+        .from("notification_inbound")
+        .update({
+          dispatched_to: outcome.dispatched_to,
+          dispatched_id: outcome.dispatched_id,
+        })
+        .eq("id", (inbound as { id: string }).id);
     }
   } catch (err) {
     success = false;
@@ -105,92 +96,38 @@ export async function dispatchTelegramCallback(
 
   await answer(cb.id, resultText, !success, token);
 
-  // Strip the inline keyboard so the same button can't be tapped twice.
-  if (success && cb.message && token) {
-    await fetch(
-      `https://api.telegram.org/bot${token}/editMessageReplyMarkup`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          chat_id: cb.message.chat.id,
-          message_id: cb.message.message_id,
-          reply_markup: { inline_keyboard: [] },
-        }),
-      },
-    ).catch(() => null);
+  if (success && token) {
+    await fetch(`https://api.telegram.org/bot${token}/editMessageReplyMarkup`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        chat_id: cb.message.chat.id,
+        message_id: cb.message.message_id,
+        reply_markup: { inline_keyboard: [] },
+      }),
+    }).catch(() => null);
   }
 }
 
-async function runAgain(
-  workspaceId: string,
-  agentId: string,
-): Promise<{ ok: true; runId: string } | { ok: false; error: string }> {
-  const supabase = getServiceRoleSupabase();
-  const { data: agent } = await supabase
-    .from("agents")
-    .select("id, business_id, nav_node_id, archived_at")
-    .eq("id", agentId)
-    .eq("workspace_id", workspaceId)
-    .maybeSingle();
-  if (!agent || agent.archived_at) {
-    return { ok: false, error: "Agent niet gevonden of gearchiveerd." };
+function userAllowed(
+  username: string | null,
+  allowlist: string[] | null,
+  denylist: string[] | null,
+): boolean {
+  const value = normalizeUser(username);
+  if (!value) return false;
+  if ((denylist ?? []).some((user) => normalizeUser(user) === value)) {
+    return false;
   }
-  const { data: run, error } = await supabase
-    .from("runs")
-    .insert({
-      workspace_id: workspaceId,
-      agent_id: agent.id,
-      business_id: agent.business_id,
-      nav_node_id: agent.nav_node_id ?? null,
-      triggered_by: "telegram",
-      status: "queued",
-      input: { source: "telegram_callback" },
-    })
-    .select("id")
-    .single();
-  if (error || !run) return { ok: false, error: error?.message ?? "insert" };
-  void dispatchRun(run.id).catch(() => null);
-  return { ok: true, runId: run.id };
+  const allow = allowlist ?? [];
+  if (allow.length === 0) return true;
+  return allow.some((user) => normalizeUser(user) === value);
 }
 
-async function decideQueue(
-  workspaceId: string,
-  queueIdOrPrefix: string,
-  decision: "approve" | "reject",
-): Promise<{ ok: true } | { ok: false; error: string }> {
-  const supabase = getServiceRoleSupabase();
-  const filter =
-    queueIdOrPrefix.length === 36
-      ? supabase
-          .from("queue_items")
-          .select("id")
-          .eq("id", queueIdOrPrefix)
-      : supabase
-          .from("queue_items")
-          .select("id")
-          .eq("workspace_id", workspaceId)
-          .ilike("id", `${queueIdOrPrefix}%`);
-  const { data } = await filter.limit(2);
-  if (!data || data.length === 0) {
-    return { ok: false, error: "Item niet gevonden." };
-  }
-  if (data.length > 1) return { ok: false, error: "Ambigue id." };
-  const { error } = await supabase
-    .from("queue_items")
-    .update({
-      state: "auto",
-      decision,
-      resolved_at: new Date().toISOString(),
-    })
-    .eq("id", data[0]!.id);
-  if (error) return { ok: false, error: error.message };
-  return { ok: true };
+function normalizeUser(value: string | null | undefined): string {
+  return (value ?? "").toLowerCase().replace(/^@/, "").trim();
 }
 
-// answerCallbackQuery — gives the user a tiny toast in Telegram
-// confirming the action. show_alert=true makes it a full popup
-// instead, used for errors.
 async function answer(
   callbackId: string,
   text: string,

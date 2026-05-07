@@ -1,0 +1,146 @@
+import { createHmac, timingSafeEqual } from "crypto";
+
+import { NextResponse } from "next/server";
+
+import { resolveApiKey } from "../../../../../lib/api-keys/resolve";
+import { dispatchNotificationAction } from "../../../../../lib/notify/commands";
+import {
+  findSlackInboundTarget,
+  inboundUserAllowed,
+} from "../../../../../lib/notify/inbound-targets";
+import { getServiceRoleSupabase } from "../../../../../lib/supabase/service";
+
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
+type SlackInteractionPayload = {
+  type?: string;
+  team?: { id?: string };
+  channel?: { id?: string };
+  user?: { id?: string; name?: string; username?: string };
+  message?: { ts?: string; thread_ts?: string };
+  actions?: Array<{ action_id?: string; value?: string }>;
+};
+
+export async function POST(req: Request) {
+  const raw = await req.text();
+  const form = new URLSearchParams(raw);
+  const payload = parsePayload(form.get("payload"));
+  if (!payload) return new NextResponse("bad payload", { status: 400 });
+
+  const teamId = payload.team?.id ?? null;
+  const channelId = payload.channel?.id ?? null;
+  const userId = payload.user?.id ?? null;
+  const userName = payload.user?.username ?? payload.user?.name ?? null;
+  const target = await findSlackInboundTarget({ teamId, channelId });
+  if (!target) return unauthorized();
+
+  const signingSecret = await resolveApiKey("slack_signing_secret", {
+    workspaceId: target.workspace_id,
+  });
+  if (
+    !verifySlackSignature({
+      raw,
+      timestamp: req.headers.get("x-slack-request-timestamp"),
+      signature: req.headers.get("x-slack-signature"),
+      signingSecret,
+    })
+  ) {
+    return unauthorized();
+  }
+
+  if (!inboundUserAllowed(target, [userId, userName])) {
+    return slackReply("Je mag dit Slack-kanaal niet gebruiken voor AIO.");
+  }
+
+  const action = payload.actions?.[0]?.value ?? payload.actions?.[0]?.action_id;
+  if (!action) return slackReply("Geen actie gevonden.");
+
+  const supabase = getServiceRoleSupabase();
+  const { data: inbound } = await supabase
+    .from("notification_inbound")
+    .insert({
+      workspace_id: target.workspace_id,
+      target_id: target.id,
+      provider: "slack",
+      external_channel_id: channelId,
+      external_thread_id: payload.message?.thread_ts ?? payload.message?.ts,
+      external_user_id: userId,
+      external_username: userName,
+      command: action,
+      text: action,
+      raw: payload as unknown as object,
+    })
+    .select("id")
+    .single();
+
+  let replyText = "";
+  await dispatchNotificationAction(
+    {
+      workspace_id: target.workspace_id,
+      provider: "slack",
+      target_id: target.id,
+      inbound_id: (inbound as { id?: string } | null)?.id ?? null,
+      external_user_id: userId,
+      external_username: userName,
+      reply: async (body) => {
+        replyText = body;
+      },
+    },
+    action,
+  );
+
+  return slackReply(replyText || "Klaar.");
+}
+
+function parsePayload(value: string | null): SlackInteractionPayload | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!parsed || typeof parsed !== "object") return null;
+    return parsed as SlackInteractionPayload;
+  } catch {
+    return null;
+  }
+}
+
+function verifySlackSignature(input: {
+  raw: string;
+  timestamp: string | null;
+  signature: string | null;
+  signingSecret: string | null;
+}): boolean {
+  if (!input.timestamp || !input.signature || !input.signingSecret) {
+    return false;
+  }
+
+  const ts = Number(input.timestamp);
+  if (!Number.isFinite(ts)) return false;
+  if (Math.abs(Date.now() / 1000 - ts) > 5 * 60) return false;
+
+  const base = `v0:${input.timestamp}:${input.raw}`;
+  const expected = `v0=${createHmac("sha256", input.signingSecret)
+    .update(base)
+    .digest("hex")}`;
+
+  const given = Buffer.from(input.signature, "utf8");
+  const expectedBuffer = Buffer.from(expected, "utf8");
+  if (given.length !== expectedBuffer.length) return false;
+  return timingSafeEqual(given, expectedBuffer);
+}
+
+function slackReply(text: string) {
+  return NextResponse.json({
+    response_type: "ephemeral",
+    text: truncate(text, 2900),
+  });
+}
+
+function unauthorized() {
+  return new NextResponse("invalid signature", { status: 401 });
+}
+
+function truncate(text: string, max: number): string {
+  if (text.length <= max) return text;
+  return `${text.slice(0, max - 3)}...`;
+}

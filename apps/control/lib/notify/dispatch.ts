@@ -175,7 +175,105 @@ async function fireTelegram(
   event: "done" | "failed",
   preferredId: string | null,
 ): Promise<boolean> {
-  let target;
+  const genericTarget = await fetchGenericTelegramTarget(
+    supabase,
+    run.workspace_id,
+    preferredId,
+  );
+  if (genericTarget) {
+    return sendTelegramRunNotification(
+      supabase,
+      run,
+      agent,
+      event,
+      genericTarget,
+    );
+  }
+
+  const target = await fetchLegacyTelegramTarget(
+    supabase,
+    run.workspace_id,
+    preferredId,
+  );
+  if (!target) return false;
+  return sendTelegramRunNotification(supabase, run, agent, event, target);
+}
+
+async function fetchGenericTelegramTarget(
+  supabase: ReturnType<typeof getServiceRoleSupabase>,
+  workspaceId: string,
+  preferredId: string | null,
+): Promise<{
+  id: string;
+  workspace_id: string;
+  chat_id: string;
+  topic_id: number | null;
+  enabled: boolean;
+  send_run_done: boolean;
+  send_run_fail: boolean;
+} | null> {
+  const select =
+    "id, workspace_id, config, enabled, send_run_done, send_run_fail";
+  const query = preferredId
+    ? supabase
+        .from("notification_targets")
+        .select(select)
+        .eq("workspace_id", workspaceId)
+        .eq("provider", "telegram")
+        .eq("id", preferredId)
+        .maybeSingle()
+    : supabase
+        .from("notification_targets")
+        .select(select)
+        .eq("workspace_id", workspaceId)
+        .eq("provider", "telegram")
+        .eq("scope", "workspace")
+        .eq("enabled", true)
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+  const { data } = await query;
+  if (!data) return null;
+
+  const row = data as {
+    id: string;
+    workspace_id: string;
+    config: Record<string, unknown>;
+    enabled: boolean;
+    send_run_done: boolean;
+    send_run_fail: boolean;
+  };
+  const chatId =
+    typeof row.config.chat_id === "string" && row.config.chat_id.trim()
+      ? row.config.chat_id.trim()
+      : null;
+  if (!chatId) return null;
+
+  return {
+    id: row.id,
+    workspace_id: row.workspace_id,
+    chat_id: chatId,
+    topic_id: numberOrNull(row.config.topic_id),
+    enabled: row.enabled,
+    send_run_done: row.send_run_done,
+    send_run_fail: row.send_run_fail,
+  };
+}
+
+async function fetchLegacyTelegramTarget(
+  supabase: ReturnType<typeof getServiceRoleSupabase>,
+  workspaceId: string,
+  preferredId: string | null,
+): Promise<{
+  id: string;
+  workspace_id: string;
+  chat_id: string;
+  topic_id: number | null;
+  enabled: boolean;
+  send_run_done: boolean;
+  send_run_fail: boolean;
+} | null> {
   if (preferredId) {
     const { data } = await supabase
       .from("telegram_targets")
@@ -184,23 +282,38 @@ async function fireTelegram(
       )
       .eq("id", preferredId)
       .maybeSingle();
-    target = data;
-  } else {
-    // Workspace-default: any enabled workspace-scope target.
-    const { data } = await supabase
-      .from("telegram_targets")
-      .select(
-        "id, workspace_id, chat_id, topic_id, enabled, send_run_done, send_run_fail",
-      )
-      .eq("workspace_id", run.workspace_id)
-      .eq("scope", "workspace")
-      .eq("enabled", true)
-      .order("created_at", { ascending: true })
-      .limit(1)
-      .maybeSingle();
-    target = data;
+    return data as Awaited<ReturnType<typeof fetchLegacyTelegramTarget>>;
   }
-  if (!target) return false;
+
+  const { data } = await supabase
+    .from("telegram_targets")
+    .select(
+      "id, workspace_id, chat_id, topic_id, enabled, send_run_done, send_run_fail",
+    )
+    .eq("workspace_id", workspaceId)
+    .eq("scope", "workspace")
+    .eq("enabled", true)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  return data as Awaited<ReturnType<typeof fetchLegacyTelegramTarget>>;
+}
+
+async function sendTelegramRunNotification(
+  supabase: ReturnType<typeof getServiceRoleSupabase>,
+  run: RunRow,
+  agent: AgentLite | null,
+  event: "done" | "failed",
+  target: {
+    id: string;
+    workspace_id: string;
+    chat_id: string;
+    topic_id: number | null;
+    enabled: boolean;
+    send_run_done: boolean;
+    send_run_fail: boolean;
+  },
+): Promise<boolean> {
   if (event === "done" && !target.send_run_done) return false;
   if (event === "failed" && !target.send_run_fail) return false;
 
@@ -247,6 +360,15 @@ async function fireTelegram(
     return false;
   }
   return true;
+}
+
+function numberOrNull(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
 }
 
 async function fireCustom(

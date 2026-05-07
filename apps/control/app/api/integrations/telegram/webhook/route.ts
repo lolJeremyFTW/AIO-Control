@@ -127,7 +127,9 @@ export async function POST(req: Request) {
 
     if (denied || !allowed) continue;
 
-    // Log it. The table is created by migration 017 below.
+    // Log it in both the legacy Telegram table and the shared
+    // notification audit table. The shared row uses target_id=null
+    // because older deployments may not have the Telegram backfill yet.
     const { data: inbound } = await supabase
       .from("telegram_inbound")
       .insert({
@@ -143,6 +145,24 @@ export async function POST(req: Request) {
       .select("id")
       .single();
 
+    const { data: notificationInbound } = await supabase
+      .from("notification_inbound")
+      .insert({
+        workspace_id: t.workspace_id,
+        target_id: null,
+        provider: "telegram",
+        external_channel_id: chatId,
+        external_thread_id:
+          msg.message_thread_id != null ? String(msg.message_thread_id) : null,
+        external_user_id: msg.from?.id != null ? String(msg.from.id) : null,
+        external_username: username,
+        command: msg.text?.trim().startsWith("/") ? msg.text : null,
+        text: msg.text ?? null,
+        raw: msg as unknown as object,
+      })
+      .select("id")
+      .single();
+
     // Dispatch slash-commands. Don't await — Telegram retries on
     // timeout, so we want to ack fast and let dispatch run async.
     if (inbound && msg.text?.trim().startsWith("/")) {
@@ -152,7 +172,10 @@ export async function POST(req: Request) {
         chat_id: chatId,
         message_thread_id: msg.message_thread_id ?? null,
         inbound_id: (inbound as { id: string }).id,
+        notification_inbound_id:
+          (notificationInbound as { id?: string } | null)?.id ?? null,
         text: msg.text,
+        from_user_id: msg.from?.id != null ? String(msg.from.id) : null,
         from_username: username,
       }).catch((err) => {
         console.error("dispatchTelegramCommand failed", err);

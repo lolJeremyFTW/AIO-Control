@@ -7,6 +7,7 @@
 import { revalidatePath } from "next/cache";
 
 import { sendTelegram, telegramGetMe } from "../../lib/notify/telegram";
+import { upsertGenericTelegramTarget } from "../../lib/notify/telegram-target-mirror";
 import { createSupabaseServerClient } from "../../lib/supabase/server";
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -55,6 +56,25 @@ export async function createTelegramTarget(
     .single();
   if (error || !data) {
     return { ok: false, error: error?.message ?? "Insert failed." };
+  }
+  const mirror = await upsertGenericTelegramTarget(supabase, {
+    id: data.id,
+    workspace_id: input.workspace_id,
+    scope: input.scope,
+    scope_id: input.scope_id,
+    name: input.name.trim(),
+    chat_id: input.chat_id.trim(),
+    topic_id: input.topic_id ?? null,
+    allowlist: input.allowlist ?? [],
+    denylist: input.denylist ?? [],
+    send_run_done: input.send_run_done ?? true,
+    send_run_fail: input.send_run_fail ?? true,
+    send_queue_review: input.send_queue_review ?? true,
+    enabled: input.enabled ?? true,
+  });
+  if (!mirror.ok) {
+    await supabase.from("telegram_targets").delete().eq("id", data.id);
+    return { ok: false, error: mirror.error };
   }
   revalidatePath(`/${input.workspace_slug}/settings`);
   return { ok: true, data: { id: data.id } };
@@ -120,6 +140,11 @@ export async function deleteTelegramTarget(input: {
   id: string;
 }): Promise<Result<null>> {
   const supabase = await createSupabaseServerClient();
+  await supabase
+    .from("notification_targets")
+    .delete()
+    .eq("id", input.id)
+    .eq("provider", "telegram");
   const { error } = await supabase
     .from("telegram_targets")
     .delete()

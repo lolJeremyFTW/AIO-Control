@@ -37,6 +37,7 @@ async function sendDiscordBotText(opts: {
   text: string;
 }): Promise<SendResult> {
   const channelId = stringValue(opts.target.config.channel_id);
+  const threadId = stringValue(opts.target.config.thread_id);
   if (!channelId) return { ok: false, error: "Discord channel_id ontbreekt." };
 
   const token = await resolveApiKey("discord_bot_token", {
@@ -52,7 +53,7 @@ async function sendDiscordBotText(opts: {
 
   try {
     const res = await fetch(
-      `https://discord.com/api/v10/channels/${encodeURIComponent(channelId)}/messages`,
+      `https://discord.com/api/v10/channels/${encodeURIComponent(threadId ?? channelId)}/messages`,
       {
         method: "POST",
         headers: {
@@ -68,7 +69,7 @@ async function sendDiscordBotText(opts: {
       const text = await res.text().catch(() => res.statusText);
       return { ok: false, status: res.status, error: text };
     }
-    return { ok: true, status: res.status, label: channelId };
+    return { ok: true, status: res.status, label: threadId ?? channelId };
   } catch (err) {
     return {
       ok: false,
@@ -85,6 +86,7 @@ async function sendDiscordWebhookText(opts: {
   const secretProvider = stringValue(
     opts.target.config.webhook_url_secret_provider,
   );
+  const threadId = stringValue(opts.target.config.thread_id);
   if (!secretProvider) {
     return {
       ok: false,
@@ -109,7 +111,10 @@ async function sendDiscordWebhookText(opts: {
   }
 
   try {
-    const res = await fetch(webhookUrl, {
+    const url = new URL(webhookUrl);
+    if (threadId) url.searchParams.set("thread_id", threadId);
+
+    const res = await fetch(url, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ content: truncateMessage(opts.text, 1900) }),

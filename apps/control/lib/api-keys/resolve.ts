@@ -145,6 +145,10 @@ export async function resolveApiKey(
   return envFallback(provider);
 }
 
+export function resolveApiKeyEnvFallback(provider: string): string | null {
+  return envFallback(provider);
+}
+
 function envFallback(provider: string): string | null {
   const envVar = ENV_FALLBACK[provider.toLowerCase()];
   if (!envVar) return null;

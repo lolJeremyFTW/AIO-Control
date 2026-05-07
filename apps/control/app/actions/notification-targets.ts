@@ -159,6 +159,7 @@ function normalizeSlackConfig(
       data: {
         mode,
         webhook_url_secret_provider: secret,
+        thread_ts: stringValue(config.thread_ts),
       },
     };
   }
@@ -193,6 +194,7 @@ function normalizeDiscordConfig(
       data: {
         mode,
         webhook_url_secret_provider: secret,
+        thread_id: stringValue(config.thread_id),
       },
     };
   }

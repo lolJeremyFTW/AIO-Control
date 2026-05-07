@@ -9,13 +9,14 @@ import { revalidatePath } from "next/cache";
 import { ALL_VARIANTS } from "@aio/ui/rail/Node";
 
 import { telegramCreateForumTopic } from "../../lib/notify/telegram";
-import {
-  generateUniqueNavNodeSlug,
-} from "../../lib/queries/nav-nodes";
+import { upsertGenericTelegramTarget } from "../../lib/notify/telegram-target-mirror";
+import { generateUniqueNavNodeSlug } from "../../lib/queries/nav-nodes";
 import { createSupabaseServerClient } from "../../lib/supabase/server";
 import { getServiceRoleSupabase } from "../../lib/supabase/service";
 
-export type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string };
+export type ActionResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: string };
 
 const HEX_RE = /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
 
@@ -138,7 +139,8 @@ async function autoCreateNavNodeTelegramTopic(opts: {
     .select("name")
     .eq("id", opts.business_id)
     .maybeSingle();
-  const topicName = `${opts.icon ? opts.icon + " " : ""}${biz?.name ?? ""} · ${opts.name}`.trim();
+  const topicName =
+    `${opts.icon ? opts.icon + " " : ""}${biz?.name ?? ""} · ${opts.name}`.trim();
 
   const created = await telegramCreateForumTopic({
     workspace_id: opts.workspace_id,
@@ -167,6 +169,23 @@ async function autoCreateNavNodeTelegramTopic(opts: {
     .select("id")
     .single();
   if (!newTarget) return;
+
+  const mirror = await upsertGenericTelegramTarget(admin, {
+    id: newTarget.id,
+    workspace_id: opts.workspace_id,
+    scope: "navnode",
+    scope_id: opts.nav_node_id,
+    name: `Auto: ${biz?.name ?? ""} / ${opts.name}`,
+    chat_id: parent.chat_id,
+    topic_id: created.message_thread_id,
+    enabled: true,
+    send_run_done: true,
+    send_run_fail: true,
+    send_queue_review: true,
+  });
+  if (!mirror.ok) {
+    console.warn("nav-node generic telegram mirror failed:", mirror.error);
+  }
 
   await admin
     .from("nav_nodes")
@@ -217,7 +236,8 @@ export async function updateNavNode(input: {
     const v = input.patch.color_hex;
     if (v === null || v === "") patch.color_hex = null;
     else if (HEX_RE.test(v)) patch.color_hex = v.toLowerCase();
-    else return { ok: false, error: "Ongeldige hex (gebruik #rgb of #rrggbb)." };
+    else
+      return { ok: false, error: "Ongeldige hex (gebruik #rgb of #rrggbb)." };
   }
   if (input.patch.logo_url !== undefined)
     patch.logo_url = input.patch.logo_url?.toString().trim() || null;
@@ -248,14 +268,20 @@ export async function duplicateNavNode(input: {
   const supabase = await createSupabaseServerClient();
   const { data: src, error: srcErr } = await supabase
     .from("nav_nodes")
-    .select("name, parent_id, variant, icon, color_hex, logo_url, href, sort_order")
+    .select(
+      "name, parent_id, variant, icon, color_hex, logo_url, href, sort_order",
+    )
     .eq("id", input.source_id)
     .maybeSingle();
   if (srcErr || !src) {
     return { ok: false, error: srcErr?.message ?? "Origineel niet gevonden." };
   }
   const copyName = `${src.name} (kopie)`;
-  const copySlug = await generateUniqueNavNodeSlug(supabase, input.business_id, copyName);
+  const copySlug = await generateUniqueNavNodeSlug(
+    supabase,
+    input.business_id,
+    copyName,
+  );
   const { data, error } = await supabase
     .from("nav_nodes")
     .insert({
@@ -302,7 +328,8 @@ export async function moveNavNode(input: {
     if (cursor === input.id) {
       return {
         ok: false,
-        error: "Cyclus — je kunt een topic niet onder een eigen subtopic hangen.",
+        error:
+          "Cyclus — je kunt een topic niet onder een eigen subtopic hangen.",
       };
     }
     const { data: parent } = await supabase
