@@ -27,7 +27,12 @@ cd "$ROOT"
 
 echo "▸ Fetching latest main"
 git fetch --quiet origin main
-git reset --hard origin/main
+if [[ -n "$(git status --porcelain)" ]]; then
+  echo "▸ Working tree is dirty; preserving live VPS changes and skipping git reset."
+  echo "▸ Commit/push or clean /home/jeremy/aio-control before using reset-based deploys."
+else
+  git reset --hard origin/main
+fi
 
 echo "▸ Installing dependencies"
 pnpm install --frozen-lockfile
