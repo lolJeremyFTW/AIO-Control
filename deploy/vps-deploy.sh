@@ -45,6 +45,7 @@ build_and_stage() {
   local label="$1"
   local base_path="$2"
   local stage_dir="$3"
+  local cron_enabled="$4"
   echo "▸ Building ($label, BASE_PATH='${base_path}', commit ${GIT_COMMIT_SHA:0:8})"
 
   # Wipe the prior build so basePath flips don't leak between builds.
@@ -101,6 +102,8 @@ build_and_stage() {
     echo "BUILD_TIME=$BUILD_TIME"
     # Override BASE_PATH per build so process.env matches what Next baked in.
     echo "BASE_PATH=$base_path"
+    # Only one production Node process should run the local scheduler.
+    echo "AIO_CRON_SCHEDULER_ENABLED=$cron_enabled"
   } >> "$stage_dir/apps/control/.env"
 
   # The deploy runs as root via ssh, while systemd starts the app as jeremy.
@@ -109,8 +112,8 @@ build_and_stage() {
   chmod 600 "$stage_dir/apps/control/.env"
 }
 
-build_and_stage "path /aio"        "/aio" "$STAGE_AIO"
-build_and_stage "subdomain root"   ""     "$STAGE_ROOT"
+build_and_stage "path /aio"        "/aio" "$STAGE_AIO" "true"
+build_and_stage "subdomain root"   ""     "$STAGE_ROOT" "false"
 
 echo "▸ Restarting services"
 sudo systemctl restart aio-control

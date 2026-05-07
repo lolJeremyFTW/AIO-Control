@@ -12,6 +12,7 @@ export async function register() {
   // Don't bootstrap during a static-build pass. Standalone build sets
   // NEXT_PHASE here when invoked by the build tool.
   if (process.env.NEXT_PHASE === "phase-production-build") return;
+  if (process.env.AIO_CRON_SCHEDULER_ENABLED === "false") return;
 
   // Lazy-import so the build doesn't try to bundle node-cron into the
   // edge runtime by accident.
