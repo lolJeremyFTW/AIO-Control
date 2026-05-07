@@ -63,10 +63,24 @@ const NPM_GLOBAL_BIN =
 
 // Local TypeScript MCP servers — resolved relative to this project.
 const AIO_SRC = "/home/jeremy/aio-control/packages/ai/src/mcp/servers";
+const MCP_SPAWN_CWD =
+  process.env.MCP_SPAWN_CWD ??
+  (process.env.NODE_ENV === "production"
+    ? "/home/jeremy/aio-control"
+    : (() => {
+        try {
+          return process.cwd();
+        } catch {
+          return process.env.HOME ?? "/tmp";
+        }
+      })());
 const TROMPTECH_PC_HOST =
   process.env.TROMPTECH_PC_HOST ??
   process.env.TAILSCALE_TROMPTECH_PC_HOST ??
   "100.118.157.123";
+const PLAYWRIGHT_BROWSER_EXECUTABLE_PATH =
+  process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ??
+  `${process.env.HOME ?? "/home/jeremy"}/.cache/ms-playwright/chromium-1217/chrome-linux64/chrome`;
 
 function firecrawlEnv(apiUrl: string): Record<string, string> {
   return {
@@ -154,17 +168,20 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
   // Microsoft Playwright MCP — full Chromium browser with JS rendering.
   // Models are natively trained on Playwright tool signatures. Headless
   // mode so it works on a headless VPS without a display server.
-  // PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH points to the already-installed
-  // playwright chromium bundle so the MCP server doesn't need to download
-  // chrome-for-testing (a separate 175 MB download).
+  // --executable-path points to the already-installed Playwright Chromium
+  // bundle so the MCP server doesn't need chrome-for-testing installed.
+  // --isolated keeps every spawned MCP server on its own in-memory profile,
+  // so parallel agent runs do not contend for the same browser context.
   playwright: {
     command: `${NPM_GLOBAL_BIN}/playwright-mcp`,
-    args: ["--headless", "--browser", "chromium"],
-    env: () => ({
-      PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH:
-        process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ??
-        `${process.env.HOME ?? "/home/jeremy"}/.cache/ms-playwright/chromium-1217/chrome-linux64/chrome`,
-    }),
+    args: [
+      "--headless",
+      "--browser",
+      "chrome",
+      "--executable-path",
+      PLAYWRIGHT_BROWSER_EXECUTABLE_PATH,
+      "--isolated",
+    ],
   },
   // Brave Search MCP — high-quality web + news search backed by the
   // Brave Search API. Needs BRAVE_API_KEY set in workspace secrets.
@@ -358,6 +375,7 @@ export class McpHost {
       args: spec.args,
       env: fullEnv,
       stderr: "pipe",
+      cwd: MCP_SPAWN_CWD,
     });
 
     // --- PID capture strategy -------------------------------------------
