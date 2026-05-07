@@ -63,6 +63,19 @@ const NPM_GLOBAL_BIN =
 
 // Local TypeScript MCP servers — resolved relative to this project.
 const AIO_SRC = "/home/jeremy/aio-control/packages/ai/src/mcp/servers";
+const TROMPTECH_PC_HOST =
+  process.env.TROMPTECH_PC_HOST ??
+  process.env.TAILSCALE_TROMPTECH_PC_HOST ??
+  "100.118.157.123";
+
+function firecrawlEnv(apiUrl: string): Record<string, string> {
+  return {
+    FIRECRAWL_API_URL: apiUrl,
+    ...(process.env.FIRECRAWL_API_KEY
+      ? { FIRECRAWL_API_KEY: process.env.FIRECRAWL_API_KEY }
+      : {}),
+  };
+}
 
 type ServerSpec = {
   command: string;
@@ -166,7 +179,8 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
     command: `${NPM_GLOBAL_BIN}/mcp-server-memory`,
     args: [],
     env: () => ({
-      MEMORY_FILE_PATH: process.env.MEMORY_FILE_PATH ?? "/home/jeremy/.aio-memory.json",
+      MEMORY_FILE_PATH:
+        process.env.MEMORY_FILE_PATH ?? "/home/jeremy/.aio-memory.json",
     }),
   },
   // Firecrawl MCP — crawl websites and extract structured data.
@@ -175,20 +189,27 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
   firecrawl: {
     command: `${NPM_GLOBAL_BIN}/firecrawl-mcp`,
     args: [],
-    env: () => ({
-      // Self-hosted Firecrawl instance running on port 3002.
-      // Falls back to cloud API if FIRECRAWL_API_URL is not set.
-      FIRECRAWL_API_URL:
-        process.env.FIRECRAWL_API_URL ?? "http://localhost:3002",
-      ...(process.env.FIRECRAWL_API_KEY
-        ? { FIRECRAWL_API_KEY: process.env.FIRECRAWL_API_KEY }
-        : {}),
-    }),
+    env: () =>
+      firecrawlEnv(process.env.FIRECRAWL_API_URL ?? "http://localhost:3002"),
+  },
+  // Firecrawl on tromptech-pc over Tailscale. This keeps VPS cron agents
+  // using the PC-hosted Firecrawl API, where the paired
+  // firecrawl-playwright service and local network browser dependencies live.
+  "firecrawl-pc": {
+    command: `${NPM_GLOBAL_BIN}/firecrawl-mcp`,
+    args: [],
+    env: () =>
+      firecrawlEnv(
+        process.env.FIRECRAWL_PC_API_URL ?? `http://${TROMPTECH_PC_HOST}:3002`,
+      ),
   },
 };
 
 type Connected = {
   server: string;
+  spec: ServerSpec;
+  envOverrides: Record<string, string>;
+  permissions: McpPermissions;
   client: Client;
   tools: McpToolDef[];
   /** PID of the spawned subprocess — stored immediately after spawn so we
@@ -199,6 +220,65 @@ type Connected = {
 
 export class McpHost {
   private connected: Connected[] = [];
+
+  private async connectWithTimeout(
+    id: string,
+    spec: ServerSpec,
+    envOverrides: Record<string, string>,
+    permissions: McpPermissions,
+  ): Promise<Connected | null> {
+    const CONNECT_TIMEOUT_MS = Number(
+      process.env.MCP_CONNECT_TIMEOUT_MS ?? "30000",
+    );
+    const CONNECT_ATTEMPTS = Number(process.env.MCP_CONNECT_ATTEMPTS ?? "2");
+
+    for (let attempt = 0; attempt < CONNECT_ATTEMPTS; attempt++) {
+      let spawnedPid: number | undefined;
+      const setPid = (pid: number) => {
+        spawnedPid = pid;
+      };
+      let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+      const timeoutRace = new Promise<null>((resolve) => {
+        timeoutHandle = setTimeout(() => {
+          console.warn(
+            `[mcp] server '${id}' timed out after ${CONNECT_TIMEOUT_MS}ms - skipping`,
+          );
+          if (spawnedPid) {
+            try {
+              process.kill(spawnedPid, "SIGKILL");
+            } catch {
+              /* ignore */
+            }
+          }
+          resolve(null);
+        }, CONNECT_TIMEOUT_MS);
+      });
+
+      const result = await Promise.race([
+        this.connectOne(id, spec, envOverrides, permissions, setPid).then(
+          (connected) => {
+            if (timeoutHandle) clearTimeout(timeoutHandle);
+            return connected;
+          },
+          (err) => {
+            if (timeoutHandle) clearTimeout(timeoutHandle);
+            console.warn(
+              `[mcp] server '${id}' failed to start (attempt ${attempt + 1}/${CONNECT_ATTEMPTS}) - ${err instanceof Error ? err.message : err}`,
+            );
+            return null;
+          },
+        ),
+        timeoutRace,
+      ]);
+
+      if (result) return result;
+      if (attempt < CONNECT_ATTEMPTS - 1) {
+        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+      }
+    }
+
+    return null;
+  }
 
   /** Spawn + handshake every requested server in parallel and cache
    *  their tool lists. Individual server failures are non-fatal: the
@@ -228,43 +308,20 @@ export class McpHost {
       // — we honour the agent-level permission gate before spawning.
       if (id === "filesystem" && permissions.filesystem === "off") continue;
       if (id === "aio" && permissions.aio === "off") continue;
-      // Wrap each connectOne with a 30 s timeout so a slow server (e.g.
-      // playwright launching Chromium) can't block the entire connect()
-      // via Promise.all and leave the agent with zero tools.
-      //
-      // IMPORTANT: when the timeout fires, connectOne keeps running in
-      // the background and its child process becomes an orphan. We track
-      // the PID via a shared variable so the timeout handler can SIGKILL
-      // it before giving up.
-      const CONNECT_TIMEOUT_MS = 30_000;
-      let spawnedPid: number | undefined;
-      const setPid = (pid: number) => { spawnedPid = pid; };
-      const timeoutRace = new Promise<null>((resolve) =>
-        setTimeout(() => {
-          console.warn(`[mcp] server '${id}' timed out after ${CONNECT_TIMEOUT_MS}ms — skipping`);
-          if (spawnedPid) {
-            try { process.kill(spawnedPid, "SIGKILL"); } catch { /* ignore */ }
-          }
-          resolve(null);
-        }, CONNECT_TIMEOUT_MS),
-      );
       tasks.push(
-        Promise.race([
-          this.connectOne(id, spec, envOverrides ?? {}, permissions, setPid).catch(
-            (err) => {
-              console.warn(
-                `[mcp] server '${id}' failed to start — skipping (${err instanceof Error ? err.message : err})`,
-              );
-              return null as null;
-            },
-          ),
-          timeoutRace,
-        ]),
+        this.connectWithTimeout(id, spec, envOverrides ?? {}, permissions),
       );
     }
     const results = await Promise.all(tasks);
     for (const r of results) {
-      if (r) this.connected.push(r);
+      if (!r) continue;
+      const existing = this.connected.findIndex((c) => c.server === r.server);
+      if (existing !== -1) {
+        await this.closeOne(this.connected[existing]!);
+        this.connected.splice(existing, 1, r);
+      } else {
+        this.connected.push(r);
+      }
     }
   }
 
@@ -288,7 +345,9 @@ export class McpHost {
       ...(spec.env?.() ?? {}),
       ...envOverrides,
     };
-    console.log(`[mcp] connectOne spawning: ${spec.command} ${spec.args.join(" ")}`);
+    console.log(
+      `[mcp] connectOne spawning: ${spec.command} ${spec.args.join(" ")}`,
+    );
     const transport = new StdioClientTransport({
       command: spec.command,
       args: spec.args,
@@ -317,7 +376,9 @@ export class McpHost {
     };
     // Patch transport.start() — called by client.connect() internally.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const origStart: () => Promise<void> = (transport as any).start.bind(transport);
+    const origStart: () => Promise<void> = (transport as any).start.bind(
+      transport,
+    );
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (transport as any).start = async function patchedStart() {
       await origStart();
@@ -345,13 +406,17 @@ export class McpHost {
       await client.connect(transport);
     } catch (connErr) {
       const stderrText = Buffer.concat(stderrChunks).toString();
-      console.error(`[mcp][${id}] connect failed: ${connErr instanceof Error ? connErr.message : connErr}`);
+      console.error(
+        `[mcp][${id}] connect failed: ${connErr instanceof Error ? connErr.message : connErr}`,
+      );
       console.error(`[mcp][${id}] stderr collected: ${stderrText}`);
       throw connErr;
     }
     const list = await client.listTools().catch((listErr: unknown) => {
       const stderrText = Buffer.concat(stderrChunks).toString();
-      console.error(`[mcp][${id}] listTools failed: ${listErr instanceof Error ? listErr.message : listErr}`);
+      console.error(
+        `[mcp][${id}] listTools failed: ${listErr instanceof Error ? listErr.message : listErr}`,
+      );
       console.error(`[mcp][${id}] stderr at listTools: ${stderrText}`);
       throw listErr;
     });
@@ -376,7 +441,15 @@ export class McpHost {
           properties: {},
         },
       }));
-    return { server: id, client, pid: childPid, tools };
+    return {
+      server: id,
+      spec,
+      envOverrides,
+      permissions,
+      client,
+      pid: childPid,
+      tools,
+    };
   }
 
   /** Flat list of all tools across every connected server, with names
@@ -385,25 +458,54 @@ export class McpHost {
     return this.connected.flatMap((c) => c.tools);
   }
 
-  /** Dispatch a tool call by its prefixed name back to the right
-   *  server. Returns the tool's content as a string for feeding into
-   *  the chat loop. */
   async call(prefixedName: string, args: unknown): Promise<string> {
     const idx = prefixedName.indexOf("__");
     const server = idx > 0 ? prefixedName.slice(0, idx) : "";
     const raw = idx > 0 ? prefixedName.slice(idx + 2) : prefixedName;
-    const conn = this.connected.find((c) => c.server === server);
+    let conn: Connected | null =
+      this.connected.find((c) => c.server === server) ?? null;
     if (!conn) {
       return JSON.stringify({
         error: `MCP server '${server}' niet verbonden`,
       });
     }
-    // 60 s hard cap per tool call — prevents a hanging filesystem glob or
-    // slow browser action from orphaning the entire server connection.
-    const CALL_TIMEOUT_MS = 60_000;
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`tool call timed out after ${CALL_TIMEOUT_MS}ms`)), CALL_TIMEOUT_MS),
-    );
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        return await this.callOnce(conn, raw, args);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "unknown error";
+        console.warn(
+          `[mcp][${server}] tool '${raw}' failed${attempt === 0 ? " - restarting server and retrying" : ""}: ${msg}`,
+        );
+        if (attempt > 0) return JSON.stringify({ error: msg });
+        conn = await this.restartServer(conn);
+        if (!conn) {
+          return JSON.stringify({
+            error: `MCP server '${server}' kon niet opnieuw starten na tool-fout: ${msg}`,
+          });
+        }
+      }
+    }
+
+    return JSON.stringify({ error: "unknown MCP call failure" });
+  }
+
+  private async callOnce(
+    conn: Connected,
+    raw: string,
+    args: unknown,
+  ): Promise<string> {
+    const CALL_TIMEOUT_MS = Number(process.env.MCP_CALL_TIMEOUT_MS ?? "60000");
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutHandle = setTimeout(
+        () =>
+          reject(new Error(`tool call timed out after ${CALL_TIMEOUT_MS}ms`)),
+        CALL_TIMEOUT_MS,
+      );
+    });
+
     try {
       const res = await Promise.race([
         conn.client.callTool({
@@ -412,9 +514,8 @@ export class McpHost {
         }),
         timeoutPromise,
       ]);
-      // CallToolResult.content is an array of content blocks. We
-      // flatten text blocks; non-text blocks (images, resources) get
-      // serialized as JSON so the LLM at least sees their type.
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+
       const blocks = (res.content as Array<Record<string, unknown>>) ?? [];
       const parts: string[] = [];
       for (const b of blocks) {
@@ -426,52 +527,73 @@ export class McpHost {
       }
       return parts.join("\n") || "(empty result)";
     } catch (err) {
-      return JSON.stringify({
-        error: err instanceof Error ? err.message : "unknown error",
-      });
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+      throw err;
     }
   }
 
+  private async restartServer(conn: Connected): Promise<Connected | null> {
+    const oldTools = conn.tools;
+    await this.closeOne(conn);
+    const replacement = await this.connectWithTimeout(
+      conn.server,
+      conn.spec,
+      conn.envOverrides,
+      conn.permissions,
+    );
+    const idx = this.connected.findIndex((c) => c.server === conn.server);
+    if (!replacement) {
+      if (idx !== -1) this.connected.splice(idx, 1);
+      return null;
+    }
+    if (replacement.tools.length === 0) replacement.tools = oldTools;
+    if (idx !== -1) {
+      this.connected.splice(idx, 1, replacement);
+    } else {
+      this.connected.push(replacement);
+    }
+    return replacement;
+  }
+
+  private async closeOne(c: Connected): Promise<void> {
+    try {
+      await c.client.close();
+    } catch {
+      /* ignore */
+    }
+    if (!c.pid) return;
+    try {
+      process.kill(c.pid, "SIGTERM");
+      await new Promise<void>((resolve) => {
+        const t = setTimeout(() => {
+          try {
+            process.kill(c.pid!, "SIGKILL");
+          } catch {
+            /* already gone */
+          }
+          resolve();
+        }, 2000);
+        const check = setInterval(() => {
+          try {
+            process.kill(c.pid!, 0);
+          } catch {
+            clearInterval(check);
+            clearTimeout(t);
+            resolve();
+          }
+        }, 100);
+      });
+    } catch {
+      /* ignore */
+    }
+  }
   /** Tear down every connected server. Safe to call after partial
    *  connect failure. Graceful SDK close first, then SIGKILL via stored PID
    *  as a backstop — the SDK only closes stdio pipes which some servers
    *  (e.g. filesystem, memory) don't treat as an exit signal, leading to
    *  hundreds of orphaned node processes that OOM the VPS. */
   async close(): Promise<void> {
-    await Promise.all(
-      this.connected.map(async (c) => {
-        try {
-          await c.client.close();
-        } catch {
-          /* ignore */
-        }
-        // Kill the child by PID — the PID was captured at spawn time so it
-        // is bundler-safe (no reliance on mangled private properties).
-        if (c.pid) {
-          try {
-            process.kill(c.pid, "SIGTERM");
-            // Give it 2 s to die gracefully, then SIGKILL.
-            await new Promise<void>((resolve) => {
-              const t = setTimeout(() => {
-                try { process.kill(c.pid!, "SIGKILL"); } catch { /* already gone */ }
-                resolve();
-              }, 2000);
-              // Poll until the process is gone (no ChildProcess reference to
-              // attach an "exit" listener, so we check via kill(0)).
-              const check = setInterval(() => {
-                try { process.kill(c.pid!, 0); } catch {
-                  clearInterval(check);
-                  clearTimeout(t);
-                  resolve();
-                }
-              }, 100);
-            });
-          } catch {
-            /* ignore — process already gone */
-          }
-        }
-      }),
-    );
+    await Promise.all(this.connected.map((c) => this.closeOne(c)));
     this.connected = [];
   }
 }
