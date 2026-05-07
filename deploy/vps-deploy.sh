@@ -27,7 +27,7 @@ cd "$ROOT"
 
 echo "▸ Fetching latest main"
 git fetch --quiet origin main
-if [[ -n "$(git status --porcelain)" ]]; then
+if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
   echo "▸ Working tree is dirty; preserving live VPS changes and skipping git reset."
   echo "▸ Commit/push or clean /home/jeremy/aio-control before using reset-based deploys."
 else
@@ -81,6 +81,11 @@ build_and_stage() {
     # Override BASE_PATH per build so process.env matches what Next baked in.
     echo "BASE_PATH=$base_path"
   } >> "$stage_dir/apps/control/.env"
+
+  # The deploy runs as root via ssh, while systemd starts the app as jeremy.
+  # Keep staged bundles and baked env readable by the service user.
+  chown -R jeremy:jeremy "$stage_dir"
+  chmod 600 "$stage_dir/apps/control/.env"
 }
 
 build_and_stage "path /aio"        "/aio" "$STAGE_AIO"
