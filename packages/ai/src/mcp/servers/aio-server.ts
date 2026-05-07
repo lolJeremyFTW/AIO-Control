@@ -16,11 +16,13 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
+import { createRoutine, deleteRoutine } from "../../routines";
 
 // ── Env validation ───────────────────────────────────────────────────────────
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const WORKSPACE_ID = process.env.AIO_WORKSPACE_ID ?? "default";
+const CURRENT_BUSINESS_ID = process.env.AIO_BUSINESS_ID ?? "";
 const CURRENT_NAV_NODE_ID = process.env.AIO_NAV_NODE_ID ?? "";
 const ALLOW_READ_SECRET = process.env.AIO_MCP_ALLOW_READ_SECRET === "true";
 const AGENT_SECRET_KEY = process.env.AGENT_SECRET_KEY ?? "";
@@ -108,6 +110,55 @@ const PublishDashboardSchema = z.object({
   nav_node_id: z.string().uuid().optional(),
   label: z.string().min(1).max(80),
   html_content: z.string().min(10),
+});
+
+const ListSchedulesSchema = z.object({
+  business_id: z.string().uuid().optional(),
+  nav_node_id: z.string().uuid().nullable().optional(),
+  enabled: z.boolean().optional(),
+  kind: z.enum(["cron", "webhook", "manual"]).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional().default(50),
+});
+
+const CreateCronScheduleSchema = z.object({
+  agent_id: z.string().uuid(),
+  business_id: z.string().uuid().optional(),
+  nav_node_id: z.string().uuid().nullable().optional(),
+  cron_expr: z.string().min(3).max(80),
+  title: z.string().min(1).max(120).optional(),
+  description: z.string().max(500).nullable().optional(),
+  instructions: z.string().min(1),
+  timezone: z.string().min(1).max(80).optional().default("Europe/Amsterdam"),
+  enabled: z.boolean().optional().default(true),
+});
+
+const UpdateScheduleSchema = z.object({
+  schedule_id: z.string().uuid(),
+  patch: z.object({
+    agent_id: z.string().uuid().optional(),
+    business_id: z.string().uuid().nullable().optional(),
+    nav_node_id: z.string().uuid().nullable().optional(),
+    cron_expr: z.string().min(3).max(80).optional(),
+    title: z.string().min(1).max(120).nullable().optional(),
+    description: z.string().max(500).nullable().optional(),
+    instructions: z.string().min(1).nullable().optional(),
+    timezone: z.string().min(1).max(80).optional(),
+    enabled: z.boolean().optional(),
+  }),
+});
+
+const ToggleScheduleSchema = z.object({
+  schedule_id: z.string().uuid(),
+  enabled: z.boolean(),
+});
+
+const DeleteScheduleSchema = z.object({
+  schedule_id: z.string().uuid(),
+});
+
+const RunScheduleNowSchema = z.object({
+  schedule_id: z.string().uuid(),
+  prompt: z.string().min(1).optional(),
 });
 
 const PublishTopicDashboardSchema = z.object({
@@ -237,7 +288,7 @@ async function listAgents(
 
   let query = supabaseAio
     .from("agents")
-    .select("id, name, kind, provider, model, business_id, created_at")
+    .select("id, name, kind, provider, model, business_id, nav_node_id, created_at")
     .eq("workspace_id", WORKSPACE_ID);
 
   if (scope === "global") {
@@ -500,7 +551,9 @@ async function listRuns(args: unknown): Promise<string> {
 
   let query = supabaseAio
     .from("runs")
-    .select("id, agent_id, business_id, status, created_at, finished_at")
+    .select(
+      "id, agent_id, business_id, status, created_at, started_at, finished_at:ended_at, duration_ms, cost_cents, error_text",
+    )
     .order("created_at", { ascending: false })
     .limit(limit);
 
@@ -514,6 +567,257 @@ async function listRuns(args: unknown): Promise<string> {
     return JSON.stringify({ error: "db_error", message: error.message });
   }
   return JSON.stringify({ runs: data ?? [] });
+}
+
+async function resolveScheduleScope(input: {
+  business_id?: string;
+  nav_node_id?: string | null;
+}): Promise<{ business_id: string | null; nav_node_id: string | null } | { error: string }> {
+  const navNodeId = input.nav_node_id ?? (CURRENT_NAV_NODE_ID || null);
+  let businessId = input.business_id ?? (CURRENT_BUSINESS_ID || null);
+
+  if (navNodeId) {
+    const { data: node, error } = await supabaseAio
+      .from("nav_nodes")
+      .select("id, business_id")
+      .eq("workspace_id", WORKSPACE_ID)
+      .eq("id", navNodeId)
+      .maybeSingle();
+    if (error) return { error: error.message };
+    if (!node) return { error: "nav_node_id not found in current workspace." };
+    const nodeBusinessId = node.business_id as string;
+    if (businessId && businessId !== nodeBusinessId) {
+      return { error: "nav_node_id belongs to a different business_id." };
+    }
+    businessId = nodeBusinessId;
+  }
+
+  if (businessId) {
+    const { data: biz, error } = await supabaseAio
+      .from("businesses")
+      .select("id")
+      .eq("workspace_id", WORKSPACE_ID)
+      .eq("id", businessId)
+      .maybeSingle();
+    if (error) return { error: error.message };
+    if (!biz) return { error: "business_id not found in current workspace." };
+  }
+
+  return { business_id: businessId, nav_node_id: navNodeId };
+}
+
+async function listSchedules(args: unknown): Promise<string> {
+  const parsed = ListSchedulesSchema.safeParse(args);
+  if (!parsed.success) {
+    return JSON.stringify({ error: "validation_failed", details: parsed.error.flatten() });
+  }
+  const scope = await resolveScheduleScope({
+    business_id: parsed.data.business_id,
+    nav_node_id: parsed.data.nav_node_id,
+  });
+  if ("error" in scope) return JSON.stringify({ error: "scope_error", message: scope.error });
+
+  let query = supabaseAio
+    .from("schedules_safe")
+    .select(
+      "id, workspace_id, agent_id, business_id, nav_node_id, kind, cron_expr, provider_routine_id, enabled, last_fired_at, created_at, title, description, instructions, timezone, telegram_target_id, custom_integration_id",
+    )
+    .eq("workspace_id", WORKSPACE_ID)
+    .order("created_at", { ascending: false })
+    .limit(parsed.data.limit);
+  if (scope.nav_node_id) query = query.eq("nav_node_id", scope.nav_node_id);
+  else if (scope.business_id) query = query.eq("business_id", scope.business_id);
+  if (parsed.data.enabled !== undefined) query = query.eq("enabled", parsed.data.enabled);
+  if (parsed.data.kind) query = query.eq("kind", parsed.data.kind);
+
+  const { data, error } = await query;
+  if (error) return JSON.stringify({ error: "db_error", message: error.message });
+  return JSON.stringify({ schedules: data ?? [], scope });
+}
+
+async function createCronScheduleMcp(args: unknown): Promise<string> {
+  const parsed = CreateCronScheduleSchema.safeParse(args);
+  if (!parsed.success) {
+    return JSON.stringify({ error: "validation_failed", details: parsed.error.flatten() });
+  }
+  const scope = await resolveScheduleScope({
+    business_id: parsed.data.business_id,
+    nav_node_id: parsed.data.nav_node_id,
+  });
+  if ("error" in scope) return JSON.stringify({ error: "scope_error", message: scope.error });
+  if (!scope.business_id) {
+    return JSON.stringify({
+      error: "business_required",
+      message: "business_id is required unless the MCP session is already scoped to a business/topic.",
+    });
+  }
+
+  const { data: agent, error: agentErr } = await supabaseAio
+    .from("agents")
+    .select("id, provider, key_source")
+    .eq("workspace_id", WORKSPACE_ID)
+    .eq("id", parsed.data.agent_id)
+    .maybeSingle();
+  if (agentErr) return JSON.stringify({ error: "db_error", message: agentErr.message });
+  if (!agent) return JSON.stringify({ error: "not_found", message: "agent_id not found." });
+
+  const useRoutine =
+    (agent.provider as string) === "claude" &&
+    (agent.key_source as string | null) === "subscription";
+  let provider_routine_id: string | null = null;
+  let provider_bearer_token: string | null = null;
+  if (useRoutine) {
+    try {
+      const routine = await createRoutine({
+        prompt: parsed.data.instructions,
+        trigger: { type: "cron", expression: parsed.data.cron_expr },
+        postTo: `${APP_ORIGIN}/api/runs/result`,
+        allowedTools: ["web_search"],
+      });
+      provider_routine_id = routine.id;
+      provider_bearer_token = routine.bearer_token
+        ? Buffer.from(routine.bearer_token, "utf8").toString("base64")
+        : null;
+    } catch (err) {
+      return JSON.stringify({
+        error: "routine_create_failed",
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  const { data, error } = await supabaseAio
+    .from("schedules")
+    .insert({
+      workspace_id: WORKSPACE_ID,
+      agent_id: parsed.data.agent_id,
+      business_id: scope.business_id,
+      nav_node_id: scope.nav_node_id,
+      kind: "cron",
+      cron_expr: parsed.data.cron_expr,
+      title: parsed.data.title ?? null,
+      description: parsed.data.description ?? null,
+      instructions: parsed.data.instructions,
+      timezone: parsed.data.timezone,
+      enabled: parsed.data.enabled,
+      provider_routine_id,
+      provider_bearer_token,
+    })
+    .select("id, provider_routine_id")
+    .single();
+  if (error || !data) {
+    if (provider_routine_id) await deleteRoutine(provider_routine_id).catch(() => {});
+    return JSON.stringify({ error: "db_error", message: error?.message ?? "insert failed" });
+  }
+  return JSON.stringify({ ok: true, schedule_id: data.id, routine_id: data.provider_routine_id ?? null });
+}
+
+async function updateScheduleMcp(args: unknown): Promise<string> {
+  const parsed = UpdateScheduleSchema.safeParse(args);
+  if (!parsed.success) {
+    return JSON.stringify({ error: "validation_failed", details: parsed.error.flatten() });
+  }
+  const patch: Record<string, unknown> = {};
+  const p = parsed.data.patch;
+  if (p.agent_id !== undefined) patch.agent_id = p.agent_id;
+  if (p.business_id !== undefined) patch.business_id = p.business_id;
+  if (p.nav_node_id !== undefined) patch.nav_node_id = p.nav_node_id;
+  if (p.cron_expr !== undefined) patch.cron_expr = p.cron_expr;
+  if (p.title !== undefined) patch.title = p.title;
+  if (p.description !== undefined) patch.description = p.description;
+  if (p.instructions !== undefined) patch.instructions = p.instructions;
+  if (p.timezone !== undefined) patch.timezone = p.timezone;
+  if (p.enabled !== undefined) patch.enabled = p.enabled;
+  if (Object.keys(patch).length === 0) return JSON.stringify({ ok: true });
+
+  const { error } = await supabaseAio
+    .from("schedules")
+    .update(patch)
+    .eq("workspace_id", WORKSPACE_ID)
+    .eq("id", parsed.data.schedule_id);
+  if (error) return JSON.stringify({ error: "db_error", message: error.message });
+  return JSON.stringify({ ok: true, schedule_id: parsed.data.schedule_id });
+}
+
+async function toggleScheduleMcp(args: unknown): Promise<string> {
+  const parsed = ToggleScheduleSchema.safeParse(args);
+  if (!parsed.success) {
+    return JSON.stringify({ error: "validation_failed", details: parsed.error.flatten() });
+  }
+  const { error } = await supabaseAio
+    .from("schedules")
+    .update({ enabled: parsed.data.enabled })
+    .eq("workspace_id", WORKSPACE_ID)
+    .eq("id", parsed.data.schedule_id);
+  if (error) return JSON.stringify({ error: "db_error", message: error.message });
+  return JSON.stringify({ ok: true, schedule_id: parsed.data.schedule_id, enabled: parsed.data.enabled });
+}
+
+async function deleteScheduleMcp(args: unknown): Promise<string> {
+  const parsed = DeleteScheduleSchema.safeParse(args);
+  if (!parsed.success) {
+    return JSON.stringify({ error: "validation_failed", details: parsed.error.flatten() });
+  }
+  const { data: existing } = await supabaseAio
+    .from("schedules")
+    .select("provider_routine_id")
+    .eq("workspace_id", WORKSPACE_ID)
+    .eq("id", parsed.data.schedule_id)
+    .maybeSingle();
+  const routineId = (existing?.provider_routine_id as string | null) ?? null;
+  if (routineId) await deleteRoutine(routineId).catch(() => {});
+  const { error } = await supabaseAio
+    .from("schedules")
+    .delete()
+    .eq("workspace_id", WORKSPACE_ID)
+    .eq("id", parsed.data.schedule_id);
+  if (error) return JSON.stringify({ error: "db_error", message: error.message });
+  return JSON.stringify({ ok: true, schedule_id: parsed.data.schedule_id });
+}
+
+async function runScheduleNowMcp(args: unknown): Promise<string> {
+  const parsed = RunScheduleNowSchema.safeParse(args);
+  if (!parsed.success) {
+    return JSON.stringify({ error: "validation_failed", details: parsed.error.flatten() });
+  }
+  const { data: sched, error } = await supabaseAio
+    .from("schedules")
+    .select("id, workspace_id, agent_id, business_id, nav_node_id, instructions, enabled")
+    .eq("workspace_id", WORKSPACE_ID)
+    .eq("id", parsed.data.schedule_id)
+    .maybeSingle();
+  if (error) return JSON.stringify({ error: "db_error", message: error.message });
+  if (!sched) return JSON.stringify({ error: "not_found", message: "schedule_id not found." });
+  if (sched.enabled === false) {
+    return JSON.stringify({ error: "disabled", message: "Schedule is disabled. Enable it first or pass toggle_schedule enabled=true." });
+  }
+  const prompt =
+    parsed.data.prompt?.trim() ||
+    ((sched.instructions as string | null | undefined) ?? "").trim() ||
+    null;
+  const { data: run, error: runErr } = await supabaseAio
+    .from("runs")
+    .insert({
+      workspace_id: WORKSPACE_ID,
+      agent_id: sched.agent_id,
+      business_id: sched.business_id,
+      nav_node_id: sched.nav_node_id,
+      schedule_id: sched.id,
+      triggered_by: "manual",
+      status: "queued",
+      input: prompt ? { prompt } : null,
+    })
+    .select("id")
+    .single();
+  if (runErr || !run) {
+    return JSON.stringify({ error: "db_error", message: runErr?.message ?? "run insert failed" });
+  }
+  return JSON.stringify({
+    ok: true,
+    run_id: run.id,
+    status: "queued",
+    note: "Run row queued. The app dispatcher will pick it up through the normal queue/orphan handling; enable/toggle cron schedules for automatic firing.",
+  });
 }
 
 function randomSlug(len = 16): string {
@@ -1305,6 +1609,109 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         additionalProperties: false,
       },
     },
+    {
+      name: "list_schedules",
+      description:
+        "List cron/webhook/manual schedules in the current workspace. Defaults to the current MCP business/topic scope when available; pass business_id or nav_node_id to be explicit.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          business_id: { type: "string", format: "uuid" },
+          nav_node_id: { type: "string", format: "uuid" },
+          enabled: { type: "boolean" },
+          kind: { type: "string", enum: ["cron", "webhook", "manual"] },
+          limit: { type: "number", default: 50, minimum: 1, maximum: 100 },
+        },
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "create_cron_schedule",
+      description:
+        "Create a business/topic-scoped cron schedule for an agent. Uses the current business/topic scope by default; for subscription-Claude agents it creates an Anthropic Routine, otherwise local AIO cron picks it up.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          agent_id: { type: "string", format: "uuid" },
+          business_id: { type: "string", format: "uuid" },
+          nav_node_id: { type: "string", format: "uuid" },
+          cron_expr: { type: "string", description: "5-field cron expression, e.g. */15 * * * * or 0 9 * * 1-5." },
+          title: { type: "string", maxLength: 120 },
+          description: { type: "string", maxLength: 500 },
+          instructions: { type: "string", description: "Prompt/instructions used when the cron fires." },
+          timezone: { type: "string", default: "Europe/Amsterdam" },
+          enabled: { type: "boolean", default: true },
+        },
+        required: ["agent_id", "cron_expr", "instructions"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "update_schedule",
+      description:
+        "Edit an existing schedule's title, instructions, cron expression, agent, business/topic pin, timezone, or enabled state.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          schedule_id: { type: "string", format: "uuid" },
+          patch: {
+            type: "object",
+            properties: {
+              agent_id: { type: "string", format: "uuid" },
+              business_id: { type: "string", format: "uuid" },
+              nav_node_id: { type: "string", format: "uuid" },
+              cron_expr: { type: "string" },
+              title: { type: "string" },
+              description: { type: "string" },
+              instructions: { type: "string" },
+              timezone: { type: "string" },
+              enabled: { type: "boolean" },
+            },
+            additionalProperties: false,
+          },
+        },
+        required: ["schedule_id", "patch"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "toggle_schedule",
+      description: "Start/stop a schedule by setting enabled=true or enabled=false.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          schedule_id: { type: "string", format: "uuid" },
+          enabled: { type: "boolean" },
+        },
+        required: ["schedule_id", "enabled"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "delete_schedule",
+      description:
+        "Delete a schedule. If it has an Anthropic provider routine, the routine is deleted too.",
+      inputSchema: {
+        type: "object",
+        properties: { schedule_id: { type: "string", format: "uuid" } },
+        required: ["schedule_id"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "run_schedule_now",
+      description:
+        "Queue one immediate manual run using a schedule's stored instructions. Use toggle_schedule for starting/stopping recurring cron execution.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          schedule_id: { type: "string", format: "uuid" },
+          prompt: { type: "string", description: "Optional override prompt for this one run." },
+        },
+        required: ["schedule_id"],
+        additionalProperties: false,
+      },
+    },
   ],
 }));
 
@@ -1337,6 +1744,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       break;
     case "list_runs":
       result = await listRuns(args);
+      break;
+    case "list_schedules":
+      result = await listSchedules(args);
+      break;
+    case "create_cron_schedule":
+      result = await createCronScheduleMcp(args);
+      break;
+    case "update_schedule":
+      result = await updateScheduleMcp(args);
+      break;
+    case "toggle_schedule":
+      result = await toggleScheduleMcp(args);
+      break;
+    case "delete_schedule":
+      result = await deleteScheduleMcp(args);
+      break;
+    case "run_schedule_now":
+      result = await runScheduleNowMcp(args);
       break;
     case "publish_dashboard":
       result = await publishDashboard(args);

@@ -438,6 +438,9 @@ async function* streamMinimaxWithToolsAnthropic(
       if (opts.tenant?.workspaceId) {
         envOverrides.AIO_WORKSPACE_ID = opts.tenant.workspaceId;
       }
+      if (opts.tenant?.businessId) {
+        envOverrides.AIO_BUSINESS_ID = opts.tenant.businessId;
+      }
       if (opts.tenant?.navNodeId) {
         envOverrides.AIO_NAV_NODE_ID = opts.tenant.navNodeId;
       }
@@ -790,6 +793,9 @@ async function* streamMinimaxWithTools(
       const envOverrides: Record<string, string> = { MINIMAX_API_KEY: apiKey };
       if (opts.tenant?.workspaceId) {
         envOverrides.AIO_WORKSPACE_ID = opts.tenant.workspaceId;
+      }
+      if (opts.tenant?.businessId) {
+        envOverrides.AIO_BUSINESS_ID = opts.tenant.businessId;
       }
       if (opts.tenant?.navNodeId) {
         envOverrides.AIO_NAV_NODE_ID = opts.tenant.navNodeId;
