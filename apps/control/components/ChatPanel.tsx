@@ -687,8 +687,8 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 10,
-              padding: "12px 14px",
+              gap: 8,
+              padding: "10px 12px",
               borderBottom: "1px solid var(--app-border-2)",
             }}
           >
@@ -700,8 +700,8 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
                 background: "transparent",
                 border: "1.5px solid var(--app-border)",
                 color: "var(--app-fg-2)",
-                width: 28,
-                height: 28,
+                width: 30,
+                height: 30,
                 borderRadius: 6,
                 fontSize: 14,
                 cursor: "pointer",
@@ -713,7 +713,11 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
             </button>
             <span
               className="node brand"
-              style={{ ["--size" as string]: "28px", fontSize: 12 }}
+              style={{
+                ["--size" as string]: "30px",
+                fontSize: 12,
+                flexShrink: 0,
+              }}
             >
               AI
             </span>
@@ -732,8 +736,9 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
                 border: "1.5px solid var(--app-border)",
                 color: "var(--app-fg)",
                 borderRadius: 8,
-                padding: "5px 8px",
+                padding: "6px 8px",
                 fontSize: 12.5,
+                minWidth: 0,
               }}
             >
               {agents.map((a) => (
@@ -765,14 +770,18 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
             <button
               type="button"
               onClick={() => setOpen(false)}
+              title="Sluit chat"
               style={{
                 border: "1.5px solid var(--app-border)",
                 background: "transparent",
                 color: "var(--app-fg-2)",
                 borderRadius: 8,
-                fontSize: 12,
-                padding: "4px 8px",
+                fontSize: 16,
+                width: 30,
+                height: 30,
+                padding: 0,
                 cursor: "pointer",
+                flexShrink: 0,
               }}
             >
               ✕
@@ -924,7 +933,8 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
                 key={m.id}
                 style={{
                   alignSelf: m.role === "user" ? "flex-end" : "flex-start",
-                  maxWidth: "82%",
+                  width: m.role === "user" ? "auto" : "100%",
+                  maxWidth: m.role === "user" ? "82%" : "100%",
                   display: "flex",
                   flexDirection: "column",
                   gap: 6,
@@ -959,9 +969,13 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
                           : "1px solid var(--app-border-2)",
                       borderRadius: 12,
                       padding: "8px 11px",
-                      maxWidth: "80%",
+                      maxWidth:
+                        m.role === "user"
+                          ? "82%"
+                          : "calc(100% - 46px)",
                       whiteSpace: m.role === "assistant" ? "normal" : "pre-wrap",
                       lineHeight: 1.42,
+                      overflowWrap: "anywhere",
                     }}
                   >
                     {m.role === "assistant" && m.text ? (

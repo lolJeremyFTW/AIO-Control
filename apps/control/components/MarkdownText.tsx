@@ -12,6 +12,7 @@
 // Supported subset:
 //   - # / ## / ### headings
 //   - bullet lists (- foo, * foo) and numbered lists (1. foo)
+//   - simple markdown tables
 //   - paragraphs separated by blank lines
 //   - **bold**, *italic*, `inline code`, [link text](url)
 //   - ```code fences``` (no language hint styling)
@@ -41,6 +42,7 @@ type Block =
   | { kind: "h"; level: 1 | 2 | 3; text: string }
   | { kind: "ul"; items: string[] }
   | { kind: "ol"; items: string[] }
+  | { kind: "table"; headers: string[]; rows: string[][] }
   | { kind: "code"; text: string }
   | { kind: "quote"; text: string };
 
@@ -66,6 +68,19 @@ function splitBlocks(text: string): Block[] {
 
     if (!line.trim()) {
       i++;
+      continue;
+    }
+
+    if (isTableRow(line) && isTableDivider(lines[i + 1] ?? "")) {
+      const headers = parseTableRow(line);
+      i += 2;
+      const rows: string[][] = [];
+      while (i < lines.length && isTableRow(lines[i] ?? "")) {
+        const row = parseTableRow(lines[i] ?? "");
+        if (row.length > 0) rows.push(row);
+        i++;
+      }
+      blocks.push({ kind: "table", headers, rows });
       continue;
     }
 
@@ -180,6 +195,69 @@ function Block({ block }: { block: Block }) {
           ))}
         </ol>
       );
+    case "table":
+      return (
+        <div
+          style={{
+            margin: "0 0 8px",
+            overflowX: "auto",
+            border: "1px solid var(--app-border-2)",
+            borderRadius: 8,
+            background: "rgba(255,255,255,0.02)",
+          }}
+        >
+          <table
+            style={{
+              width: "100%",
+              minWidth: 320,
+              borderCollapse: "collapse",
+              fontSize: 12,
+              lineHeight: 1.45,
+            }}
+          >
+            <thead>
+              <tr>
+                {block.headers.map((header, i) => (
+                  <th
+                    key={i}
+                    style={{
+                      padding: "6px 8px",
+                      textAlign: "left",
+                      fontWeight: 800,
+                      color: "var(--app-fg)",
+                      borderBottom: "1px solid var(--app-border-2)",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <Inline text={header} />
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {block.rows.map((row, rowIndex) => (
+                <tr key={rowIndex}>
+                  {block.headers.map((_, cellIndex) => (
+                    <td
+                      key={cellIndex}
+                      style={{
+                        padding: "6px 8px",
+                        verticalAlign: "top",
+                        borderTop:
+                          rowIndex === 0
+                            ? "none"
+                            : "1px solid var(--app-border-2)",
+                      }}
+                    >
+                      <Inline text={row[cellIndex] ?? ""} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
     case "quote":
       return (
         <blockquote
@@ -222,6 +300,24 @@ function Block({ block }: { block: Block }) {
 // [text](url) using a single tokenizer pass so the patterns don't
 // fight each other. Anything that doesn't match falls through as
 // plain text (React escapes naturally — no XSS risk).
+function isTableRow(line: string): boolean {
+  return line.trim().startsWith("|") && line.includes("|", 1);
+}
+
+function isTableDivider(line: string): boolean {
+  const cells = parseTableRow(line);
+  return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/.test(cell));
+}
+
+function parseTableRow(line: string): string[] {
+  return line
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((cell) => cell.trim());
+}
+
 function Inline({ text }: { text: string }): ReactNode {
   const re = /(\*\*[^*\n]+\*\*|`[^`\n]+`|\[[^\]\n]+\]\([^)\s]+\)|\*[^*\n]+\*)/g;
   const parts = text.split(re);

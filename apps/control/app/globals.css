@@ -1752,7 +1752,7 @@ details[open] > div {
 .chat-panel {
   bottom: 84px;
   right: 18px;
-  width: 420px;
+  width: min(520px, calc(100vw - 36px));
   height: 540px;
   border-radius: 16px;
 }
