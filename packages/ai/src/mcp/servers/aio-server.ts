@@ -96,6 +96,12 @@ const ReadSecretSchema = z.object({
   name: z.string().min(1),
 });
 
+const BusinessOperatingSnapshotSchema = z.object({
+  business_id: z.string().uuid().optional(),
+  nav_node_id: z.string().uuid().nullable().optional(),
+  recent_runs_limit: z.coerce.number().int().min(1).max(50).optional().default(12),
+});
+
 const ListRunsSchema = z.object({
   business_id: z.string().uuid().optional(),
   nav_node_id: z.string().uuid().nullable().optional(),
@@ -194,6 +200,15 @@ const SendTelegramSchema = z.object({
   parse_mode: z.enum(["Markdown", "MarkdownV2", "HTML"]).optional().default("Markdown"),
 });
 
+const ProposeImprovementSchema = z.object({
+  title: z.string().min(3).max(160),
+  description: z.string().min(10).max(4000),
+  business_id: z.string().uuid().optional(),
+  nav_node_id: z.string().uuid().nullable().optional(),
+  expected_impact: z.string().max(1000).optional(),
+  evidence: z.string().max(2000).optional(),
+});
+
 const AIO_DASHBOARD_STYLE_GUIDE = `
 Use AIO Control dashboard styling only:
 - Return a dashboard fragment by default: one <main class="aio-dashboard">...</main> with optional scoped <style>. Do not build a standalone marketing page.
@@ -273,6 +288,246 @@ async function listBusinesses(): Promise<string> {
     });
   }
   return JSON.stringify({ businesses: data ?? [] });
+}
+
+type BusinessTarget = {
+  id?: string;
+  name?: string;
+  target?: string;
+  current?: string;
+  deadline?: string | null;
+  status?: "open" | "done" | "abandoned";
+  notes?: string;
+};
+
+function parseTargets(value: unknown): BusinessTarget[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
+    .map((item) => ({
+      id: typeof item.id === "string" ? item.id : undefined,
+      name: typeof item.name === "string" ? item.name : undefined,
+      target: typeof item.target === "string" ? item.target : undefined,
+      current: typeof item.current === "string" ? item.current : undefined,
+      deadline:
+        typeof item.deadline === "string" || item.deadline === null
+          ? item.deadline
+          : undefined,
+      status:
+        item.status === "done" || item.status === "abandoned"
+          ? item.status
+          : "open",
+      notes: typeof item.notes === "string" ? item.notes : undefined,
+    }));
+}
+
+function asNumber(value: unknown): number {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+async function resolveOperatingScope(input: {
+  business_id?: string;
+  nav_node_id?: string | null;
+}): Promise<{ business_id: string; nav_node_id: string | null } | { error: string }> {
+  const navNodeId =
+    input.nav_node_id === null
+      ? null
+      : input.nav_node_id ?? (CURRENT_NAV_NODE_ID || null);
+  let businessId = input.business_id ?? (CURRENT_BUSINESS_ID || null);
+
+  if (navNodeId) {
+    const { data: node, error } = await supabaseAio
+      .from("nav_nodes")
+      .select("id, business_id")
+      .eq("workspace_id", WORKSPACE_ID)
+      .eq("id", navNodeId)
+      .maybeSingle();
+    if (error) return { error: error.message };
+    if (!node) return { error: "nav_node_id not found in current workspace." };
+    const nodeBusinessId = node.business_id as string;
+    if (businessId && businessId !== nodeBusinessId) {
+      return { error: "nav_node_id belongs to a different business_id." };
+    }
+    businessId = nodeBusinessId;
+  }
+
+  if (businessId) {
+    const { data: business, error } = await supabaseAio
+      .from("businesses")
+      .select("id")
+      .eq("workspace_id", WORKSPACE_ID)
+      .eq("id", businessId)
+      .is("archived_at", null)
+      .maybeSingle();
+    if (error) return { error: error.message };
+    if (!business) return { error: "business_id not found in current workspace." };
+    return { business_id: businessId, nav_node_id: navNodeId };
+  }
+
+  const { data: businesses, error } = await supabaseAio
+    .from("businesses")
+    .select("id")
+    .eq("workspace_id", WORKSPACE_ID)
+    .is("archived_at", null)
+    .limit(2);
+  if (error) return { error: error.message };
+  if ((businesses ?? []).length === 1) {
+    return { business_id: businesses![0]!.id as string, nav_node_id: navNodeId };
+  }
+  return {
+    error:
+      "business_id is required because this workspace has multiple businesses and the agent is not business-scoped.",
+  };
+}
+
+async function getBusinessOperatingSnapshot(args: unknown): Promise<string> {
+  const parsed = BusinessOperatingSnapshotSchema.safeParse(args);
+  if (!parsed.success) {
+    return JSON.stringify({
+      error: "validation_failed",
+      details: parsed.error.flatten(),
+    });
+  }
+
+  const scope = await resolveOperatingScope({
+    business_id: parsed.data.business_id,
+    nav_node_id: parsed.data.nav_node_id,
+  });
+  if ("error" in scope) {
+    return JSON.stringify({ error: "scope_error", message: scope.error });
+  }
+
+  let runsQuery = supabaseAio
+    .from("runs")
+    .select(
+      "id, agent_id, schedule_id, nav_node_id, triggered_by, status, created_at, started_at, ended_at, duration_ms, cost_cents, error_text",
+    )
+    .eq("workspace_id", WORKSPACE_ID)
+    .eq("business_id", scope.business_id)
+    .order("created_at", { ascending: false })
+    .limit(parsed.data.recent_runs_limit);
+  if (scope.nav_node_id) runsQuery = runsQuery.eq("nav_node_id", scope.nav_node_id);
+
+  let schedulesQuery = supabaseAio
+    .from("schedules")
+    .select(
+      "id, agent_id, business_id, nav_node_id, kind, cron_expr, enabled, last_fired_at, title, description, instructions, timezone",
+    )
+    .eq("workspace_id", WORKSPACE_ID)
+    .eq("business_id", scope.business_id)
+    .order("created_at", { ascending: false })
+    .limit(50);
+  if (scope.nav_node_id) {
+    schedulesQuery = schedulesQuery.eq("nav_node_id", scope.nav_node_id);
+  }
+
+  let queueQuery = supabaseAio
+    .from("queue_items")
+    .select("id, nav_node_id, state, confidence, title, created_at")
+    .eq("workspace_id", WORKSPACE_ID)
+    .eq("business_id", scope.business_id)
+    .is("resolved_at", null)
+    .order("created_at", { ascending: false })
+    .limit(20);
+  if (scope.nav_node_id) queueQuery = queueQuery.eq("nav_node_id", scope.nav_node_id);
+
+  const [businessRes, kpiRes, agentsRes, schedulesRes, runsRes, queueRes] =
+    await Promise.all([
+      supabaseAio
+        .from("businesses")
+        .select(
+          "id, name, sub, slug, status, description, mission, targets, daily_spend_limit_cents, monthly_spend_limit_cents",
+        )
+        .eq("workspace_id", WORKSPACE_ID)
+        .eq("id", scope.business_id)
+        .maybeSingle(),
+      supabaseAio
+        .from("business_kpis_view")
+        .select("period, usage_eur, revenue_eur, runs_count")
+        .eq("workspace_id", WORKSPACE_ID)
+        .eq("business_id", scope.business_id),
+      supabaseAio
+        .from("agents")
+        .select("id, name, kind, provider, model, business_id, nav_node_id")
+        .eq("workspace_id", WORKSPACE_ID)
+        .eq("business_id", scope.business_id)
+        .is("archived_at", null)
+        .order("created_at", { ascending: true }),
+      schedulesQuery,
+      runsQuery,
+      queueQuery,
+    ]);
+
+  if (businessRes.error) {
+    return JSON.stringify({ error: "db_error", message: businessRes.error.message });
+  }
+  if (!businessRes.data) {
+    return JSON.stringify({ error: "not_found", message: "business not found." });
+  }
+  for (const res of [kpiRes, agentsRes, schedulesRes, runsRes, queueRes]) {
+    if (res.error) {
+      return JSON.stringify({ error: "db_error", message: res.error.message });
+    }
+  }
+
+  const targets = parseTargets((businessRes.data as Record<string, unknown>).targets);
+  const activeTargets = targets.filter((target) => (target.status ?? "open") === "open");
+  const doneTargets = targets.filter((target) => target.status === "done");
+  const kpis = ((kpiRes.data ?? []) as Array<Record<string, unknown>>).map((row) => ({
+    period: row.period,
+    usage_eur: asNumber(row.usage_eur),
+    revenue_eur: asNumber(row.revenue_eur),
+    runs_count: asNumber(row.runs_count),
+  }));
+  const kpiByPeriod = new Map(kpis.map((row) => [String(row.period), row]));
+  const k30 = kpiByPeriod.get("30D");
+  const k7 = kpiByPeriod.get("7D");
+  const k24 = kpiByPeriod.get("24H");
+  const runs = (runsRes.data ?? []) as Array<Record<string, unknown>>;
+  const failedRecent = runs.filter((run) => run.status === "failed").length;
+  const runningRecent = runs.filter((run) => run.status === "running").length;
+  const queuedRecent = runs.filter((run) => run.status === "queued").length;
+
+  return JSON.stringify({
+    scope,
+    business: businessRes.data,
+    targets: {
+      active: activeTargets,
+      done: doneTargets,
+      all: targets,
+    },
+    kpis,
+    summary: {
+      revenue_30d_eur: k30?.revenue_eur ?? 0,
+      ai_cost_30d_eur: k30?.usage_eur ?? 0,
+      margin_30d_eur: (k30?.revenue_eur ?? 0) - (k30?.usage_eur ?? 0),
+      revenue_7d_eur: k7?.revenue_eur ?? 0,
+      ai_cost_7d_eur: k7?.usage_eur ?? 0,
+      runs_24h: k24?.runs_count ?? 0,
+      open_target_count: activeTargets.length,
+      open_queue_count: (queueRes.data ?? []).length,
+      recent_failed_runs: failedRecent,
+      recent_running_runs: runningRecent,
+      recent_queued_runs: queuedRecent,
+    },
+    agents: agentsRes.data ?? [],
+    schedules: schedulesRes.data ?? [],
+    recent_runs: runs,
+    open_queue: queueRes.data ?? [],
+    control_loop_contract: {
+      purpose:
+        "Use this snapshot at the start of each main-loop run to plan against targets and KPIs.",
+      cycle:
+        "Pick one bottleneck, take one safe action or create one concrete proposal, then stop. Do not start an infinite loop inside a run.",
+      safe_actions: [
+        "publish_dashboard or send_telegram_message with a concise status report",
+        "update/toggle/create schedules only when the agent has aio read-write permission",
+        "propose_improvement, when available, for new agents, skills, integrations, dashboards, or risky strategy changes",
+        "request human review or report back if the next action is high-risk or needs operator judgement",
+      ],
+    },
+  });
 }
 
 async function listAgents(
@@ -1317,6 +1572,93 @@ async function sendTelegramMessage(args: unknown): Promise<string> {
 
 // ── MCP Server setup ─────────────────────────────────────────────────────────
 
+async function proposeImprovement(args: unknown): Promise<string> {
+  const parsed = ProposeImprovementSchema.safeParse(args);
+  if (!parsed.success) {
+    return JSON.stringify({
+      error: "validation_failed",
+      details: parsed.error.flatten(),
+    });
+  }
+
+  const shouldResolveScope =
+    Boolean(parsed.data.business_id) ||
+    parsed.data.nav_node_id !== undefined ||
+    Boolean(CURRENT_BUSINESS_ID) ||
+    Boolean(CURRENT_NAV_NODE_ID);
+  const scope = shouldResolveScope
+    ? await resolveOperatingScope({
+        business_id: parsed.data.business_id,
+        nav_node_id: parsed.data.nav_node_id,
+      })
+    : null;
+  if (scope && "error" in scope) {
+    return JSON.stringify({ error: "scope_error", message: scope.error });
+  }
+
+  const title = parsed.data.title.trim();
+  const sections = [
+    parsed.data.description.trim(),
+    parsed.data.expected_impact
+      ? `Expected impact:\n${parsed.data.expected_impact.trim()}`
+      : "",
+    parsed.data.evidence ? `Evidence:\n${parsed.data.evidence.trim()}` : "",
+    scope
+      ? `Scope:\nbusiness_id=${scope.business_id}${
+          scope.nav_node_id ? `\nnav_node_id=${scope.nav_node_id}` : ""
+        }`
+      : "",
+  ].filter(Boolean);
+
+  const { data: existing, error: existingError } = await supabaseAio
+    .from("improvements")
+    .select("id, status")
+    .eq("workspace_id", WORKSPACE_ID)
+    .eq("title", title)
+    .in("status", ["proposed", "approved"])
+    .maybeSingle();
+  if (existingError) {
+    return JSON.stringify({ error: "db_error", message: existingError.message });
+  }
+  if (existing) {
+    return JSON.stringify({
+      ok: true,
+      improvement_id: existing.id,
+      status: existing.status,
+      duplicate: true,
+    });
+  }
+
+  const { data, error } = await supabaseAio
+    .from("improvements")
+    .insert({
+      workspace_id: WORKSPACE_ID,
+      title,
+      description: sections.join("\n\n"),
+      status: "proposed",
+    })
+    .select("id")
+    .single();
+  if (error || !data) {
+    return JSON.stringify({
+      error: "db_error",
+      message: error?.message ?? "improvement insert failed",
+    });
+  }
+
+  const { data: workspace } = await supabaseAio
+    .from("workspaces")
+    .select("slug")
+    .eq("id", WORKSPACE_ID)
+    .maybeSingle();
+  return JSON.stringify({
+    ok: true,
+    improvement_id: data.id,
+    status: "proposed",
+    path: workspace?.slug ? `/${workspace.slug}/self-improving` : null,
+  });
+}
+
 const server = new Server(
   { name: "aio-control", version: "1.0.0" },
   { capabilities: { tools: {} } },
@@ -1331,6 +1673,35 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       inputSchema: {
         type: "object",
         properties: {},
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "get_business_operating_snapshot",
+      description:
+        "Get the closed-loop operating snapshot for a business/topic: business context, active targets, KPI periods, agents, schedules, recent runs, and open review queue. Use this at the start of business/topic main-loop runs.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          business_id: {
+            type: "string",
+            format: "uuid",
+            description:
+              "Optional business UUID. Defaults to the current MCP business scope when available.",
+          },
+          nav_node_id: {
+            type: ["string", "null"],
+            format: "uuid",
+            description:
+              "Optional topic/nav-node UUID. Omit to use the current topic scope; pass null for whole-business view.",
+          },
+          recent_runs_limit: {
+            type: "number",
+            default: 12,
+            minimum: 1,
+            maximum: 50,
+          },
+        },
         additionalProperties: false,
       },
     },
@@ -1725,6 +2096,34 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         additionalProperties: false,
       },
     },
+    {
+      name: "propose_improvement",
+      description:
+        "Create a safe self-improvement proposal for the operator to approve later. Use this for new agents, skills, integrations, strategy changes, or risky automation changes instead of silently mutating the system.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          title: { type: "string", maxLength: 160 },
+          description: { type: "string", maxLength: 4000 },
+          business_id: {
+            type: "string",
+            format: "uuid",
+            description:
+              "Optional business UUID. Defaults to current MCP business scope when available.",
+          },
+          nav_node_id: {
+            type: ["string", "null"],
+            format: "uuid",
+            description:
+              "Optional topic/nav-node UUID. Omit for current topic; pass null for business/workspace level.",
+          },
+          expected_impact: { type: "string", maxLength: 1000 },
+          evidence: { type: "string", maxLength: 2000 },
+        },
+        required: ["title", "description"],
+        additionalProperties: false,
+      },
+    },
   ],
 }));
 
@@ -1738,6 +2137,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   switch (name) {
     case "list_businesses":
       result = await listBusinesses();
+      break;
+    case "get_business_operating_snapshot":
+      result = await getBusinessOperatingSnapshot(args);
       break;
     case "list_agents":
       result = await listAgents(args);
@@ -1775,6 +2177,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       break;
     case "run_schedule_now":
       result = await runScheduleNowMcp(args);
+      break;
+    case "propose_improvement":
+      result = await proposeImprovement(args);
       break;
     case "publish_dashboard":
       result = await publishDashboard(args);

@@ -30,6 +30,7 @@ const MCP_TOOL_CATALOGUE: Record<string, { description: string; tools: string[] 
     description: "AIO Control platform — agents, businesses, runs, Telegram notificaties, dashboards/tabs aanmaken",
     tools: [
       "list_businesses",
+      "get_business_operating_snapshot",
       "list_nav_nodes",
       "resolve_topic",
       "list_agents",
@@ -45,6 +46,7 @@ const MCP_TOOL_CATALOGUE: Record<string, { description: string; tools: string[] 
       "toggle_schedule",
       "delete_schedule",
       "run_schedule_now",
+      "propose_improvement",
     ],
   },
   fetch: {
@@ -79,6 +81,7 @@ const MCP_TOOL_CATALOGUE: Record<string, { description: string; tools: string[] 
 
 const AIO_READ_ONLY_TOOLS = new Set([
   "list_businesses",
+  "get_business_operating_snapshot",
   "list_nav_nodes",
   "resolve_topic",
   "list_agents",
@@ -507,6 +510,17 @@ export async function buildAgentSystemPrompt(
         lines.push(`- ${t.name ?? ""} ${t.target ? `(${t.target})` : ""}`);
       }
     }
+    lines.push("");
+    lines.push("## Target/KPI operating loop");
+    lines.push(
+      "- Als je als business-ops, growth-loop of topic-loop agent draait: start je run met de AIO tool `aio__get_business_operating_snapshot` wanneer die beschikbaar is.",
+    );
+    lines.push(
+      "- Gebruik targets als richting en KPI's/runs/schedules als feedback. Kies per run 1 bottleneck, voer 1 veilige actie uit of maak 1 concreet voorstel, en stop daarna.",
+    );
+    lines.push(
+      "- Voor nieuwe agents, skills, integraties of risicovolle wijzigingen: gebruik `aio__propose_improvement` wanneer AIO read-write beschikbaar is, of rapporteer het voorstel in plaats van stil de architectuur te veranderen.",
+    );
   }
 
   const navNode = navNodeRes.data as

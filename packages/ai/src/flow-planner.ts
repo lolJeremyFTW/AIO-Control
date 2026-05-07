@@ -327,6 +327,8 @@ Belangrijke AIO Control beperkingen:
 - Agent keys, skill keys en topic keys moeten slug-achtig en uniek zijn, bijvoorbeeld "lead_ops", "market_research", "content_calendar".
 - Handoffs verwijzen naar andere agent keys. Gebruik ze alleen voor duidelijke pipelines.
 - Schedules moeten praktisch zijn; maak niet meer cron jobs dan nodig.
+- Voeg meestal 1 lead/main-loop agent toe voor de business of het belangrijkste topic. Die agent gebruikt AIO MCP met get_business_operating_snapshot om targets, KPIs, runs en schedules te lezen, plant in korte cycli, en gebruikt propose_improvement voor nieuwe agents/skills of risicovolle wijzigingen.
+- Main-loop schedules moeten korte control loops zijn (bijv. elk uur of dagelijks), geen oneindige 24/7 run. Elke run kiest 1 bottleneck, doet 1 veilige actie of maakt 1 voorstel, en stopt.
 
 Ontwerp compact maar compleet. Vermijd fantasie-API's. Maak liever een haalbare eerste versie met duidelijke uitbreidpunten.`;
 }

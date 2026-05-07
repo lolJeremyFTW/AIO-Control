@@ -56,6 +56,7 @@ const WRITE_TOOL_PATTERNS = [
 
 const AIO_READ_TOOL_NAMES = new Set([
   "list_businesses",
+  "get_business_operating_snapshot",
   "list_nav_nodes",
   "resolve_topic",
   "list_agents",
