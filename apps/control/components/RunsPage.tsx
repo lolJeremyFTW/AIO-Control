@@ -41,6 +41,8 @@ type Props = {
   statusFilter: string | null;
   agentFilter: string | null;
   offset: number;
+  /** When set, restrict runs to those tagged with this nav_node UUID. */
+  navNodeId?: string | null;
 };
 
 const PAGE_SIZE = 25;
@@ -53,6 +55,7 @@ export function RunsPage({
   businessName,
   statusFilter,
   agentFilter,
+  navNodeId,
 }: Props) {
   const router = useRouter();
   const search = useSearchParams();
@@ -85,6 +88,7 @@ export function RunsPage({
     else params.set("workspace", workspaceId);
     if (statusFilter) params.set("status", statusFilter);
     if (agentFilter) params.set("agent", agentFilter);
+    if (navNodeId) params.set("navNode", navNodeId);
     const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
     fetch(`${base}/api/runs?${params.toString()}`, { signal: ctl.signal })
       .then(async (res) => {
@@ -104,7 +108,7 @@ export function RunsPage({
       })
       .finally(() => setLoading(false));
     return () => ctl.abort();
-  }, [businessId, workspaceId, statusFilter, agentFilter, offset, tick]);
+  }, [businessId, workspaceId, statusFilter, agentFilter, navNodeId, offset, tick]);
 
   // Live updates: re-fetch the visible page whenever a runs row changes
   // in this business/workspace scope. Same channel pattern as

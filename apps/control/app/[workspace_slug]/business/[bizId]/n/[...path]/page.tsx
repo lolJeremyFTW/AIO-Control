@@ -3,6 +3,10 @@
 // node's children + a "+ Sub" button. If the deepest node has an
 // `href` set, we render a "Open externe app →" link too — that's how
 // nav_nodes can absorb existing Next.js apps as zones.
+//
+// Recognised sub-routes at the end of the path:
+//   /agents  → agents assigned to this topic (nav_node_id FK)
+//   /runs    → runs tagged with this topic
 
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
@@ -13,18 +17,29 @@ import {
   getCurrentUser,
   getWorkspaceBySlug,
 } from "../../../../../../lib/auth/workspace";
+import { resolveApiKey } from "../../../../../../lib/api-keys/resolve";
+import { getDict } from "../../../../../../lib/i18n/server";
 import { listAgentsForWorkspace } from "../../../../../../lib/queries/agents";
 import { listBusinesses, findBusiness } from "../../../../../../lib/queries/businesses";
 import {
   listNavNodes,
+  listFlatNavNodes,
   resolveNavPathBySlugs,
 } from "../../../../../../lib/queries/nav-nodes";
+import { listSkillsForWorkspace } from "../../../../../../lib/queries/skills";
+import { AgentsList } from "../../../../../../components/AgentsList";
 import { GenerateDashboardCard } from "../../../../../../components/GenerateDashboardCard";
 import { NewNavNodeButton } from "../../../../../../components/NewNavNodeButton";
+import { RunsPage } from "../../../../../../components/RunsPage";
 import { SavedModuleDashboard } from "../../../../../../components/SavedModuleDashboard";
 import { TopicDashboard } from "../../../../../../components/TopicDashboard";
 import { TopicRoutinesList } from "../../../../../../components/TopicRoutinesList";
+import { TopicTabs } from "../../../../../../components/TopicTabs";
 import { getModuleDashboard } from "../../../../../../lib/queries/dashboards";
+import { createSupabaseServerClient } from "../../../../../../lib/supabase/server";
+
+const TOPIC_SUBROUTES = ["agents", "runs"] as const;
+type TopicSubroute = (typeof TOPIC_SUBROUTES)[number];
 
 type Props = {
   params: Promise<{
@@ -32,10 +47,12 @@ type Props = {
     bizId: string;
     path: string[];
   }>;
+  searchParams: Promise<{ status?: string; agent?: string; offset?: string }>;
 };
 
-export default async function NavNodePage({ params }: Props) {
+export default async function NavNodePage({ params, searchParams }: Props) {
   const { workspace_slug, bizId, path } = await params;
+  const sp = await searchParams;
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
@@ -49,67 +66,141 @@ export default async function NavNodePage({ params }: Props) {
   const biz = findBusiness(businesses, bizId);
   if (!biz) notFound();
 
+  // Detect reserved sub-route at the end of the path.
+  const lastSeg = path[path.length - 1];
+  const subRoute: TopicSubroute | null = (
+    TOPIC_SUBROUTES as readonly string[]
+  ).includes(lastSeg)
+    ? (lastSeg as TopicSubroute)
+    : null;
+  const navPath = subRoute ? path.slice(0, -1) : path;
+
+  // Require at least one nav segment (sub-route alone → 404).
+  if (navPath.length === 0) notFound();
+
   // path now contains slugs; resolve to actual NavNode objects using biz.id (UUID)
-  const chain = await resolveNavPathBySlugs(biz.id, path);
-  if (chain.length !== path.length) notFound();
+  const chain = await resolveNavPathBySlugs(biz.id, navPath);
+  if (chain.length !== navPath.length) notFound();
   const current = chain[chain.length - 1];
+
+  const baseHref = `/${workspace.slug}/business/${biz.slug}`;
+  const topicBaseHref = `${baseHref}/n/${navPath.join("/")}`;
+
+  // ── Agents sub-route ────────────────────────────────────────────────
+  if (subRoute === "agents") {
+    const supabase = await createSupabaseServerClient();
+    const [skills, { data: telegramRows }, { data: customRows }, { data: wsDefaults }, navOptions, { t }] =
+      await Promise.all([
+        listSkillsForWorkspace(workspace.id),
+        supabase
+          .from("telegram_targets")
+          .select("id, name")
+          .eq("workspace_id", workspace.id)
+          .eq("enabled", true),
+        supabase
+          .from("custom_integrations")
+          .select("id, name")
+          .eq("workspace_id", workspace.id)
+          .eq("enabled", true),
+        supabase
+          .from("workspaces")
+          .select("default_provider, default_model, default_system_prompt")
+          .eq("id", workspace.id)
+          .maybeSingle(),
+        listFlatNavNodes(biz.id),
+        getDict(),
+      ]);
+
+    const topicAgents = allAgents.filter((a) => a.nav_node_id === current.id);
+    const uniqueProviders = Array.from(new Set(topicAgents.map((a) => a.provider)));
+    const providerKeyStatus: Record<string, boolean> = {};
+    await Promise.all(
+      uniqueProviders.map(async (p) => {
+        const k = await resolveApiKey(p, {
+          workspaceId: workspace.id,
+          businessId: biz.id,
+        });
+        providerKeyStatus[p] = !!k;
+      }),
+    );
+
+    return (
+      <div className="content">
+        <TopicTabs baseHref={topicBaseHref} topicName={current.name} />
+        <div className="page-title-row">
+          <h1>Agents — {current.name}</h1>
+          <span className="sub">{t("page.business.agents.sub")}</span>
+        </div>
+        <AgentsList
+          workspaceSlug={workspace.slug}
+          workspaceId={workspace.id}
+          businessId={biz.id}
+          agents={topicAgents}
+          providerKeyStatus={providerKeyStatus}
+          telegramTargets={(telegramRows ?? []) as { id: string; name: string }[]}
+          customIntegrations={
+            (customRows ?? []) as { id: string; name: string }[]
+          }
+          workspaceDefaults={{
+            provider: (wsDefaults?.default_provider as string | null) ?? null,
+            model: (wsDefaults?.default_model as string | null) ?? null,
+            systemPrompt:
+              (wsDefaults?.default_system_prompt as string | null) ?? null,
+          }}
+          navOptions={navOptions}
+          availableSkills={skills.map((s) => ({
+            id: s.id,
+            name: s.name,
+            description: s.description,
+          }))}
+        />
+      </div>
+    );
+  }
+
+  // ── Runs sub-route ──────────────────────────────────────────────────
+  if (subRoute === "runs") {
+    const businessAgents = allAgents.filter((a) => a.business_id === biz.id);
+    return (
+      <div className="content">
+        <TopicTabs baseHref={topicBaseHref} topicName={current.name} />
+        <div className="page-title-row">
+          <h1>Runs — {current.name}</h1>
+          <span className="sub">Alle runs gekoppeld aan dit topic</span>
+        </div>
+        <RunsPage
+          workspaceSlug={workspace.slug}
+          workspaceId={workspace.id}
+          businessId={biz.id}
+          agents={businessAgents}
+          businessName={Object.fromEntries(businesses.map((b) => [b.id, b.name]))}
+          statusFilter={sp.status ?? null}
+          agentFilter={sp.agent ?? null}
+          offset={Number(sp.offset ?? 0)}
+          navNodeId={current.id}
+        />
+      </div>
+    );
+  }
+
+  // ── Overview (default) ──────────────────────────────────────────────
   const [children, savedDashboard] = await Promise.all([
     current ? listNavNodes(biz.id, current.id) : Promise.resolve([]),
     current ? getModuleDashboard(current.id) : Promise.resolve(null),
   ]);
 
-  const baseHref = `/${workspace.slug}/business/${biz.slug}`;
   const breadcrumb = [
     { name: biz.name, href: baseHref, icon: biz.icon },
     ...chain.map((n, i) => ({
       name: n.name,
       icon: n.icon,
-      href: `${baseHref}/n/${path.slice(0, i + 1).join("/")}`,
+      href: `${baseHref}/n/${navPath.slice(0, i + 1).join("/")}`,
     })),
   ];
 
   return (
     <div className="content">
-      {/* Business context banner — mirrors the page-title-row on other
-          business sub-pages so the user always knows which business
-          they're in when drilling into a topic. */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          marginBottom: 16,
-          padding: "10px 14px",
-          background: "var(--app-card)",
-          border: "1.5px solid var(--app-border)",
-          borderRadius: 12,
-        }}
-      >
-        <span
-          className={`node ${biz.variant}`}
-          style={{ ["--size" as string]: "32px", fontSize: 14, flexShrink: 0 }}
-        >
-          {biz.letter}
-        </span>
-        <div style={{ minWidth: 0 }}>
-          <Link
-            href={baseHref}
-            style={{
-              fontWeight: 700,
-              fontSize: 14,
-              color: "var(--app-fg)",
-              textDecoration: "none",
-            }}
-          >
-            {biz.name}
-          </Link>
-          {biz.sub && (
-            <div style={{ fontSize: 11.5, color: "var(--app-fg-3)", marginTop: 1 }}>
-              {biz.sub}
-            </div>
-          )}
-        </div>
-      </div>
+      <TopicTabs baseHref={topicBaseHref} topicName={current?.name ?? ""} />
 
       <div
         style={{
@@ -128,11 +219,6 @@ export default async function NavNodePage({ params }: Props) {
             style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
           >
             {i > 0 && <span>›</span>}
-            {/* b.icon holds a registry key (e.g. "chat") — never
-                an emoji glyph. Rendering it as text leaks "chat
-                Outreach" into the breadcrumb. We only render the
-                name; the SVG icon already lives next to the same
-                node in the rail. */}
             {i < breadcrumb.length - 1 ? (
               <Link
                 href={b.href}
@@ -150,9 +236,6 @@ export default async function NavNodePage({ params }: Props) {
       </div>
 
       <div className="page-title-row">
-        {/* Same reasoning as the business root page: icon is a
-            registry-key string, not a glyph — render only the name
-            so we don't leak "video Faceless YouTube" into the h1. */}
         <h1>{current?.name}</h1>
         <span className="sub">{current?.sub ?? "Sub-navigation"}</span>
       </div>
@@ -227,7 +310,7 @@ export default async function NavNodePage({ params }: Props) {
         {children.map((c) => (
           <Link
             key={c.id}
-            href={`${baseHref}/n/${[...path, c.slug].join("/")}`}
+            href={`${baseHref}/n/${[...navPath, c.slug].join("/")}`}
             style={{
               border: "1.5px solid var(--app-border)",
               borderRadius: 14,
@@ -246,11 +329,6 @@ export default async function NavNodePage({ params }: Props) {
                 fontSize: c.icon ? 18 : 14,
               }}
             >
-              {/* Render registered icons through the icon component
-                  registry so they pick up the variant's foreground
-                  color via currentColor. Used to render the literal
-                  string "folder" which showed up as black text on the
-                  variant background. */}
               {getAppIcon(c.icon, 20) ?? c.letter}
             </span>
             <div style={{ minWidth: 0 }}>
@@ -271,11 +349,9 @@ export default async function NavNodePage({ params }: Props) {
         businessId={biz.id}
         parentId={current?.id ?? null}
         label={
-          path.length === 0
-            ? "+ Nieuwe topic"
-            : path.length === 1
-              ? "+ Nieuwe module"
-              : "+ Nieuwe sub-module"
+          navPath.length === 1
+            ? "+ Nieuwe module"
+            : "+ Nieuwe sub-module"
         }
       />
     </div>
