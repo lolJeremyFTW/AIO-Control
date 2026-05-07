@@ -365,7 +365,7 @@ body[data-theme="light"] .node.dashed {
 }
 body[data-theme="light"] .node.selected {
   box-shadow:
-    0 0 0 2.5px var(--rail-light),
+    0 0 0 2.5px #fff,
     0 0 0 4px var(--tt-green),
     0 0 22px 4px var(--tt-green-glow);
 }
