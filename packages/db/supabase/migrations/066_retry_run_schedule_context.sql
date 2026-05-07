@@ -13,10 +13,10 @@ SELECT
   workspace_id,
   agent_id,
   business_id,
-  schedule_id,
-  nav_node_id,
   attempt,
-  max_attempts
+  max_attempts,
+  schedule_id,
+  nav_node_id
 FROM aio_control.runs
 WHERE status = 'failed'
   AND next_retry_at IS NOT NULL
