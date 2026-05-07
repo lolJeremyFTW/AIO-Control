@@ -80,7 +80,7 @@ const TROMPTECH_PC_HOST =
   "100.118.157.123";
 const PLAYWRIGHT_BROWSER_EXECUTABLE_PATH =
   process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ??
-  `${process.env.HOME ?? "/home/jeremy"}/.cache/ms-playwright/chromium-1217/chrome-linux64/chrome`;
+  "/home/jeremy/.cache/ms-playwright/chromium-1217/chrome-linux64/chrome";
 
 function firecrawlEnv(apiUrl: string): Record<string, string> {
   return {
