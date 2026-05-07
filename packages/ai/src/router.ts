@@ -40,8 +40,8 @@ export interface AgentConfig {
   };
   endpoint?: string; // for openclaw / hermes / custom HTTP
   headers?: Record<string, string>;
-  /** Maximum number of tool-call hops before the loop stops. Only
-   *  honoured by the MiniMax provider. Falls back to the
+  /** Maximum number of tool-call hops before the loop stops. Honoured
+   *  by native MCP-loop providers. Falls back to the
    *  AGENT_MAX_HOPS env var (default 150) when absent. */
   maxHops?: number;
   /**

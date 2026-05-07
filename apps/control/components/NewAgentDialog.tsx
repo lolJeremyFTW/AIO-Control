@@ -350,6 +350,8 @@ export function NewAgentDialog({
             chat draait op de ingelogde gebruiker; cron/webhook runs gebruiken
             de workspace-owner login. Image generation valt terug op een
             owner-scoped OpenAI API key als Codex OAuth het niet ondersteunt.
+            MCP servers die je hieronder aanvinkt draaien via de native AIO
+            MCP-loop, inclusief AIO dashboard-publicatie.
           </Hint>
         )}
 

@@ -35,7 +35,7 @@ export function GenerateDashboardCard({
   const disabledTitle =
     agents.length === 0
       ? "Eerst een agent in deze business aanmaken"
-      : "Kies Claude/MiniMax met AIO MCP of OpenClaw/Hermes met lokale MCPs";
+      : "Kies Claude/MiniMax/Codex met AIO MCP of OpenClaw/Hermes met lokale MCPs";
 
   return (
     <>
@@ -117,8 +117,8 @@ export function GenerateDashboardCard({
                 textAlign: "right",
               }}
             >
-              Gebruik Claude/MiniMax met "AIO Control" op Read + Write, of
-              OpenClaw/Hermes met lokaal geconfigureerde MCPs.
+              Gebruik Claude/MiniMax/Codex met "AIO Control" op Read + Write,
+              of OpenClaw/Hermes met lokaal geconfigureerde MCPs.
             </span>
           )}
         </div>
@@ -388,7 +388,11 @@ function isDashboardCapableAgent(agent: AgentRow): boolean {
   if (agent.provider === "openclaw" || agent.provider === "hermes") {
     return true;
   }
-  if (agent.provider !== "claude" && agent.provider !== "minimax") {
+  if (
+    agent.provider !== "claude" &&
+    agent.provider !== "minimax" &&
+    agent.provider !== "openai_codex"
+  ) {
     return false;
   }
   const config = (agent.config ?? {}) as AgentMcpConfig;
