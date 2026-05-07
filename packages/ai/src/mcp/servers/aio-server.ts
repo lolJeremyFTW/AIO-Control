@@ -38,9 +38,8 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   db: { schema: "public" },
 });
 
-// Tables/RPCs live in the aio_control schema; we keep a separate client
-// pinned there for telegram routing + key resolution. The default
-// `public`-schema client above handles the legacy read tools.
+// AIO Control domain tables/RPCs live in the aio_control schema. The
+// default `public` client is still used for legacy workspace_secrets.
 const supabaseAio = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   db: { schema: "aio_control" },
 });
@@ -96,7 +95,7 @@ const SendTelegramSchema = z.object({
 // ── Tool implementations ─────────────────────────────────────────────────────
 
 async function listBusinesses(): Promise<string> {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAio
     .from("businesses")
     .select("id, name, sub, icon, variant, status, created_at")
     .eq("workspace_id", WORKSPACE_ID)
@@ -120,7 +119,7 @@ async function listAgents(
   }
   const { scope, business_id } = parsed.data;
 
-  let query = supabase
+  let query = supabaseAio
     .from("agents")
     .select("id, name, kind, provider, model, business_id, created_at")
     .eq("workspace_id", WORKSPACE_ID);
@@ -178,7 +177,7 @@ async function listRuns(args: unknown): Promise<string> {
   }
   const { agent_id, business_id, limit, status } = parsed.data;
 
-  let query = supabase
+  let query = supabaseAio
     .from("runs")
     .select("id, agent_id, business_id, status, created_at, finished_at")
     .order("created_at", { ascending: false })
