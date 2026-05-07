@@ -70,6 +70,10 @@ export async function updateSession(request: NextRequest) {
     path.startsWith("/d/") ||
     // Telegram webhook authenticates via the secret in the URL.
     path.startsWith("/api/integrations/telegram/webhook") ||
+    // Slack and Discord inbound routes authenticate provider signatures
+    // against workspace-scoped secrets before dispatching commands.
+    path.startsWith("/api/integrations/slack/") ||
+    path.startsWith("/api/integrations/discord/") ||
     // Internal automation APIs authenticate via AGENT_SECRET_KEY Bearer token.
     path.startsWith("/api/internal/") ||
     // Webhooks and DB-trigger callbacks authenticate via a header secret
@@ -80,7 +84,9 @@ export async function updateSession(request: NextRequest) {
     // The Routines payload-callback endpoint authenticates via
     // shared_secret in the body. No session needed.
     path === "/api/runs/result" ||
-    path.startsWith("/api/runs/") /* /result + /dispatch use header/session checks */;
+    path.startsWith(
+      "/api/runs/",
+    ); /* /result + /dispatch use header/session checks */
 
   if (!user && !isPublic) {
     const loginUrl = request.nextUrl.clone();
