@@ -459,6 +459,69 @@ function minimaxAnthropicBase(base = MINIMAX_BASE): string {
   return base.replace(/\/v1\/?$/, "") + "/anthropic";
 }
 
+function parseJsonObjectFromText<T>(text: string): T | null {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidate = fenced?.[1]?.trim() ?? trimmed;
+  try {
+    return JSON.parse(candidate) as T;
+  } catch {
+    const start = candidate.indexOf("{");
+    const end = candidate.lastIndexOf("}");
+    if (start < 0 || end <= start) return null;
+    try {
+      return JSON.parse(candidate.slice(start, end + 1)) as T;
+    } catch {
+      return null;
+    }
+  }
+}
+
+function textFromMessage(msg: Anthropic.Message): string {
+  return msg.content
+    .filter((block) => block.type === "text")
+    .map((block) => (block.type === "text" ? block.text : ""))
+    .join("\n\n");
+}
+
+function normalizeBusinessBlueprintPlan(
+  input: Partial<BusinessBlueprintPlan>,
+): BusinessBlueprintPlan {
+  const agents = input.agents ?? [];
+  const leadKey =
+    input.team?.lead_agent_key ??
+    agents.find((agent) => agent.role === "lead")?.key ??
+    agents[0]?.key ??
+    "";
+
+  return {
+    business: {
+      name: input.business?.name ?? "Nieuwe business",
+      sub: input.business?.sub ?? "",
+      description: input.business?.description ?? "",
+      mission: input.business?.mission ?? "",
+      icon: input.business?.icon ?? null,
+    },
+    topics: input.topics ?? [],
+    skills: input.skills ?? [],
+    agents,
+    schedules: input.schedules ?? [],
+    integrations: input.integrations ?? [],
+    team: {
+      lead_agent_key: leadKey,
+      notes: input.team?.notes ?? "",
+    },
+    research_plan: {
+      depth: input.research_plan?.depth ?? "standard",
+      questions: input.research_plan?.questions ?? [],
+      sources_to_check: input.research_plan?.sources_to_check ?? [],
+      recurring_review: input.research_plan?.recurring_review ?? "",
+    },
+    explanation: input.explanation ?? "",
+  };
+}
+
 export async function generateFlowPlan(
   description: string,
   apiKey: string,
@@ -527,51 +590,29 @@ export async function generateBusinessBlueprintPlan(
     max_tokens: 8192,
     system: buildBusinessSystem(provider),
     tools: [BUSINESS_BLUEPRINT_TOOL],
-    tool_choice: { type: "any" },
+    tool_choice: { type: "tool", name: "create_business_blueprint" },
     messages: [
       {
         role: "user",
-        content: `Maak een volledige business blueprint voor AIO Control op basis van deze beschrijving:\n\n${description}`,
+        content:
+          "Maak een volledige business blueprint voor AIO Control op basis van deze beschrijving.\n" +
+          "Gebruik verplicht de create_business_blueprint tool. Als de provider geen tool-call kan teruggeven, antwoord dan uitsluitend met een JSON object volgens exact hetzelfde schema.\n\n" +
+          description,
       },
     ],
   });
 
   const toolBlock = msg.content.find((b) => b.type === "tool_use");
   if (!toolBlock || toolBlock.type !== "tool_use") {
-    throw new Error("AI kon geen business blueprint genereren.");
+    const parsed = parseJsonObjectFromText<Partial<BusinessBlueprintPlan>>(
+      textFromMessage(msg),
+    );
+    if (parsed) return normalizeBusinessBlueprintPlan(parsed);
+    throw new Error(
+      "AI gaf geen bruikbaar blueprint-object terug. Probeer opnieuw of maak de beschrijving iets concreter.",
+    );
   }
 
   const input = toolBlock.input as Partial<BusinessBlueprintPlan>;
-  const agents = input.agents ?? [];
-  const leadKey =
-    input.team?.lead_agent_key ??
-    agents.find((agent) => agent.role === "lead")?.key ??
-    agents[0]?.key ??
-    "";
-
-  return {
-    business: {
-      name: input.business?.name ?? "Nieuwe business",
-      sub: input.business?.sub ?? "",
-      description: input.business?.description ?? "",
-      mission: input.business?.mission ?? "",
-      icon: input.business?.icon ?? null,
-    },
-    topics: input.topics ?? [],
-    skills: input.skills ?? [],
-    agents,
-    schedules: input.schedules ?? [],
-    integrations: input.integrations ?? [],
-    team: {
-      lead_agent_key: leadKey,
-      notes: input.team?.notes ?? "",
-    },
-    research_plan: {
-      depth: input.research_plan?.depth ?? "standard",
-      questions: input.research_plan?.questions ?? [],
-      sources_to_check: input.research_plan?.sources_to_check ?? [],
-      recurring_review: input.research_plan?.recurring_review ?? "",
-    },
-    explanation: input.explanation ?? "",
-  };
+  return normalizeBusinessBlueprintPlan(input);
 }
