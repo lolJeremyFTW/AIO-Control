@@ -6,7 +6,13 @@
 
 import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
-import { useMemo, useState, useTransition, useCallback, type ReactNode } from "react";
+import {
+  useMemo,
+  useState,
+  useTransition,
+  useCallback,
+  type ReactNode,
+} from "react";
 
 import { ContextMenu, type ContextMenuItem } from "@aio/ui/context-menu";
 import { Header } from "@aio/ui/header";
@@ -70,8 +76,7 @@ const SearchModal = dynamic(
   { ssr: false },
 );
 const BusinessSetupWizard = dynamic(
-  () =>
-    import("./BusinessSetupWizard").then((m) => m.BusinessSetupWizard),
+  () => import("./BusinessSetupWizard").then((m) => m.BusinessSetupWizard),
   { ssr: false },
 );
 const EditNodeDialog = dynamic(
@@ -127,6 +132,9 @@ type Props = {
    *  uses these to badge each business row; the bell uses the same
    *  data via /api/notifications. Missing entries are treated as 0. */
   notifCounts?: Record<string, number>;
+  /** Notification counts grouped by nav_node id. Counts are also applied
+   *  to parent topics so the rail can lead users down to the source. */
+  notifTopicCounts?: Record<string, number>;
   weather?: { city: string; date: string; temp: string };
   page?: "dashboard" | "settings" | "profile" | "agents";
   /** Active UI locale — translates client-side via the dict module. */
@@ -172,6 +180,7 @@ export function WorkspaceShell({
   navNodes,
   agents = [],
   notifCounts = {},
+  notifTopicCounts = {},
   weather,
   page: pageProp = "dashboard",
   locale,
@@ -188,11 +197,14 @@ export function WorkspaceShell({
   // Live notification items from the bell — null until the bell fetches
   // for the first time. Once loaded, rail badges reflect the live state
   // (including dismissals) rather than the stale server-rendered counts.
-  const [liveNotifItems, setLiveNotifItems] = useState<
-    Array<{ business_id: string | null }> | null
-  >(null);
+  const [liveNotifItems, setLiveNotifItems] = useState<Array<{
+    business_id: string | null;
+    nav_node_id: string | null;
+  }> | null>(null);
   const handleNotifItemsChange = useCallback(
-    (items: Array<{ business_id: string | null }>) => setLiveNotifItems(items),
+    (
+      items: Array<{ business_id: string | null; nav_node_id: string | null }>,
+    ) => setLiveNotifItems(items),
     [],
   );
   const effectiveCounts = useMemo(() => {
@@ -205,6 +217,21 @@ export function WorkspaceShell({
     }
     return counts;
   }, [liveNotifItems, notifCounts]);
+  const effectiveTopicCounts = useMemo(() => {
+    if (liveNotifItems === null) return notifTopicCounts;
+    const counts: Record<string, number> = {};
+    const byId = new Map(navNodes.map((n) => [n.id, n]));
+    for (const item of liveNotifItems) {
+      let currentId = item.nav_node_id;
+      const seen = new Set<string>();
+      while (currentId && !seen.has(currentId)) {
+        seen.add(currentId);
+        counts[currentId] = (counts[currentId] ?? 0) + 1;
+        currentId = byId.get(currentId)?.parent_id ?? null;
+      }
+    }
+    return counts;
+  }, [liveNotifItems, navNodes, notifTopicCounts]);
 
   // Transition for the language switcher in the header. We await the
   // setLocale server action BEFORE calling router.refresh() — the
@@ -217,10 +244,11 @@ export function WorkspaceShell({
   // Right-click context menu state. `menu` carries the cursor coords +
   // which kind of row was clicked. `editing` opens the EditNodeDialog
   // and `creatingChildOf` opens NewNavNodeDialog with a parent_id.
-  const [menu, setMenu] = useState<
-    | { x: number; y: number; origin: ContextMenuOrigin }
-    | null
-  >(null);
+  const [menu, setMenu] = useState<{
+    x: number;
+    y: number;
+    origin: ContextMenuOrigin;
+  } | null>(null);
   const [editing, setEditing] = useState<EditTarget | null>(null);
   const [creatingChildOf, setCreatingChildOf] = useState<{
     businessId: string;
@@ -266,14 +294,33 @@ export function WorkspaceShell({
     // navPath is now slug-based (from URL); resolve by slug first, fall back to id.
     const bySlug = new Map(inBiz.map((n) => [n.slug, n]));
     const byId = new Map(inBiz.map((n) => [n.id, n]));
+    const childrenByParent = new Map<string | null, NavNode[]>();
+    for (const node of inBiz) {
+      const key = node.parent_id ?? null;
+      const siblings = childrenByParent.get(key) ?? [];
+      siblings.push(node);
+      childrenByParent.set(key, siblings);
+    }
+    for (const siblings of childrenByParent.values()) {
+      siblings.sort((a, b) => a.sort_order - b.sort_order);
+    }
     const chain = drilledBiz.navPath
       .map((seg) => bySlug.get(seg) ?? byId.get(seg))
       .filter((n): n is NavNode => !!n);
-    const parentId = chain[chain.length - 1]?.id ?? null;
-    const childrenOfParent = inBiz
-      .filter((n) => n.parent_id === parentId)
-      .sort((a, b) => a.sort_order - b.sort_order);
-    return { chain, children: childrenOfParent };
+
+    const pathToNode = (node: NavNode): string[] => {
+      const path: string[] = [];
+      let current: NavNode | undefined = node;
+      const seen = new Set<string>();
+      while (current && !seen.has(current.id)) {
+        seen.add(current.id);
+        path.unshift(current.slug);
+        current = current.parent_id ? byId.get(current.parent_id) : undefined;
+      }
+      return path;
+    };
+
+    return { chain, childrenByParent, pathToNode };
   }, [drilledBiz, navNodes]);
 
   // The Topic[] the Rail renders in drilled mode is the user-created
@@ -284,24 +331,37 @@ export function WorkspaceShell({
   // when no topics exist; the "+ Nieuw topic" affordance handles
   // discovery.
   const railTopics: Topic[] = useMemo(() => {
-    if (!drilledBiz) return [];
-    return (navContext?.children ?? []).map((n) => ({
-      id: n.id,
-      // Drop the emoji from the label — we render it as the node icon
-      // separately so the row-text doesn't double up.
-      label: n.name,
-      // Path appended to /[ws]/business/<bizSlug>: nav drill always goes
-      // under /n/, with all currently-selected slugs preserved.
-      path: `/n/${[...drilledBiz.navPath, n.slug].join("/")}`,
-      variant: (n.variant as Topic["variant"]) ?? "dashed",
-      // Prefer a registered SVG icon (icon name like "video"). Old
-      // emoji rows still render via the legacy span fallback so we
-      // don't break existing data.
-      icon: renderNodeIcon(n.icon, 16),
-      colorHex: n.color_hex ?? null,
-      logoUrl: n.logo_url ?? null,
-    }));
-  }, [drilledBiz, navContext]);
+    if (!drilledBiz || !navContext) return [];
+    const activeIds = new Set(navContext.chain.map((node) => node.id));
+    const topics: Topic[] = [];
+
+    const appendVisible = (parentId: string | null, depth: number) => {
+      for (const n of navContext.childrenByParent.get(parentId) ?? []) {
+        topics.push({
+          id: n.id,
+          // Drop the emoji from the label — we render it as the node icon
+          // separately so the row-text doesn't double up.
+          label: n.name,
+          // Path appended to /[ws]/business/<bizSlug>: nav drill always goes
+          // under /n/, with all currently-selected slugs preserved.
+          path: `/n/${navContext.pathToNode(n).join("/")}`,
+          depth,
+          variant: (n.variant as Topic["variant"]) ?? "dashed",
+          // Prefer a registered SVG icon (icon name like "video"). Old
+          // emoji rows still render via the legacy span fallback so we
+          // don't break existing data.
+          icon: renderNodeIcon(n.icon, 16),
+          colorHex: n.color_hex ?? null,
+          logoUrl: n.logo_url ?? null,
+          badge: effectiveTopicCounts[n.id] ?? undefined,
+        });
+        if (activeIds.has(n.id)) appendVisible(n.id, depth + 1);
+      }
+    };
+
+    appendVisible(null, 0);
+    return topics;
+  }, [drilledBiz, effectiveTopicCounts, navContext]);
 
   const selectedTopicId = useMemo(() => {
     if (!drilledBiz) return null;
@@ -320,19 +380,20 @@ export function WorkspaceShell({
   // to deducing from the pathname so /agents / /settings / /profile
   // automatically light up the right rail row without the page having
   // to explicitly pass `page=`.
-  const page: "dashboard" | "settings" | "profile" | "agents" | "flows" = drilledBiz
-    ? "dashboard"
-    : pageProp !== "dashboard"
-      ? pageProp
-      : pathname.startsWith(`/${workspace.slug}/agents`)
-        ? "agents"
-        : pathname.startsWith(`/${workspace.slug}/flows`)
-          ? "flows"
-          : pathname.startsWith(`/${workspace.slug}/settings`)
-            ? "settings"
-            : pathname.startsWith(`/${workspace.slug}/profile`)
-              ? "profile"
-              : "dashboard";
+  const page: "dashboard" | "settings" | "profile" | "agents" | "flows" =
+    drilledBiz
+      ? "dashboard"
+      : pageProp !== "dashboard"
+        ? pageProp
+        : pathname.startsWith(`/${workspace.slug}/agents`)
+          ? "agents"
+          : pathname.startsWith(`/${workspace.slug}/flows`)
+            ? "flows"
+            : pathname.startsWith(`/${workspace.slug}/settings`)
+              ? "settings"
+              : pathname.startsWith(`/${workspace.slug}/profile`)
+                ? "profile"
+                : "dashboard";
 
   const profileItem: RailItem = {
     id: "me",
@@ -411,6 +472,10 @@ export function WorkspaceShell({
         variant: drilledBiz.biz.variant as RailItem["variant"],
         colorHex: drilledBiz.biz.color_hex ?? null,
         logoUrl: drilledBiz.biz.logo_url ?? null,
+        badge:
+          (effectiveCounts[drilledBiz.biz.id] ?? 0) > 0
+            ? effectiveCounts[drilledBiz.biz.id]
+            : undefined,
       }
     : null;
 
@@ -431,6 +496,7 @@ export function WorkspaceShell({
         variant: (node.variant as RailItem["variant"]) ?? "dashed",
         colorHex: node.color_hex ?? null,
         logoUrl: node.logo_url ?? null,
+        badge: effectiveTopicCounts[node.id] ?? undefined,
         onClick: () => {
           closeRail();
           router.push(
@@ -439,7 +505,7 @@ export function WorkspaceShell({
         },
       };
     });
-  }, [drilledBiz, navContext, router, workspace.slug]);
+  }, [drilledBiz, effectiveTopicCounts, navContext, router, workspace.slug]);
 
   // Build the right-click menu items based on which row the user
   // clicked. The Rail surfaces (x, y) + a typed origin descriptor; we
@@ -531,9 +597,7 @@ export function WorkspaceShell({
           label: t("ctx.copyLink"),
           icon: <LinkIcon />,
           onClick: () =>
-            navigator.clipboard.writeText(
-              `${window.location.origin}${path}`,
-            ),
+            navigator.clipboard.writeText(`${window.location.origin}${path}`),
         },
         { kind: "separator" },
         {
@@ -580,11 +644,21 @@ export function WorkspaceShell({
         ];
       }
       // Build the path to this node so "Open" navigates correctly.
-      const idx = drilledBiz.navPath.indexOf(node.slug);
-      const pathSegments =
-        idx >= 0
-          ? drilledBiz.navPath.slice(0, idx + 1)
-          : [...drilledBiz.navPath, node.slug];
+      const byId = new Map(
+        navNodes
+          .filter((n) => n.business_id === drilledBiz.biz.id)
+          .map((n) => [n.id, n]),
+      );
+      const pathSegments: string[] = [];
+      let currentNode: NavNode | undefined = node;
+      const seen = new Set<string>();
+      while (currentNode && !seen.has(currentNode.id)) {
+        seen.add(currentNode.id);
+        pathSegments.unshift(currentNode.slug);
+        currentNode = currentNode.parent_id
+          ? byId.get(currentNode.parent_id)
+          : undefined;
+      }
       const fullPath = `/${workspace.slug}/business/${drilledBiz.biz.slug}/n/${pathSegments.join("/")}`;
       // Possible move targets: every other node in the same business +
       // a "(business root)" option. We cap depth at 5 to keep menu sane.
@@ -756,350 +830,350 @@ export function WorkspaceShell({
 
   return (
     <LocaleProvider locale={locale}>
-    <div className="app-shell">
-      <Rail
-        profile={profileItem}
-        businesses={railBusinesses}
-        selectedBusinessId={drilledBiz?.biz.id ?? null}
-        page={page}
-        drilledInto={drilledRailItem}
-        drillChain={drillChainRail}
-        topics={drilledBiz ? railTopics : []}
-        selectedTopicId={selectedTopicId}
-        labels={{
-          allBusinesses: t("nav.allBusinesses"),
-          emptyBusinesses: t("rail.empty"),
-          newTopic:
-            drilledBiz && drilledBiz.navPath.length > 0
-              ? t("nav.newSubtopic")
-              : t("nav.newTopic"),
-          newBusiness: t("nav.newBusiness"),
-          settings: t("nav.settings"),
-          workspaceAgents: t("nav.workspaceAgents"),
-          workspaceFlows: t("nav.workspaceFlows"),
-          emptyTopics: t("rail.emptyTopics"),
-        }}
-        onBack={() => {
-          if (!drilledBiz) return;
-          closeRail();
-          // Walk one level up the drill: pop the deepest navPath segment
-          // first, then exit to the workspace dashboard.
-          if (drilledBiz.navPath.length > 0) {
-            const next = drilledBiz.navPath.slice(0, -1);
-            const path =
-              next.length === 0
-                ? `/${workspace.slug}/business/${drilledBiz.biz.slug}`
-                : `/${workspace.slug}/business/${drilledBiz.biz.slug}/n/${next.join("/")}`;
-            router.push(path);
-          } else {
-            router.push(`/${workspace.slug}/dashboard`);
-          }
-        }}
-        onSelectTopic={(t) => {
-          if (!drilledBiz) return;
-          closeRail();
-          router.push(
-            `/${workspace.slug}/business/${drilledBiz.biz.slug}${t.path}`,
-          );
-        }}
-        mobileOpen={railOpen}
-        onMobileClose={closeRail}
-        onSelectProfile={() => {
-          closeRail();
-          router.push(`/${workspace.slug}/profile`);
-        }}
-        onOpenSettings={() => {
-          closeRail();
-          router.push(`/${workspace.slug}/settings`);
-        }}
-        onOpenWorkspaceAgents={() => {
-          closeRail();
-          router.push(`/${workspace.slug}/agents`);
-        }}
-        onOpenWorkspaceFlows={() => {
-          closeRail();
-          router.push(`/${workspace.slug}/flows`);
-        }}
-        onCreateBusiness={() => {
-          closeRail();
-          setNewBusinessOpen(true);
-        }}
-        onSelectBusiness={(id) => {
-          closeRail();
-          const biz = businesses.find((b) => b.id === id);
-          router.push(`/${workspace.slug}/business/${biz?.slug ?? id}`);
-        }}
-        onContextMenuRail={(e, origin) => {
-          setMenu({ x: e.clientX, y: e.clientY, origin });
-        }}
-        onReorderTopic={async (sourceId, targetId) => {
-          if (!drilledBiz) return;
-          const res = await swapNavNodeOrder({
-            workspace_slug: workspace.slug,
-            business_id: drilledBiz.biz.id,
-            business_slug: drilledBiz.biz.slug,
-            source_id: sourceId,
-            target_id: targetId,
-          });
-          if (res.ok) router.refresh();
-          else alert(res.error);
-        }}
-        onReorderBusiness={async (sourceId, targetId) => {
-          const res = await swapBusinessOrder({
-            workspace_slug: workspace.slug,
-            source_id: sourceId,
-            target_id: targetId,
-          });
-          if (res.ok) router.refresh();
-          else alert(res.error);
-        }}
-        onCreateTopic={
-          drilledBiz
-            ? () => {
-                // Drop the new topic under the deepest currently-active
-                // node — so "+ Topic" while you're inside an existing
-                // topic creates a SUB-topic of it. At the business root
-                // it creates a top-level topic.
-                // navPath contains slugs; resolve the deepest one to its
-                // UUID so the createNavNode action gets a valid FK value.
-                const parentNode =
-                  drilledBiz.navPath.length > 0
-                    ? (navContext?.chain[navContext.chain.length - 1] ?? null)
-                    : null;
-                const parentId = parentNode?.id ?? null;
-                const parentName = parentNode?.name ?? null;
-                setCreatingChildOf({
-                  businessId: drilledBiz.biz.id,
-                  parentId,
-                  title: parentName
-                    ? t("ctx.newSubtopicTitle", { parent: parentName })
-                    : t("ctx.newTopicTitle", { parent: drilledBiz.biz.name }),
-                });
-              }
-            : undefined
-        }
-      />
-
-      {/* Backdrop only renders below 800px (CSS gates it via display) but we
-          render the node unconditionally so the show/hide animation can run. */}
-      <div
-        className={"rail-backdrop " + (railOpen ? "is-open" : "")}
-        onClick={closeRail}
-        aria-hidden={!railOpen}
-      />
-
-      <main className="app-main">
-        <Header
-          crumb={{
-            workspaceName: workspace.name,
-            workspaceLetter: workspace.name.slice(0, 1).toUpperCase(),
-            pageTitle: drilledBiz
-              ? drilledBiz.biz.name
-              : page === "settings"
-                ? t("page.settings")
-                : page === "profile"
-                  ? t("page.profile")
-                  : page === "agents"
-                    ? t("page.workspaceAgents")
-                    : page === "flows"
-                      ? t("page.flows")
-                      : t("page.dashboard"),
-            pageSub: drilledBiz?.biz.sub ?? undefined,
+      <div className="app-shell">
+        <Rail
+          profile={profileItem}
+          businesses={railBusinesses}
+          selectedBusinessId={drilledBiz?.biz.id ?? null}
+          page={page}
+          drilledInto={drilledRailItem}
+          drillChain={[]}
+          topics={drilledBiz ? railTopics : []}
+          selectedTopicId={selectedTopicId}
+          labels={{
+            allBusinesses: t("nav.allBusinesses"),
+            emptyBusinesses: t("rail.empty"),
+            newTopic:
+              drilledBiz && drilledBiz.navPath.length > 0
+                ? t("nav.newSubtopic")
+                : t("nav.newTopic"),
+            newBusiness: t("nav.newBusiness"),
+            settings: t("nav.settings"),
+            workspaceAgents: t("nav.workspaceAgents"),
+            workspaceFlows: t("nav.workspaceFlows"),
+            emptyTopics: t("rail.emptyTopics"),
           }}
-          searchPlaceholder={t("header.searchPlaceholder")}
-          onCrumbWorkspaceClick={() => {
+          onBack={() => {
+            if (!drilledBiz) return;
             closeRail();
-            router.push(`/${workspace.slug}/dashboard`);
+            // Walk one level up the drill: pop the deepest navPath segment
+            // first, then exit to the workspace dashboard.
+            if (drilledBiz.navPath.length > 0) {
+              const next = drilledBiz.navPath.slice(0, -1);
+              const path =
+                next.length === 0
+                  ? `/${workspace.slug}/business/${drilledBiz.biz.slug}`
+                  : `/${workspace.slug}/business/${drilledBiz.biz.slug}/n/${next.join("/")}`;
+              router.push(path);
+            } else {
+              router.push(`/${workspace.slug}/dashboard`);
+            }
           }}
-          onCrumbPageClick={
+          onSelectTopic={(t) => {
+            if (!drilledBiz) return;
+            closeRail();
+            router.push(
+              `/${workspace.slug}/business/${drilledBiz.biz.slug}${t.path}`,
+            );
+          }}
+          mobileOpen={railOpen}
+          onMobileClose={closeRail}
+          onSelectProfile={() => {
+            closeRail();
+            router.push(`/${workspace.slug}/profile`);
+          }}
+          onOpenSettings={() => {
+            closeRail();
+            router.push(`/${workspace.slug}/settings`);
+          }}
+          onOpenWorkspaceAgents={() => {
+            closeRail();
+            router.push(`/${workspace.slug}/agents`);
+          }}
+          onOpenWorkspaceFlows={() => {
+            closeRail();
+            router.push(`/${workspace.slug}/flows`);
+          }}
+          onCreateBusiness={() => {
+            closeRail();
+            setNewBusinessOpen(true);
+          }}
+          onSelectBusiness={(id) => {
+            closeRail();
+            const biz = businesses.find((b) => b.id === id);
+            router.push(`/${workspace.slug}/business/${biz?.slug ?? id}`);
+          }}
+          onContextMenuRail={(e, origin) => {
+            setMenu({ x: e.clientX, y: e.clientY, origin });
+          }}
+          onReorderTopic={async (sourceId, targetId) => {
+            if (!drilledBiz) return;
+            const res = await swapNavNodeOrder({
+              workspace_slug: workspace.slug,
+              business_id: drilledBiz.biz.id,
+              business_slug: drilledBiz.biz.slug,
+              source_id: sourceId,
+              target_id: targetId,
+            });
+            if (res.ok) router.refresh();
+            else alert(res.error);
+          }}
+          onReorderBusiness={async (sourceId, targetId) => {
+            const res = await swapBusinessOrder({
+              workspace_slug: workspace.slug,
+              source_id: sourceId,
+              target_id: targetId,
+            });
+            if (res.ok) router.refresh();
+            else alert(res.error);
+          }}
+          onCreateTopic={
             drilledBiz
               ? () => {
-                  // Click on the right-side crumb (the business name)
-                  // exits drill-mode → workspace dashboard.
-                  closeRail();
-                  router.push(`/${workspace.slug}/dashboard`);
+                  // Drop the new topic under the deepest currently-active
+                  // node — so "+ Topic" while you're inside an existing
+                  // topic creates a SUB-topic of it. At the business root
+                  // it creates a top-level topic.
+                  // navPath contains slugs; resolve the deepest one to its
+                  // UUID so the createNavNode action gets a valid FK value.
+                  const parentNode =
+                    drilledBiz.navPath.length > 0
+                      ? (navContext?.chain[navContext.chain.length - 1] ?? null)
+                      : null;
+                  const parentId = parentNode?.id ?? null;
+                  const parentName = parentNode?.name ?? null;
+                  setCreatingChildOf({
+                    businessId: drilledBiz.biz.id,
+                    parentId,
+                    title: parentName
+                      ? t("ctx.newSubtopicTitle", { parent: parentName })
+                      : t("ctx.newTopicTitle", { parent: drilledBiz.biz.name }),
+                  });
                 }
               : undefined
           }
-          notifications={0}
-          avatarLetter={profile.letter}
-          weather={weather}
-          onToggleRail={() => setRailOpen(!railOpen)}
-          userDisplayName={profile.displayName}
-          userEmail={profile.email}
-          bellSlot={
-            <NotificationsBell
-              workspaceSlug={workspace.slug}
-              workspaceId={workspace.id}
-              businesses={businesses.map((b) => ({
-                id: b.id,
-                slug: b.slug,
-                name: b.name,
-                letter: b.letter,
-                variant: b.variant ?? "brand",
-                color_hex: b.color_hex ?? null,
-              }))}
-              onItemsChange={handleNotifItemsChange}
-            />
-          }
-          lang={locale.toUpperCase() as "NL" | "EN" | "DE"}
-          onLangChange={(next) => {
-            // Run inside a transition so we can AWAIT the server action
-            // before refreshing the page. Without the await the cookie
-            // might not be live yet when revalidatePath kicks in →
-            // page re-renders with the OLD locale and the click looks
-            // like a no-op.
-            startLangTransition(async () => {
-              const target = next.toLowerCase() as Locale;
-              const res = await setLocale(target);
-              if (res.ok) router.refresh();
-            });
-          }}
-          themeToggle={<ThemeToggle />}
-          voiceSlot={
-            <TalkModule
-              agents={talkAgents}
-              workspaceSlug={workspace.slug}
-            />
-          }
-          weatherSlot={
-            <WeatherChip
-              workspaceId={workspace.id}
-              initial={
-                weather ?? { city: "Breda", date: "—", temp: "—" }
-              }
-            />
-          }
-          userMenu={
-            <>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => router.push(`/${workspace.slug}/profile`)}
-              >
-                {t("nav.profile")}
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => router.push(`/${workspace.slug}/settings`)}
-              >
-                {t("nav.settings")}
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => router.push(`/${workspace.slug}/queue`)}
-              >
-                {t("nav.queue")}
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => router.push(`/${workspace.slug}/runs`)}
-              >
-                {t("nav.runs")}
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => router.push(`/${workspace.slug}/activity`)}
-              >
-                {t("nav.activity")}
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => router.push(`/${workspace.slug}/cost`)}
-              >
-                {t("nav.cost")}
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => router.push(`/${workspace.slug}/marketplace`)}
-              >
-                {t("nav.marketplace")}
-              </button>
-              <div className="sep" />
-              <form action={signOutAction}>
-                <button type="submit" role="menuitem">
-                  {t("nav.signOut")}
-                </button>
-              </form>
-            </>
-          }
-        >
-        </Header>
+        />
 
-        {workspaces.length > 1 && (
-          <div style={{ padding: "16px 22px 0" }}>
-            <WorkspaceSwitcher
-              current={{ slug: workspace.slug, name: workspace.name }}
-              workspaces={workspaces}
-            />
-          </div>
+        {/* Backdrop only renders below 800px (CSS gates it via display) but we
+          render the node unconditionally so the show/hide animation can run. */}
+        <div
+          className={"rail-backdrop " + (railOpen ? "is-open" : "")}
+          onClick={closeRail}
+          aria-hidden={!railOpen}
+        />
+
+        <main className="app-main">
+          <Header
+            crumb={{
+              workspaceName: workspace.name,
+              workspaceLetter: workspace.name.slice(0, 1).toUpperCase(),
+              pageTitle: drilledBiz
+                ? drilledBiz.biz.name
+                : page === "settings"
+                  ? t("page.settings")
+                  : page === "profile"
+                    ? t("page.profile")
+                    : page === "agents"
+                      ? t("page.workspaceAgents")
+                      : page === "flows"
+                        ? t("page.flows")
+                        : t("page.dashboard"),
+              pageSub: drilledBiz?.biz.sub ?? undefined,
+            }}
+            searchPlaceholder={t("header.searchPlaceholder")}
+            onCrumbWorkspaceClick={() => {
+              closeRail();
+              router.push(`/${workspace.slug}/dashboard`);
+            }}
+            onCrumbPageClick={
+              drilledBiz
+                ? () => {
+                    // Click on the right-side crumb (the business name)
+                    // exits drill-mode → workspace dashboard.
+                    closeRail();
+                    router.push(`/${workspace.slug}/dashboard`);
+                  }
+                : undefined
+            }
+            notifications={0}
+            avatarLetter={profile.letter}
+            weather={weather}
+            onToggleRail={() => setRailOpen(!railOpen)}
+            userDisplayName={profile.displayName}
+            userEmail={profile.email}
+            bellSlot={
+              <NotificationsBell
+                workspaceSlug={workspace.slug}
+                workspaceId={workspace.id}
+                businesses={businesses.map((b) => ({
+                  id: b.id,
+                  slug: b.slug,
+                  name: b.name,
+                  letter: b.letter,
+                  variant: b.variant ?? "brand",
+                  color_hex: b.color_hex ?? null,
+                }))}
+                navNodes={navNodes.map((n) => ({
+                  id: n.id,
+                  business_id: n.business_id,
+                  parent_id: n.parent_id,
+                  slug: n.slug,
+                }))}
+                onItemsChange={handleNotifItemsChange}
+              />
+            }
+            lang={locale.toUpperCase() as "NL" | "EN" | "DE"}
+            onLangChange={(next) => {
+              // Run inside a transition so we can AWAIT the server action
+              // before refreshing the page. Without the await the cookie
+              // might not be live yet when revalidatePath kicks in →
+              // page re-renders with the OLD locale and the click looks
+              // like a no-op.
+              startLangTransition(async () => {
+                const target = next.toLowerCase() as Locale;
+                const res = await setLocale(target);
+                if (res.ok) router.refresh();
+              });
+            }}
+            themeToggle={<ThemeToggle />}
+            voiceSlot={
+              <TalkModule agents={talkAgents} workspaceSlug={workspace.slug} />
+            }
+            weatherSlot={
+              <WeatherChip
+                workspaceId={workspace.id}
+                initial={weather ?? { city: "Breda", date: "—", temp: "—" }}
+              />
+            }
+            userMenu={
+              <>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => router.push(`/${workspace.slug}/profile`)}
+                >
+                  {t("nav.profile")}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => router.push(`/${workspace.slug}/settings`)}
+                >
+                  {t("nav.settings")}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => router.push(`/${workspace.slug}/queue`)}
+                >
+                  {t("nav.queue")}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => router.push(`/${workspace.slug}/runs`)}
+                >
+                  {t("nav.runs")}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => router.push(`/${workspace.slug}/activity`)}
+                >
+                  {t("nav.activity")}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => router.push(`/${workspace.slug}/cost`)}
+                >
+                  {t("nav.cost")}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => router.push(`/${workspace.slug}/marketplace`)}
+                >
+                  {t("nav.marketplace")}
+                </button>
+                <div className="sep" />
+                <form action={signOutAction}>
+                  <button type="submit" role="menuitem">
+                    {t("nav.signOut")}
+                  </button>
+                </form>
+              </>
+            }
+          ></Header>
+
+          {workspaces.length > 1 && (
+            <div style={{ padding: "16px 22px 0" }}>
+              <WorkspaceSwitcher
+                current={{ slug: workspace.slug, name: workspace.name }}
+                workspaces={workspaces}
+              />
+            </div>
+          )}
+
+          {children}
+        </main>
+
+        {newBusinessOpen && (
+          <BusinessSetupWizard
+            workspaceSlug={workspace.slug}
+            workspaceId={workspace.id}
+            locale={locale}
+            onClose={() => setNewBusinessOpen(false)}
+          />
         )}
 
-        {children}
-      </main>
+        {editing && (
+          <EditNodeDialog
+            workspaceSlug={workspace.slug}
+            target={editing}
+            onClose={() => setEditing(null)}
+          />
+        )}
 
-      {newBusinessOpen && (
-        <BusinessSetupWizard
-          workspaceSlug={workspace.slug}
-          workspaceId={workspace.id}
-          locale={locale}
-          onClose={() => setNewBusinessOpen(false)}
+        {creatingChildOf && (
+          <NewNavNodeDialog
+            workspaceSlug={workspace.slug}
+            workspaceId={workspace.id}
+            businessId={creatingChildOf.businessId}
+            parentId={creatingChildOf.parentId}
+            title={creatingChildOf.title}
+            onClose={() => setCreatingChildOf(null)}
+          />
+        )}
+
+        <ContextMenu
+          position={menu ? { x: menu.x, y: menu.y } : null}
+          items={menu ? buildMenuItems(menu.origin) : []}
+          onClose={() => setMenu(null)}
         />
-      )}
 
-      {editing && (
-        <EditNodeDialog
-          workspaceSlug={workspace.slug}
-          target={editing}
-          onClose={() => setEditing(null)}
-        />
-      )}
-
-      {creatingChildOf && (
-        <NewNavNodeDialog
-          workspaceSlug={workspace.slug}
-          workspaceId={workspace.id}
-          businessId={creatingChildOf.businessId}
-          parentId={creatingChildOf.parentId}
-          title={creatingChildOf.title}
-          onClose={() => setCreatingChildOf(null)}
-        />
-      )}
-
-      <ContextMenu
-        position={menu ? { x: menu.x, y: menu.y } : null}
-        items={menu ? buildMenuItems(menu.origin) : []}
-        onClose={() => setMenu(null)}
-      />
-
-      {/* Mounted once at the shell level — listens for ⌘/Ctrl+K and clicks
+        {/* Mounted once at the shell level — listens for ⌘/Ctrl+K and clicks
           on the header's .search element to open the cross-table search. */}
-      <SearchModal workspaceSlug={workspace.slug} />
+        <SearchModal workspaceSlug={workspace.slug} />
 
-      {/* Global right-click handler — blocks Chrome's native menu
+        {/* Global right-click handler — blocks Chrome's native menu
           everywhere except inputs/text-selection, and falls back to
           our own when no other onContextMenu has stopPropagation'd. */}
-      <AppContextMenu workspaceSlug={workspace.slug} />
+        <AppContextMenu workspaceSlug={workspace.slug} />
 
-      {/* Floating chat panel + runs toaster. Both lazy-loaded via
+        {/* Floating chat panel + runs toaster. Both lazy-loaded via
           next/dynamic above so the heavy chat UI + Supabase realtime
           subscription don't block the first paint of any workspace
           page that doesn't actually need them. */}
-      {chatPanelAgents && (
-        <ChatPanel
-          agents={chatPanelAgents}
-          workspaceSlug={workspace.slug}
-          firstBusinessId={firstBusinessId}
-        />
-      )}
-      <RunsToaster workspaceId={workspace.id} />
-    </div>
+        {chatPanelAgents && (
+          <ChatPanel
+            agents={chatPanelAgents}
+            workspaceSlug={workspace.slug}
+            firstBusinessId={firstBusinessId}
+          />
+        )}
+        <RunsToaster workspaceId={workspace.id} />
+      </div>
     </LocaleProvider>
   );
 }

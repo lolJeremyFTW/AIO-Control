@@ -71,13 +71,13 @@ export default async function WorkspaceLayout({ children, params }: Props) {
     await Promise.all([
       supabase
         .from("queue_items")
-        .select("id, business_id")
+        .select("id, business_id, nav_node_id")
         .eq("workspace_id", workspace.id)
         .in("state", ["review", "fail"])
         .is("resolved_at", null),
       supabase
         .from("runs")
-        .select("id, business_id")
+        .select("id, business_id, nav_node_id")
         .eq("workspace_id", workspace.id)
         .eq("status", "failed")
         .gte("created_at", failedRunCutoff)
@@ -99,19 +99,36 @@ export default async function WorkspaceLayout({ children, params }: Props) {
       .map((d) => d.source_id),
   );
   const notifCounts: Record<string, number> = {};
+  const notifTopicCounts: Record<string, number> = {};
+  const navById = new Map(navNodes.map((n) => [n.id, n]));
+  const incrementTopicAndAncestors = (navNodeId: string | null) => {
+    let currentId = navNodeId;
+    const seen = new Set<string>();
+    while (currentId && !seen.has(currentId)) {
+      seen.add(currentId);
+      notifTopicCounts[currentId] = (notifTopicCounts[currentId] ?? 0) + 1;
+      currentId = navById.get(currentId)?.parent_id ?? null;
+    }
+  };
   for (const r of (openQueue ?? []) as {
     id: string;
     business_id: string | null;
+    nav_node_id: string | null;
   }[]) {
-    if (r.business_id && !dismissedQueue.has(r.id))
+    if (r.business_id && !dismissedQueue.has(r.id)) {
       notifCounts[r.business_id] = (notifCounts[r.business_id] ?? 0) + 1;
+      incrementTopicAndAncestors(r.nav_node_id);
+    }
   }
   for (const r of (failedRuns ?? []) as {
     id: string;
     business_id: string | null;
+    nav_node_id: string | null;
   }[]) {
-    if (r.business_id && !dismissedRuns.has(r.id))
+    if (r.business_id && !dismissedRuns.has(r.id)) {
       notifCounts[r.business_id] = (notifCounts[r.business_id] ?? 0) + 1;
+      incrementTopicAndAncestors(r.nav_node_id);
+    }
   }
   // We pass the locale string (serializable) to the client. The client
   // imports the same dict module and calls translate() locally. Functions
@@ -149,6 +166,7 @@ export default async function WorkspaceLayout({ children, params }: Props) {
         model: a.model ?? null,
       }))}
       notifCounts={notifCounts}
+      notifTopicCounts={notifTopicCounts}
       weather={weather}
       locale={locale}
       chatPanelAgents={agents}

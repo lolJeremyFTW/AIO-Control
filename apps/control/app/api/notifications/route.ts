@@ -16,6 +16,7 @@ type Notif = {
   sub: string;
   state: string;
   business_id: string | null;
+  nav_node_id: string | null;
   created_at: string;
 };
 
@@ -24,7 +25,8 @@ export async function GET() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!user)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const failedRunCutoff = new Date(
     Date.now() - FAILED_RUN_LOOKBACK_HOURS * 60 * 60 * 1000,
@@ -33,25 +35,51 @@ export async function GET() {
   const [queue, runs, dismissals] = await Promise.all([
     supabase
       .from("queue_items")
-      .select("id, title, business_id, state, created_at")
+      .select("id, title, business_id, nav_node_id, state, created_at")
       .in("state", ["review", "fail"])
       .is("resolved_at", null)
       .order("created_at", { ascending: false })
       .limit(20)
-      .then((r) => (r.data ?? []) as { id: string; title: string; business_id: string | null; state: string; created_at: string }[]),
+      .then(
+        (r) =>
+          (r.data ?? []) as {
+            id: string;
+            title: string;
+            business_id: string | null;
+            nav_node_id: string | null;
+            state: string;
+            created_at: string;
+          }[],
+      ),
     supabase
       .from("runs")
-      .select("id, business_id, status, error_text, created_at")
+      .select("id, business_id, nav_node_id, status, error_text, created_at")
       .eq("status", "failed")
       .gte("created_at", failedRunCutoff)
       .order("created_at", { ascending: false })
       .limit(10)
-      .then((r) => (r.data ?? []) as { id: string; business_id: string | null; status: string; error_text: string | null; created_at: string }[]),
+      .then(
+        (r) =>
+          (r.data ?? []) as {
+            id: string;
+            business_id: string | null;
+            nav_node_id: string | null;
+            status: string;
+            error_text: string | null;
+            created_at: string;
+          }[],
+      ),
     supabase
       .from("notification_dismissals")
       .select("source_kind, source_id")
       .eq("user_id", user.id)
-      .then((r) => (r.data ?? []) as { source_kind: "queue" | "run"; source_id: string }[]),
+      .then(
+        (r) =>
+          (r.data ?? []) as {
+            source_kind: "queue" | "run";
+            source_id: string;
+          }[],
+      ),
   ]);
 
   // Build a quick lookup so the filter is O(n) regardless of dismissal
@@ -74,6 +102,7 @@ export async function GET() {
         sub: q.state,
         state: q.state,
         business_id: q.business_id,
+        nav_node_id: q.nav_node_id,
         created_at: q.created_at,
       })),
     ...runs
@@ -85,6 +114,7 @@ export async function GET() {
         sub: r.status,
         state: r.status,
         business_id: r.business_id,
+        nav_node_id: r.nav_node_id,
         created_at: r.created_at,
       })),
   ].sort(

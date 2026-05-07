@@ -19,6 +19,7 @@ type Notif = {
   sub: string;
   state: "review" | "fail" | "failed";
   business_id: string | null;
+  nav_node_id: string | null;
   created_at: string;
 };
 
@@ -39,15 +40,24 @@ type Props = {
   /** Workspace businesses — used to render a per-business header
    *  (avatar dot + name) above each notification group. */
   businesses?: BusinessLookup[];
+  navNodes?: Array<{
+    id: string;
+    business_id: string;
+    parent_id: string | null;
+    slug: string;
+  }>;
   /** Called whenever the items list changes so the caller can sync
    *  rail badges without a page reload. */
-  onItemsChange?: (items: Array<{ business_id: string | null }>) => void;
+  onItemsChange?: (
+    items: Array<{ business_id: string | null; nav_node_id: string | null }>,
+  ) => void;
 };
 
 export function NotificationsBell({
   workspaceSlug,
   workspaceId,
   businesses = [],
+  navNodes = [],
   onItemsChange,
 }: Props) {
   const router = useRouter();
@@ -135,7 +145,7 @@ export function NotificationsBell({
   // without requiring a full page reload.
   useEffect(() => {
     onItemsChange?.(items);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items]);
 
   // Refresh whenever a queue_items or runs row changes for this
@@ -195,6 +205,30 @@ export function NotificationsBell({
   }, [open]);
 
   const count = items.length;
+  const routeForNotification = (n: Notif) => {
+    if (!n.business_id) return `/${workspaceSlug}/queue`;
+
+    const biz = businesses.find((b) => b.id === n.business_id);
+    const businessPath = `/${workspaceSlug}/business/${biz?.slug ?? n.business_id}`;
+    if (!n.nav_node_id) {
+      return `${businessPath}${n.kind === "run" ? "/runs" : ""}`;
+    }
+
+    const byId = new Map(navNodes.map((node) => [node.id, node]));
+    const chain: string[] = [];
+    let current = byId.get(n.nav_node_id);
+    const seen = new Set<string>();
+    while (current && !seen.has(current.id)) {
+      seen.add(current.id);
+      chain.unshift(current.slug);
+      current = current.parent_id ? byId.get(current.parent_id) : undefined;
+    }
+
+    if (chain.length === 0) {
+      return `${businessPath}${n.kind === "run" ? "/runs" : ""}`;
+    }
+    return `${businessPath}/n/${chain.join("/")}${n.kind === "run" ? "/runs" : ""}`;
+  };
 
   return (
     <div ref={ref} style={{ position: "relative" }}>
@@ -234,8 +268,7 @@ export function NotificationsBell({
                 margin: 0,
               }}
             >
-              Niets om te reviewen — geen open queue items en geen failed
-              runs.
+              Niets om te reviewen — geen open queue items en geen failed runs.
             </p>
           ) : (
             <>
@@ -270,9 +303,7 @@ export function NotificationsBell({
                     border: confirmingClear
                       ? "1px solid rgba(230,82,107,0.5)"
                       : "1px solid transparent",
-                    color: confirmingClear
-                      ? "var(--rose)"
-                      : "var(--app-fg-2)",
+                    color: confirmingClear ? "var(--rose)" : "var(--app-fg-2)",
                     fontSize: 11,
                     fontWeight: 700,
                     cursor: "pointer",
@@ -291,7 +322,7 @@ export function NotificationsBell({
               </div>
             </>
           )}
-          {items.length > 0 && (
+          {items.length > 0 &&
             (() => {
               // Group items by business_id so the user sees per-
               // business sections — same shape they'll recognise from
@@ -304,10 +335,7 @@ export function NotificationsBell({
                 arr.push(n);
                 groups.set(k, arr);
               }
-              const order = [
-                "_global",
-                ...businesses.map((b) => b.id),
-              ];
+              const order = ["_global", ...businesses.map((b) => b.id)];
               return order
                 .filter((id) => groups.has(id))
                 .map((id) => {
@@ -315,7 +343,7 @@ export function NotificationsBell({
                   const biz =
                     id === "_global"
                       ? null
-                      : businesses.find((b) => b.id === id) ?? null;
+                      : (businesses.find((b) => b.id === id) ?? null);
                   return (
                     <div key={id} style={{ marginBottom: 4 }}>
                       <div
@@ -357,8 +385,7 @@ export function NotificationsBell({
                         </span>
                         <span
                           style={{
-                            fontFamily:
-                              "ui-monospace, Menlo, monospace",
+                            fontFamily: "ui-monospace, Menlo, monospace",
                             fontSize: 10,
                             color: "var(--app-fg-2)",
                           }}
@@ -372,14 +399,7 @@ export function NotificationsBell({
                           onClick={() => {
                             dismiss(n.kind, n.id);
                             setOpen(false);
-                            router.push(
-                              n.business_id
-                                ? `/${workspaceSlug}/business/${
-                                    businesses.find((b) => b.id === n.business_id)?.slug ??
-                                    n.business_id
-                                  }${n.kind === "run" ? "/runs" : ""}`
-                                : `/${workspaceSlug}/queue`,
-                            );
+                            router.push(routeForNotification(n));
                           }}
                           style={{
                             display: "flex",
@@ -397,8 +417,7 @@ export function NotificationsBell({
                               "var(--app-card-2)")
                           }
                           onMouseLeave={(e) =>
-                            (e.currentTarget.style.background =
-                              "transparent")
+                            (e.currentTarget.style.background = "transparent")
                           }
                         >
                           <div
@@ -414,15 +433,12 @@ export function NotificationsBell({
                                 height: 8,
                                 borderRadius: 999,
                                 background:
-                                  n.state === "fail" ||
-                                  n.state === "failed"
+                                  n.state === "fail" || n.state === "failed"
                                     ? "var(--rose)"
                                     : "var(--amber)",
                               }}
                             />
-                            <span
-                              style={{ fontSize: 13, fontWeight: 600 }}
-                            >
+                            <span style={{ fontSize: 13, fontWeight: 600 }}>
                               {n.title}
                             </span>
                           </div>
@@ -442,11 +458,9 @@ export function NotificationsBell({
                     </div>
                   );
                 });
-            })()
-          )}
+            })()}
         </div>
       )}
     </div>
   );
 }
-

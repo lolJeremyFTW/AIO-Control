@@ -47,6 +47,8 @@ export type Topic = {
   label: string;
   /** Where clicking the topic should navigate, relative to the workspace. */
   path: string;
+  /** Visual nesting level inside the business topic tree. */
+  depth?: number;
   /** Optional badge (count of open queue items, etc). */
   badge?: number | "dot";
   /** Optional preset variant (overrides default "dashed"). */
@@ -93,10 +95,7 @@ type Props = {
   onOpenWorkspaceFlows?: () => void;
   page?: "dashboard" | "settings" | "profile" | "agents" | "flows";
   /** Right-click handlers — surface a custom context menu in the shell. */
-  onContextMenuRail?: (
-    e: ReactMouseEvent,
-    origin: ContextMenuOrigin,
-  ) => void;
+  onContextMenuRail?: (e: ReactMouseEvent, origin: ContextMenuOrigin) => void;
   /** Called when the user drops a topic onto another topic. The shell
    *  swaps their sort_orders. */
   onReorderTopic?: (sourceId: string, targetId: string) => void;
@@ -192,8 +191,7 @@ export function Rail({
     });
   };
 
-  const expanded =
-    (expandOnHover && !hoverLocked && hover) || mobileOpen;
+  const expanded = (expandOnHover && !hoverLocked && hover) || mobileOpen;
 
   const topMode = !drilledInto;
 
@@ -225,9 +223,7 @@ export function Rail({
         type="button"
         className="rail-pin"
         aria-label={
-          hoverLocked
-            ? "Hover-expand inschakelen"
-            : "Hover-expand uitschakelen"
+          hoverLocked ? "Hover-expand inschakelen" : "Hover-expand uitschakelen"
         }
         aria-pressed={hoverLocked}
         title={
@@ -330,7 +326,6 @@ export function Rail({
              lives in rail-top above the divider. */
           (() => {
             const INDENT = 12;
-            const baseDepth = drillChain.length;
             // Indent guides + per-row indent only make sense when the
             // rail is wide enough to show them. When it's collapsed
             // (icon-only width) the children would push their dots
@@ -339,10 +334,14 @@ export function Rail({
             // the active row.
             const indentFor = (depth: number) =>
               expanded ? depth * INDENT : 0;
+            const maxDepth = topics.reduce(
+              (max, topic) => Math.max(max, topic.depth ?? 0),
+              0,
+            );
             return (
               <div
                 className={
-                  expanded && baseDepth > 0 ? "rail-drill-stack" : undefined
+                  expanded && maxDepth > 0 ? "rail-drill-stack" : undefined
                 }
               >
                 {drillChain.map((node, i) => {
@@ -374,7 +373,7 @@ export function Rail({
                   ? expanded && (
                       <div
                         className="rail-drill-row"
-                        style={{ paddingLeft: indentFor(baseDepth) }}
+                        style={{ paddingLeft: indentFor(0) }}
                       >
                         <div
                           style={{
@@ -392,7 +391,7 @@ export function Rail({
                       <div
                         key={t.id}
                         className="rail-drill-row"
-                        style={{ paddingLeft: indentFor(baseDepth) }}
+                        style={{ paddingLeft: indentFor(t.depth ?? 0) }}
                       >
                         <TopicRow
                           topic={t}
@@ -418,7 +417,7 @@ export function Rail({
                 {onCreateTopic && (
                   <div
                     className="rail-drill-row"
-                    style={{ paddingLeft: indentFor(baseDepth) }}
+                    style={{ paddingLeft: indentFor(maxDepth > 0 ? 1 : 0) }}
                   >
                     <ActionRow
                       icon={<PlusIcon size={14} />}
