@@ -41,6 +41,14 @@ GIT_COMMIT_SHA="${GIT_COMMIT_SHA:-$(git rev-parse HEAD)}"
 BUILD_TIME="$(date -Iseconds)"
 export GIT_COMMIT_SHA BUILD_TIME
 
+remove_next_build_dir() {
+  for attempt in {1..5}; do
+    rm -rf "$APP/.next" && return 0
+    sleep 1
+  done
+  rm -rf "$APP/.next"
+}
+
 build_and_stage() {
   local label="$1"
   local base_path="$2"
@@ -53,7 +61,7 @@ build_and_stage() {
   # since BASE_PATH isn't tracked in turbo.json, the second build was
   # replaying the first build's cached output (with the wrong basePath
   # baked in). --force skips the cache and reruns Next every time.
-  rm -rf "$APP/.next"
+  remove_next_build_dir
   # Pre-generate the .next/types/validator.ts route-typegen file. Next
   # 16's `next build` triggers typegen too, but on this VPS it races
   # with the tsc workers and they sometimes start before validator.ts
