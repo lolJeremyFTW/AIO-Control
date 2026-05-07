@@ -16,8 +16,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { usePathname } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 
 import {
   ChartIcon,
@@ -111,21 +111,59 @@ export function BusinessTabs({
   labels,
 }: Props) {
   const path = usePathname() ?? "";
-  const router = useRouter();
   const base = `/${workspaceSlug}/business/${businessId}`;
 
+  const [localTopicTabs, setLocalTopicTabs] = useState<BusinessTabsTopicEntry[]>(topicTabs ?? []);
   const [showAdd, setShowAdd] = useState(false);
   const [addLabel, setAddLabel] = useState("");
   const [addUrl, setAddUrl] = useState("");
   const [adding, setAdding] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
 
+  // Sync with server-provided prop on full-page reloads.
+  useEffect(() => {
+    setLocalTopicTabs(topicTabs ?? []);
+  }, [topicTabs]);
+
+  const refreshTabs = useCallback(async () => {
+    const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+    try {
+      const res = await fetch(
+        `${basePath}/api/custom-tabs?business_id=${businessId}`,
+        { credentials: "same-origin" },
+      );
+      if (!res.ok) return;
+      const { tabs } = (await res.json()) as {
+        tabs: Array<{ id: string; label: string; url: string }>;
+      };
+      setLocalTopicTabs(
+        tabs.map((tab) => ({
+          id: tab.id,
+          href: `/tab/${tab.id}`,
+          label: tab.label,
+        })),
+      );
+    } catch {
+      // Silently fail — existing UI stays intact.
+    }
+  }, [businessId]);
+
+  // Refresh when the user returns to this browser tab so agent-created tabs
+  // appear automatically without a manual reload.
+  useEffect(() => {
+    function onVisible() {
+      if (!document.hidden) void refreshTabs();
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [refreshTabs]);
+
   async function handleAddTab(e: React.FormEvent) {
     e.preventDefault();
     if (!addLabel.trim() || !addUrl.trim()) return;
     setAdding(true);
     const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-    await fetch(`${basePath}/api/custom-tabs`, {
+    const res = await fetch(`${basePath}/api/custom-tabs`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",
@@ -137,10 +175,12 @@ export function BusinessTabs({
       }),
     });
     setAdding(false);
-    setShowAdd(false);
-    setAddLabel("");
-    setAddUrl("");
-    router.refresh();
+    if (res.ok) {
+      setShowAdd(false);
+      setAddLabel("");
+      setAddUrl("");
+      await refreshTabs();
+    }
   }
 
   async function handleDeleteTab(id: string) {
@@ -155,7 +195,7 @@ export function BusinessTabs({
     if (path.includes(`/tab/${id}`)) {
       window.location.href = base;
     } else {
-      router.refresh();
+      await refreshTabs();
     }
   }
 
@@ -210,7 +250,7 @@ export function BusinessTabs({
   // the left.
   const tabs: Tab[] = [
     ...builtins,
-    ...(topicTabs ?? []).map((t) => {
+    ...localTopicTabs.map((t) => {
       const href = `${base}${t.href}`;
       return {
         href,
@@ -237,7 +277,7 @@ export function BusinessTabs({
         {tabs.map((t) => {
           const active = t.match(path);
           // Find matching topicTab entry to get its id for delete button.
-          const topicEntry = (topicTabs ?? []).find(
+          const topicEntry = localTopicTabs.find(
             (tt) => `${base}${tt.href}` === t.href && tt.id,
           );
           return (
