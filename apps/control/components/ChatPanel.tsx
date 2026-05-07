@@ -9,18 +9,21 @@
 
 import { useRouter } from "next/navigation";
 import type { CSSProperties } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { ChatIcon, PlusIcon } from "@aio/ui/icon";
 import type { AGUIEvent, ChatMessage } from "@aio/ai/ag-ui";
 
 import type { AgentRow } from "../lib/queries/agents";
+import { useLocale } from "../lib/i18n/client";
+import { translate, type T } from "../lib/i18n/dict";
 import { getSupabaseBrowserClient } from "../lib/supabase/client";
 import {
   deleteThread,
   listMessages,
   listThreads,
+  type MessageRow,
   type ThreadRow,
 } from "../app/actions/chat";
 import { MarkdownText } from "./MarkdownText";
@@ -37,6 +40,7 @@ type UIMessage = {
   id: string;
   role: "user" | "assistant" | "error" | "system";
   text: string;
+  originalText?: string;
   pending?: boolean;
   usage?: {
     inputTokens?: number;
@@ -88,6 +92,11 @@ const chatboxDockStyle: CSSProperties = {
 
 export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
   const router = useRouter();
+  const locale = useLocale();
+  const t: T = useMemo(
+    () => (key, vars) => translate(locale, key, vars),
+    [locale],
+  );
   const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
   const [agentId, setAgentId] = useState<string | null>(
@@ -110,6 +119,22 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
   const restoredThreadRef = useRef(false);
   const autoLoadedThreadRef = useRef(false);
   const storageKey = `aio-chat:${workspaceSlug ?? "workspace"}`;
+
+  const rowsToMessages = useCallback((messageRows: MessageRow[]): UIMessage[] => {
+    return messageRows.map((r) => {
+      const text = r.content?.text ?? "";
+      return {
+        id: r.id,
+        role:
+          r.role === "system"
+            ? "assistant"
+            : (r.role as "user" | "assistant"),
+        text,
+        originalText: r.content?.original_text ?? text,
+        createdAt: r.created_at ? new Date(r.created_at) : new Date(),
+      };
+    });
+  }, []);
 
   useEffect(() => {
     setMounted(true);
@@ -224,7 +249,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
       return;
     }
     let cancelled = false;
-    void listThreads(agentId).then((rows) => {
+    void listThreads(agentId, locale).then((rows) => {
       if (cancelled) return;
       setThreads(rows);
 
@@ -241,26 +266,16 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
         restoredThreadRef.current = false;
         autoLoadedThreadRef.current = true;
         setActiveThreadId(nextThreadId);
-        void listMessages(nextThreadId).then((messageRows) => {
+        void listMessages(nextThreadId, locale).then((messageRows) => {
           if (cancelled) return;
-          setMessages(
-            messageRows.map((r) => ({
-              id: r.id,
-              role:
-                r.role === "system"
-                  ? "assistant"
-                  : (r.role as "user" | "assistant"),
-              text: r.content?.text ?? "",
-              createdAt: r.created_at ? new Date(r.created_at) : new Date(),
-            })),
-          );
+          setMessages(rowsToMessages(messageRows));
         });
       }
     });
     return () => {
       cancelled = true;
     };
-  }, [activeThreadId, agentId, messages.length, open]);
+  }, [activeThreadId, agentId, locale, messages.length, open, rowsToMessages]);
 
   // Switch threads → load history.
   const switchThread = useCallback(async (threadId: string | null) => {
@@ -270,16 +285,25 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
       setMessages([]);
       return;
     }
-    const rows = await listMessages(threadId);
-    setMessages(
-      rows.map((r) => ({
-        id: r.id,
-        role: r.role === "system" ? "assistant" : (r.role as "user" | "assistant"),
-        text: r.content?.text ?? "",
-        createdAt: r.created_at ? new Date(r.created_at) : new Date(),
-      })),
-    );
-  }, []);
+    const rows = await listMessages(threadId, locale);
+    setMessages(rowsToMessages(rows));
+  }, [locale, rowsToMessages]);
+
+  useEffect(() => {
+    if (!mounted || !agentId || !activeThreadId) return;
+    let cancelled = false;
+    void Promise.all([
+      listThreads(agentId, locale),
+      listMessages(activeThreadId, locale),
+    ]).then(([threadRows, messageRows]) => {
+      if (cancelled) return;
+      setThreads(threadRows);
+      setMessages(rowsToMessages(messageRows));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeThreadId, agentId, locale, mounted, rowsToMessages]);
 
   useEffect(() => {
     if (open) listRef.current?.scrollTo({ top: 99999 });
@@ -337,6 +361,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
                   id: rowId,
                   role: "assistant",
                   text: row.content?.text ?? "",
+                  originalText: row.content?.text ?? "",
                   createdAt: row.created_at ? new Date(row.created_at) : new Date(),
                 },
               ];
@@ -345,7 +370,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
           if (!open || row.thread_id !== activeThreadId) {
             setUnreadPingCount((n) => n + 1);
           }
-          if (agentId) void listThreads(agentId).then(setThreads);
+          if (agentId) void listThreads(agentId, locale).then(setThreads);
         },
       )
       .subscribe();
@@ -353,7 +378,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [activeThreadId, agentId, open]);
+  }, [activeThreadId, agentId, locale, open]);
 
   // Handle clicks outside the panel or inside the panel but outside the sidebar.
   useEffect(() => {
@@ -439,7 +464,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
       .filter((m) => m.role !== "error")
       .map((m) => ({
         role: m.role === "assistant" ? "assistant" : "user",
-        content: m.text,
+        content: m.originalText ?? m.text,
       }));
     if (!isApproval) history.push({ role: "user", content: text });
     const inputTokenEstimate = estimateTokens(history.map((m) => m.content).join("\n"));
@@ -493,6 +518,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
         body: JSON.stringify({
           messages: history,
           thread_id: activeThreadId,
+          locale,
           approve_tool: opts?.approveTool,
         }),
         signal: abortControllerRef.current.signal,
@@ -702,11 +728,11 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
       );
       // Refresh sidebar so the new/bumped thread floats to the top.
       if (agentId) {
-        void listThreads(agentId).then(setThreads);
+        void listThreads(agentId, locale).then(setThreads);
       }
     }
     },
-    [agentId, input, messages, sending, activeThreadId],
+    [agentId, input, locale, messages, sending, activeThreadId],
   );
 
   if (agents.length === 0) {
@@ -716,7 +742,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
     const emptyBubble = (
       <div
         className="chatbox"
-        title="Voeg eerst een agent toe — klik om naar de marketplace te gaan"
+        title={t("chat.noAgents.title")}
         style={chatboxDockStyle}
         onClick={() => {
           if (firstBusinessId && workspaceSlug) {
@@ -739,7 +765,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
     <>
       <div
         className="chatbox"
-        title="Chat met AI"
+        title={t("chat.title")}
         onClick={() => setOpen((v) => !v)}
         style={chatboxDockStyle}
       >
@@ -794,7 +820,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
             <button
               type="button"
               onClick={() => setShowSidebar((v) => !v)}
-              title={showSidebar ? "Verberg threads" : "Toon threads"}
+              title={showSidebar ? t("chat.threads.hide") : t("chat.threads.show")}
               style={{
                 background: "transparent",
                 border: "1.5px solid var(--app-border)",
@@ -849,7 +875,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
             <button
               type="button"
               onClick={startNewThread}
-              title="Nieuwe chat"
+              title={t("chat.newChat")}
               style={{
                 border: "1.5px solid var(--app-border)",
                 background: "transparent",
@@ -869,7 +895,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
             <button
               type="button"
               onClick={() => setOpen(false)}
-              title="Sluit chat"
+              title={t("chat.close")}
               style={{
                 border: "1.5px solid var(--app-border)",
                 background: "transparent",
@@ -915,7 +941,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
                     textTransform: "uppercase",
                   }}
                 >
-                  Threads
+                  {t("chat.threads")}
                 </span>
                 <button
                   type="button"
@@ -931,29 +957,29 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
                     cursor: "pointer",
                   }}
                 >
-                  + Nieuwe
+                  + {t("chat.new")}
                 </button>
               </div>
               {threads.length === 0 ? (
                 <p style={{ fontSize: 11, color: "var(--app-fg-3)", padding: 10 }}>
-                  Nog geen threads.
+                  {t("chat.threads.empty")}
                 </p>
               ) : (
-                threads.map((t) => (
+                threads.map((thread) => (
                   <div
-                    key={t.id}
-                    onClick={() => switchThread(t.id)}
+                    key={thread.id}
+                    onClick={() => switchThread(thread.id)}
                     style={{
                       padding: "7px 12px",
                       cursor: "pointer",
                       fontSize: 12,
                       borderBottom: "1px solid var(--app-border-2)",
                       background:
-                        activeThreadId === t.id
+                        activeThreadId === thread.id
                           ? "rgba(57,178,85,0.10)"
                           : "transparent",
                       color:
-                        activeThreadId === t.id
+                        activeThreadId === thread.id
                           ? "var(--tt-green)"
                           : "var(--app-fg)",
                       display: "flex",
@@ -969,18 +995,18 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {t.title ?? "(geen titel)"}
+                      {thread.title ?? `(${t("chat.threads.noTitle")})`}
                     </span>
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (!confirm("Thread verwijderen?")) return;
-                        void deleteThread({ thread_id: t.id }).then(() => {
+                        if (!confirm(t("chat.threads.deleteConfirm"))) return;
+                        void deleteThread({ thread_id: thread.id }).then(() => {
                           setThreads((prev) =>
-                            prev.filter((x) => x.id !== t.id),
+                            prev.filter((x) => x.id !== thread.id),
                           );
-                          if (activeThreadId === t.id) {
+                          if (activeThreadId === thread.id) {
                             setActiveThreadId(null);
                             setMessages([]);
                           }
@@ -994,7 +1020,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
                         fontSize: 11,
                         padding: "2px 6px",
                       }}
-                      title="Verwijder thread"
+                      title={t("chat.threads.delete")}
                     >
                       ✕
                     </button>
@@ -1024,7 +1050,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
                   margin: 0,
                 }}
               >
-                Stel een vraag aan de geselecteerde agent. Streaming antwoord.
+                {t("chat.emptyPrompt")}
               </p>
             )}
             {messages.map((m) => (
@@ -1199,7 +1225,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
                           fontStyle: "italic",
                         }}
                       >
-                        Typ je antwoord hieronder.
+                        {t("chat.followup.typeBelow")}
                       </div>
                     )}
                   </div>
@@ -1226,7 +1252,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
                         marginBottom: 4,
                       }}
                     >
-                      Bevestig: {m.confirm.kind}
+                      {t("chat.confirm.title", { kind: m.confirm.kind })}
                     </div>
                     <pre
                       style={{
@@ -1253,8 +1279,8 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
                         }}
                       >
                         {m.confirm.decided === "approve"
-                          ? "✓ Goedgekeurd — uitgevoerd."
-                          : "✕ Geannuleerd."}
+                          ? t("chat.confirm.approved")
+                          : t("chat.confirm.cancelled")}
                       </p>
                     ) : (
                       <div
@@ -1286,7 +1312,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
                             cursor: sending ? "wait" : "pointer",
                           }}
                         >
-                          ✓ Goedkeuren
+                          {t("chat.confirm.approve")}
                         </button>
                         <button
                           type="button"
@@ -1310,7 +1336,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
                             cursor: sending ? "wait" : "pointer",
                           }}
                         >
-                          ✕ Annuleren
+                          {t("chat.confirm.cancel")}
                         </button>
                       </div>
                     )}
@@ -1478,7 +1504,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
                   setCommandIndex(0);
                 }
               }}
-              placeholder="Vraag iets aan de agent…"
+              placeholder={t("chat.placeholder")}
               disabled={sending}
               style={{
                 flex: 1,

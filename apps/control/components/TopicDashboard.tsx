@@ -11,6 +11,10 @@
 import Link from "next/link";
 
 import { getDict } from "../lib/i18n/server";
+import {
+  translateAgentRows,
+  translateQueueRows,
+} from "../lib/i18n/content-translations";
 import { listDescendantNavNodeIds } from "../lib/queries/nav-nodes";
 import { createSupabaseServerClient } from "../lib/supabase/server";
 
@@ -39,7 +43,7 @@ export async function TopicDashboard({
   navNodeId,
   includeDescendants = true,
 }: Props) {
-  const { t } = await getDict();
+  const { locale, t } = await getDict();
   const supabase = await createSupabaseServerClient();
 
   // Roll-up scope: this topic + descendants when includeDescendants,
@@ -115,11 +119,26 @@ export async function TopicDashboard({
     enabled: boolean;
   };
 
-  const agents = (agentsRes.data ?? []) as AgentRow[];
+  const agentsRaw = (agentsRes.data ?? []) as AgentRow[];
   const runs30d = (runs30dRes.data ?? []) as RunRow30[];
   const runs24h = (runs24hRes.data ?? []) as RunRow[];
-  const queue = (queueRes.data ?? []) as QueueRow[];
+  const queueRaw = (queueRes.data ?? []) as QueueRow[];
   const schedules = (schedulesRes.data ?? []) as ScheduleRow[];
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const [agents, queue] = await Promise.all([
+    translateAgentRows(workspaceId, locale, agentsRaw, {
+      credentialOwnerUserId: user?.id ?? null,
+      businessId,
+      navNodeId,
+    }),
+    translateQueueRows(workspaceId, locale, queueRaw, {
+      credentialOwnerUserId: user?.id ?? null,
+      businessId,
+      navNodeId,
+    }),
+  ]);
 
   const agentById = new Map(agents.map((a) => [a.id, a.name] as const));
 

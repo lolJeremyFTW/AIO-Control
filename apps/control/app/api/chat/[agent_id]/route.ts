@@ -15,6 +15,7 @@ import type { AGUIEvent, ChatMessage } from "@aio/ai/ag-ui";
 import { AIO_TOOLS, defaultToolsForKind } from "@aio/ai/aio-tools";
 
 import { resolveApiKey } from "../../../../lib/api-keys/resolve";
+import { LOCALES, type Locale } from "../../../../lib/i18n/dict";
 import { resolveCodexCredential } from "../../../../lib/openai-codex/oauth";
 import { resolveOllamaEndpoint } from "../../../../lib/ollama/endpoint";
 import {
@@ -44,6 +45,7 @@ export const dynamic = "force-dynamic";
 type Body = {
   messages: ChatMessage[];
   thread_id?: string;
+  locale?: Locale;
   /** Sent by the panel when the user clicks Approve / Cancel on a
    *  confirm_required card. The server looks up the pending state
    *  by tool_call_id (in lib/agents/pending-approvals), executes the
@@ -53,6 +55,12 @@ type Body = {
     tool_call_id: string;
     decision: "approve" | "cancel";
   };
+};
+
+const TARGET_LANGUAGE: Record<Locale, string> = {
+  nl: "Dutch",
+  en: "English",
+  de: "German",
 };
 
 export async function POST(
@@ -142,6 +150,7 @@ export async function POST(
 
   const config = (agent.config ?? {}) as AgentConfig;
   if (agent.model && !config.model) config.model = agent.model;
+  const responseLocale = normalizeLocale(body.locale);
 
   // Build the FULL system-prompt preamble (platform / identity /
   // tools / siblings / budget / business / workspace-rules) and
@@ -158,6 +167,12 @@ export async function POST(
     model: agent.model,
   });
   config.systemPrompt = prependPreamble(preamble, config.systemPrompt);
+  if (responseLocale) {
+    config.systemPrompt =
+      `${config.systemPrompt}\n\n` +
+      `Language: respond to the user in ${TARGET_LANGUAGE[responseLocale]}. ` +
+      "Translate natural-language tool results or prior context as needed, but preserve code, URLs, IDs, JSON, cron expressions, placeholders, and proper names.";
+  }
 
   // Resolve the per-tenant API key for this agent's provider. Order
   // is navnode → business → workspace → env-var fallback. Set up once
@@ -656,6 +671,12 @@ export async function POST(
       "x-aio-run-id": run.id,
     },
   });
+}
+
+function normalizeLocale(value: unknown): Locale | null {
+  return typeof value === "string" && LOCALES.includes(value as Locale)
+    ? (value as Locale)
+    : null;
 }
 
 function inferScheduledChatPing(

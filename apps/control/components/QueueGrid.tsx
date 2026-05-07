@@ -13,6 +13,8 @@ import {
   approveQueueItem,
   rejectQueueItem,
 } from "../app/actions/queue";
+import { useLocale } from "../lib/i18n/client";
+import { translate, type T } from "../lib/i18n/dict";
 import type { QueueRow } from "../lib/queries/businesses";
 
 type Props = {
@@ -22,6 +24,8 @@ type Props = {
 
 export function QueueGrid({ items, workspaceSlug }: Props) {
   const router = useRouter();
+  const locale = useLocale();
+  const t: T = (key, vars) => translate(locale, key, vars);
   const [, startTransition] = useTransition();
   const [menu, setMenu] = useState<{
     x: number;
@@ -42,17 +46,17 @@ export function QueueGrid({ items, workspaceSlug }: Props) {
       });
     return [
       {
-        label: "✓ Approve",
+        label: t("queue.menu.approve"),
         onClick: () => decide("approve"),
       },
       {
-        label: "✗ Reject",
+        label: t("queue.menu.reject"),
         danger: true,
         onClick: () => decide("reject"),
       },
       { kind: "separator" },
       {
-        label: "Open business",
+        label: t("queue.menu.openBusiness"),
         onClick: () => {
           if (q.business_id) {
             router.push(`/${workspaceSlug}/business/${q.business_id}`);
@@ -61,7 +65,7 @@ export function QueueGrid({ items, workspaceSlug }: Props) {
         disabled: !q.business_id,
       },
       {
-        label: "Kopieer titel",
+        label: t("queue.menu.copyTitle"),
         onClick: () => navigator.clipboard.writeText(q.title),
       },
     ];
@@ -75,6 +79,7 @@ export function QueueGrid({ items, workspaceSlug }: Props) {
             key={q.id}
             item={q}
             workspaceSlug={workspaceSlug}
+            t={t}
             onContextMenu={(e) =>
               setMenu({ x: e.clientX, y: e.clientY, item: q })
             }
@@ -93,10 +98,12 @@ export function QueueGrid({ items, workspaceSlug }: Props) {
 function QueueCard({
   item: q,
   workspaceSlug,
+  t,
   onContextMenu,
 }: {
   item: QueueRow;
   workspaceSlug: string;
+  t: T;
   onContextMenu: (e: React.MouseEvent) => void;
 }) {
   const router = useRouter();
@@ -128,16 +135,16 @@ function QueueCard({
     >
       <span className={`pill ${cls}`.trim()}>
         {q.state === "fail"
-          ? "Handmatige check"
+          ? t("queue.state.manualCheck")
           : q.state === "review"
-            ? "Review (HITL)"
-            : "Auto"}
+            ? t("queue.state.review")
+            : t("queue.state.auto")}
       </span>
       <div className="ttl">{q.title}</div>
       {q.meta && <div className="meta">{q.meta}</div>}
       <div>
         <div className="row-line">
-          <span>Confidence</span>
+          <span>{t("queue.confidence")}</span>
           <span>{Math.round(pct)}%</span>
         </div>
         <div className="bar">
@@ -151,40 +158,40 @@ function QueueCard({
         {q.state === "fail" ? (
           <>
             <button disabled={pending} onClick={() => decide("reject")}>
-              Skip
+              {t("queue.action.skip")}
             </button>
             <button
               disabled={pending}
               className="go"
               onClick={() => decide("approve")}
             >
-              {pending ? "Bezig…" : "Fix & resubmit"}
+              {pending ? t("common.busy") : t("queue.action.fixResubmit")}
             </button>
           </>
         ) : q.state === "review" ? (
           <>
             <button disabled={pending} onClick={() => decide("reject")}>
-              {pending ? "…" : "Reject"}
+              {pending ? "..." : t("queue.action.reject")}
             </button>
             <button
               disabled={pending}
               className="go"
               onClick={() => decide("approve")}
             >
-              {pending ? "…" : "Approve"}
+              {pending ? "..." : t("queue.action.approve")}
             </button>
           </>
         ) : (
           <>
             <button disabled={pending} onClick={() => decide("reject")}>
-              Pauze
+              {t("queue.action.pause")}
             </button>
             <button
               disabled={pending}
               className="go"
               onClick={() => decide("approve")}
             >
-              Open
+              {t("queue.action.open")}
             </button>
           </>
         )}

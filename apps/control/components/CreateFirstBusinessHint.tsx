@@ -8,6 +8,8 @@ import { useState } from "react";
 
 import { PlusIcon } from "@aio/ui/icon";
 
+import { useLocale } from "../lib/i18n/client";
+import { translate, type T } from "../lib/i18n/dict";
 import { NewBusinessDialog } from "./NewBusinessDialog";
 
 type Props = {
@@ -19,17 +21,16 @@ export function CreateFirstBusinessHint({
   workspaceSlug,
   workspaceId,
 }: Props) {
+  const locale = useLocale();
+  const t: T = (key, vars) => translate(locale, key, vars);
   const [open, setOpen] = useState(false);
   return (
     <>
       <div className="empty-state">
-        <h2>Maak je eerste business →</h2>
-        <p>
-          Hier verschijnen straks Faceless YouTube, Etsy, Blog Network en je
-          andere automated mini-businesses. Maak er één aan om door te gaan.
-        </p>
+        <h2>{t("dashboard.empty.title")}</h2>
+        <p>{t("dashboard.empty.body")}</p>
         <button className="cta" onClick={() => setOpen(true)}>
-          <PlusIcon /> Nieuwe business
+          <PlusIcon /> {t("nav.newBusiness")}
         </button>
       </div>
       {open && (

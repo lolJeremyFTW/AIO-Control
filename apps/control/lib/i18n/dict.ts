@@ -615,6 +615,63 @@ const nl: Dict = {
   "profile.security.signOutAll": "Overal uitloggen",
   "profile.security.signOutAll.confirm":
     "Logt uit op ALLE apparaten + browsers waar je nu bent ingelogd. Doorgaan?",
+
+  "chat.noAgents.title":
+    "Voeg eerst een agent toe - klik om naar de marketplace te gaan",
+  "chat.title": "Chat met AI",
+  "chat.threads.show": "Toon gesprekken",
+  "chat.threads.hide": "Verberg gesprekken",
+  "chat.newChat": "Nieuwe chat",
+  "chat.close": "Sluit chat",
+  "chat.threads": "Gesprekken",
+  "chat.new": "Nieuwe",
+  "chat.threads.empty": "Nog geen gesprekken.",
+  "chat.threads.noTitle": "geen titel",
+  "chat.threads.deleteConfirm": "Gesprek verwijderen?",
+  "chat.threads.delete": "Verwijder gesprek",
+  "chat.emptyPrompt":
+    "Stel een vraag aan de geselecteerde agent. Streaming antwoord.",
+  "chat.followup.typeBelow": "Typ je antwoord hieronder.",
+  "chat.confirm.title": "Bevestig: {kind}",
+  "chat.confirm.approved": "Goedgekeurd - uitgevoerd.",
+  "chat.confirm.cancelled": "Geannuleerd.",
+  "chat.confirm.approve": "Goedkeuren",
+  "chat.confirm.cancel": "Annuleren",
+  "chat.placeholder": "Vraag iets aan de agent...",
+
+  "queue.menu.approve": "Goedkeuren",
+  "queue.menu.reject": "Afwijzen",
+  "queue.menu.openBusiness": "Business openen",
+  "queue.menu.copyTitle": "Kopieer titel",
+  "queue.state.manualCheck": "Handmatige check",
+  "queue.state.review": "Review (HITL)",
+  "queue.state.auto": "Auto",
+  "queue.confidence": "Vertrouwen",
+  "queue.action.skip": "Skip",
+  "queue.action.fixResubmit": "Fix & opnieuw indienen",
+  "queue.action.reject": "Afwijzen",
+  "queue.action.approve": "Goedkeuren",
+  "queue.action.pause": "Pauze",
+  "queue.action.open": "Open",
+
+  "onboarding.title": "Welkom bij AIO Control",
+  "onboarding.body":
+    "Drie stappen en je hebt een agent draaien. Skip wat je niet nodig hebt; we tonen dit blok totdat alles staat.",
+  "onboarding.done": "KLAAR",
+  "onboarding.step": "STAP {n}",
+  "onboarding.business.title": "Maak een business",
+  "onboarding.business.desc":
+    "Een business is een container voor agents en KPI's. Etsy, YouTube, lead-gen - wat je maar wilt automatiseren.",
+  "onboarding.business.cta": "+ Nieuwe business",
+  "onboarding.keys.title": "API keys instellen",
+  "onboarding.keys.desc":
+    "Plak je Anthropic / MiniMax / OpenRouter / OpenAI key. Workspace-default werkt direct, later kun je overrides per business of topic zetten.",
+  "onboarding.keys.cta": "Open API Keys",
+  "onboarding.agent.title": "Eerste agent maken",
+  "onboarding.agent.desc":
+    "Kies een provider, schrijf een system prompt, ga praten via de chat-bubble rechtsonder of schedule 'm dagelijks.",
+  "onboarding.agent.cta": "Open Agents van {business}",
+  "onboarding.agent.wait": "Maak eerst een business aan.",
 };
 
 const en: Partial<Dict> = {
@@ -1206,6 +1263,63 @@ const en: Partial<Dict> = {
   "profile.security.signOutAll": "Sign out everywhere",
   "profile.security.signOutAll.confirm":
     "Signs you out on ALL devices + browsers where you're currently signed in. Continue?",
+
+  "chat.noAgents.title":
+    "Add an agent first - click to go to the marketplace",
+  "chat.title": "Chat with AI",
+  "chat.threads.show": "Show threads",
+  "chat.threads.hide": "Hide threads",
+  "chat.newChat": "New chat",
+  "chat.close": "Close chat",
+  "chat.threads": "Threads",
+  "chat.new": "New",
+  "chat.threads.empty": "No threads yet.",
+  "chat.threads.noTitle": "untitled",
+  "chat.threads.deleteConfirm": "Delete thread?",
+  "chat.threads.delete": "Delete thread",
+  "chat.emptyPrompt":
+    "Ask the selected agent a question. The answer streams in.",
+  "chat.followup.typeBelow": "Type your answer below.",
+  "chat.confirm.title": "Confirm: {kind}",
+  "chat.confirm.approved": "Approved - executed.",
+  "chat.confirm.cancelled": "Cancelled.",
+  "chat.confirm.approve": "Approve",
+  "chat.confirm.cancel": "Cancel",
+  "chat.placeholder": "Ask the agent anything...",
+
+  "queue.menu.approve": "Approve",
+  "queue.menu.reject": "Reject",
+  "queue.menu.openBusiness": "Open business",
+  "queue.menu.copyTitle": "Copy title",
+  "queue.state.manualCheck": "Manual check",
+  "queue.state.review": "Review (HITL)",
+  "queue.state.auto": "Auto",
+  "queue.confidence": "Confidence",
+  "queue.action.skip": "Skip",
+  "queue.action.fixResubmit": "Fix & resubmit",
+  "queue.action.reject": "Reject",
+  "queue.action.approve": "Approve",
+  "queue.action.pause": "Pause",
+  "queue.action.open": "Open",
+
+  "onboarding.title": "Welcome to AIO Control",
+  "onboarding.body":
+    "Three steps and you have an agent running. Skip what you do not need; this block stays visible until everything is set.",
+  "onboarding.done": "DONE",
+  "onboarding.step": "STEP {n}",
+  "onboarding.business.title": "Create a business",
+  "onboarding.business.desc":
+    "A business is a container for agents and KPIs. Etsy, YouTube, lead-gen - anything you want to automate.",
+  "onboarding.business.cta": "+ New business",
+  "onboarding.keys.title": "Set API keys",
+  "onboarding.keys.desc":
+    "Paste your Anthropic / MiniMax / OpenRouter / OpenAI key. Workspace default works immediately; later you can add overrides per business or topic.",
+  "onboarding.keys.cta": "Open API Keys",
+  "onboarding.agent.title": "Create your first agent",
+  "onboarding.agent.desc":
+    "Choose a provider, write a system prompt, chat from the bubble at bottom right, or schedule it daily.",
+  "onboarding.agent.cta": "Open Agents for {business}",
+  "onboarding.agent.wait": "Create a business first.",
 };
 
 const de: Partial<Dict> = {
@@ -1802,6 +1916,63 @@ const de: Partial<Dict> = {
     "Nur UPPERCASE A-Z, 0-9 und _ — z.B. AIRTABLE_API_KEY. Agenten/Module lesen den Wert über diesen Namen.",
   "keys.group.providers": "Provider-Keys",
   "keys.group.custom": "Eigene Secrets",
+
+  "chat.noAgents.title":
+    "Fuege zuerst einen Agenten hinzu - Klick fuehrt zum Marketplace",
+  "chat.title": "Chat mit KI",
+  "chat.threads.show": "Threads anzeigen",
+  "chat.threads.hide": "Threads verbergen",
+  "chat.newChat": "Neuer Chat",
+  "chat.close": "Chat schliessen",
+  "chat.threads": "Threads",
+  "chat.new": "Neu",
+  "chat.threads.empty": "Noch keine Threads.",
+  "chat.threads.noTitle": "ohne Titel",
+  "chat.threads.deleteConfirm": "Thread loeschen?",
+  "chat.threads.delete": "Thread loeschen",
+  "chat.emptyPrompt":
+    "Stelle dem ausgewaehlten Agenten eine Frage. Die Antwort streamt.",
+  "chat.followup.typeBelow": "Tippe deine Antwort unten ein.",
+  "chat.confirm.title": "Bestaetigen: {kind}",
+  "chat.confirm.approved": "Genehmigt - ausgefuehrt.",
+  "chat.confirm.cancelled": "Abgebrochen.",
+  "chat.confirm.approve": "Genehmigen",
+  "chat.confirm.cancel": "Abbrechen",
+  "chat.placeholder": "Frag den Agenten etwas...",
+
+  "queue.menu.approve": "Genehmigen",
+  "queue.menu.reject": "Ablehnen",
+  "queue.menu.openBusiness": "Business oeffnen",
+  "queue.menu.copyTitle": "Titel kopieren",
+  "queue.state.manualCheck": "Manuelle Pruefung",
+  "queue.state.review": "Review (HITL)",
+  "queue.state.auto": "Auto",
+  "queue.confidence": "Vertrauen",
+  "queue.action.skip": "Ueberspringen",
+  "queue.action.fixResubmit": "Korrigieren & erneut senden",
+  "queue.action.reject": "Ablehnen",
+  "queue.action.approve": "Genehmigen",
+  "queue.action.pause": "Pausieren",
+  "queue.action.open": "Oeffnen",
+
+  "onboarding.title": "Willkommen bei AIO Control",
+  "onboarding.body":
+    "Drei Schritte und ein Agent laeuft. Ueberspringe, was du nicht brauchst; dieser Block bleibt sichtbar, bis alles eingerichtet ist.",
+  "onboarding.done": "FERTIG",
+  "onboarding.step": "SCHRITT {n}",
+  "onboarding.business.title": "Business erstellen",
+  "onboarding.business.desc":
+    "Ein Business ist ein Container fuer Agenten und KPIs. Etsy, YouTube, Lead-Gen - alles, was du automatisieren willst.",
+  "onboarding.business.cta": "+ Neues Business",
+  "onboarding.keys.title": "API-Keys einrichten",
+  "onboarding.keys.desc":
+    "Fuege deinen Anthropic / MiniMax / OpenRouter / OpenAI Key ein. Workspace-Default funktioniert sofort; spaeter kannst du Overrides pro Business oder Topic setzen.",
+  "onboarding.keys.cta": "API Keys oeffnen",
+  "onboarding.agent.title": "Ersten Agenten erstellen",
+  "onboarding.agent.desc":
+    "Waehle einen Provider, schreibe einen System-Prompt, chatte unten rechts oder plane ihn taeglich ein.",
+  "onboarding.agent.cta": "Agents von {business} oeffnen",
+  "onboarding.agent.wait": "Erstelle zuerst ein Business.",
 };
 
 const DICTS: Record<Locale, Partial<Dict>> = { nl, en, de };

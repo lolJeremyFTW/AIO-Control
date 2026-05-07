@@ -13,9 +13,12 @@
 import { revalidatePath } from "next/cache";
 
 import { createSupabaseServerClient } from "../../lib/supabase/server";
+import { LOCALES, type Locale } from "../../lib/i18n/dict";
+import { translateContentBatch } from "../../lib/i18n/content-translations";
 
 export type ThreadRow = {
   id: string;
+  workspace_id: string;
   agent_id: string;
   title: string | null;
   created_at: string;
@@ -26,7 +29,7 @@ export type MessageRow = {
   id: string;
   thread_id: string;
   role: "user" | "assistant" | "system";
-  content: { text?: string };
+  content: { text?: string; original_text?: string };
   created_at: string;
 };
 
@@ -34,12 +37,16 @@ type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 
 export async function listThreads(
   agentId: string,
+  locale?: Locale,
   limit = 20,
 ): Promise<ThreadRow[]> {
   const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   const { data, error } = await supabase
     .from("chat_threads")
-    .select("id, agent_id, title, created_at, updated_at")
+    .select("id, workspace_id, agent_id, title, created_at, updated_at")
     .eq("agent_id", agentId)
     .order("updated_at", { ascending: false })
     .limit(limit);
@@ -47,7 +54,27 @@ export async function listThreads(
     console.error("listThreads failed", error);
     return [];
   }
-  return (data ?? []) as ThreadRow[];
+  const rows = (data ?? []) as ThreadRow[];
+  if (!isLocale(locale) || rows.length === 0) return rows;
+
+  const workspaceId = rows[0]?.workspace_id;
+  if (!workspaceId) return rows;
+  const translated = await translateContentBatch(
+    workspaceId,
+    locale,
+    rows.map((row) => ({
+      sourceKind: "chat_thread",
+      sourceId: row.id,
+      field: "title",
+      text: row.title,
+    })),
+    { credentialOwnerUserId: user?.id ?? null },
+  );
+
+  return rows.map((row, index) => ({
+    ...row,
+    title: row.title ? (translated[index] ?? row.title) : row.title,
+  }));
 }
 
 export async function createThread(input: {
@@ -100,18 +127,60 @@ export async function deleteThread(input: {
   return { ok: true, data: null };
 }
 
-export async function listMessages(threadId: string): Promise<MessageRow[]> {
+export async function listMessages(
+  threadId: string,
+  locale?: Locale,
+): Promise<MessageRow[]> {
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from("chat_messages")
-    .select("id, thread_id, role, content, created_at")
-    .eq("thread_id", threadId)
-    .order("created_at", { ascending: true });
+  const [
+    {
+      data: { user },
+    },
+    { data: thread },
+    { data, error },
+  ] = await Promise.all([
+    supabase.auth.getUser(),
+    supabase
+      .from("chat_threads")
+      .select("workspace_id")
+      .eq("id", threadId)
+      .maybeSingle(),
+    supabase
+      .from("chat_messages")
+      .select("id, thread_id, role, content, created_at")
+      .eq("thread_id", threadId)
+      .order("created_at", { ascending: true }),
+  ]);
   if (error) {
     console.error("listMessages failed", error);
     return [];
   }
-  return (data ?? []) as MessageRow[];
+  const rows = (data ?? []) as MessageRow[];
+  const workspaceId = (thread as { workspace_id?: string } | null)
+    ?.workspace_id;
+  if (!isLocale(locale) || !workspaceId || rows.length === 0) return rows;
+
+  const originals = rows.map((row) => row.content?.text ?? "");
+  const translated = await translateContentBatch(
+    workspaceId,
+    locale,
+    rows.map((row, index) => ({
+      sourceKind: "chat_message",
+      sourceId: row.id,
+      field: "content.text",
+      text: originals[index],
+    })),
+    { credentialOwnerUserId: user?.id ?? null },
+  );
+
+  return rows.map((row, index) => ({
+    ...row,
+    content: {
+      ...row.content,
+      original_text: originals[index],
+      text: translated[index] ?? originals[index],
+    },
+  }));
 }
 
 // Helper used by /api/chat to (1) ensure a thread exists for the
@@ -186,4 +255,8 @@ export async function persistChatTurn(input: {
     .update({ updated_at: new Date().toISOString() })
     .eq("id", input.thread_id);
   revalidatePath("/", "layout");
+}
+
+function isLocale(value: unknown): value is Locale {
+  return typeof value === "string" && LOCALES.includes(value as Locale);
 }

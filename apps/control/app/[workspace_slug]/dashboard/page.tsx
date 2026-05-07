@@ -9,6 +9,10 @@ import {
   getWorkspaceBySlug,
 } from "../../../lib/auth/workspace";
 import { getDict } from "../../../lib/i18n/server";
+import {
+  translateBusinessRows,
+  translateQueueRows,
+} from "../../../lib/i18n/content-translations";
 import { CreateFirstBusinessHint } from "../../../components/CreateFirstBusinessHint";
 import { BusinessKpiGrid } from "../../../components/BusinessKpiGrid";
 import { OnboardingWizard } from "../../../components/OnboardingWizard";
@@ -36,7 +40,7 @@ export default async function WorkspaceDashboardPage({ params }: Props) {
   if (!workspace) redirect("/login");
 
   const supabase = await createSupabaseServerClient();
-  const [businesses, queue, kpis, agents, { count: keyCount }, { t }] =
+  const [businesses, queue, kpis, agents, { count: keyCount }, dict] =
     await Promise.all([
       listBusinesses(workspace.id),
       listOpenQueueItems(workspace.id, undefined, 12),
@@ -48,11 +52,20 @@ export default async function WorkspaceDashboardPage({ params }: Props) {
         .eq("workspace_id", workspace.id),
       getDict(),
     ]);
+  const { locale, t } = dict;
 
   const summaries = summarizeKpis(
     kpis,
     businesses.map((b) => b.id),
   );
+  const [dashboardBusinesses, dashboardQueue] = await Promise.all([
+    translateBusinessRows(workspace.id, locale, businesses, {
+      credentialOwnerUserId: user.id,
+    }),
+    translateQueueRows(workspace.id, locale, queue, {
+      credentialOwnerUserId: user.id,
+    }),
+  ]);
 
   return (
     <div className="content">
@@ -64,25 +77,25 @@ export default async function WorkspaceDashboardPage({ params }: Props) {
       <OnboardingWizard
         workspaceSlug={workspace.slug}
         workspaceId={workspace.id}
-        businesses={businesses}
+        businesses={dashboardBusinesses}
         hasAnyApiKey={(keyCount ?? 0) > 0}
         agentCount={agents.length}
       />
 
-      {businesses.length > 0 && (
+      {dashboardBusinesses.length > 0 && (
         <BusinessKpiGrid
           workspaceSlug={workspace.slug}
-          businesses={businesses}
+          businesses={dashboardBusinesses}
           summaries={summaries}
         />
       )}
 
-      {businesses.length === 0 ? (
+      {dashboardBusinesses.length === 0 ? (
         <CreateFirstBusinessHint
           workspaceSlug={workspace.slug}
           workspaceId={workspace.id}
         />
-      ) : queue.length === 0 ? (
+      ) : dashboardQueue.length === 0 ? (
         <div className="empty-state">
           <h2>{t("dashboard.queueEmpty.title")}</h2>
           <p>{t("dashboard.queueEmpty.body")}</p>
@@ -91,7 +104,7 @@ export default async function WorkspaceDashboardPage({ params }: Props) {
           </button>
         </div>
       ) : (
-        <QueueGrid items={queue} workspaceSlug={workspace.slug} />
+        <QueueGrid items={dashboardQueue} workspaceSlug={workspace.slug} />
       )}
     </div>
   );

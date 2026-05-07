@@ -17,6 +17,11 @@ import {
 } from "../../../../lib/queries/businesses";
 import { listRecentRunsForBusiness } from "../../../../lib/queries/schedules";
 import { getDict } from "../../../../lib/i18n/server";
+import {
+  translateAgentRows,
+  translateBusinessRows,
+  translateQueueRows,
+} from "../../../../lib/i18n/content-translations";
 import { BusinessDashboard } from "../../../../components/BusinessDashboard";
 import { PauseToggle } from "../../../../components/PauseToggle";
 
@@ -45,7 +50,22 @@ export default async function BusinessPage({ params }: Props) {
   ]);
   const bizKpis = kpis.filter((k) => k.business_id === biz.id);
   const bizAgents = agents.filter((a) => a.business_id === biz.id);
-  const { t } = await getDict();
+  const { locale, t } = await getDict();
+  const [displayBizRows, displayQueue, displayAgents] = await Promise.all([
+    translateBusinessRows(workspace.id, locale, [biz], {
+      credentialOwnerUserId: user.id,
+      businessId: biz.id,
+    }),
+    translateQueueRows(workspace.id, locale, queue, {
+      credentialOwnerUserId: user.id,
+      businessId: biz.id,
+    }),
+    translateAgentRows(workspace.id, locale, bizAgents, {
+      credentialOwnerUserId: user.id,
+      businessId: biz.id,
+    }),
+  ]);
+  const displayBiz = displayBizRows[0] ?? biz;
 
   return (
     <div className="content">
@@ -54,9 +74,9 @@ export default async function BusinessPage({ params }: Props) {
             (e.g. "video"), not an emoji — concatenating it leaks the
             literal "video " prefix into the heading. The actual SVG
             icon is already rendered in the rail row + breadcrumb. */}
-        <h1>{biz.name}</h1>
+        <h1>{displayBiz.name}</h1>
         <span className="sub">
-          {biz.sub ?? t("page.business.overview.sub")}
+          {displayBiz.sub ?? t("page.business.overview.sub")}
         </span>
       </div>
 
@@ -70,10 +90,10 @@ export default async function BusinessPage({ params }: Props) {
 
       <BusinessDashboard
         workspaceSlug={workspace.slug}
-        business={biz}
+        business={displayBiz}
         kpis={bizKpis}
-        queue={queue}
-        agents={bizAgents}
+        queue={displayQueue}
+        agents={displayAgents}
         runs={runs}
       />
     </div>

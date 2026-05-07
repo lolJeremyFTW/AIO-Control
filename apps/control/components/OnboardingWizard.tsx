@@ -12,6 +12,8 @@
 import Link from "next/link";
 import { useState } from "react";
 
+import { useLocale } from "../lib/i18n/client";
+import { translate, type T } from "../lib/i18n/dict";
 import type { BusinessRow } from "../lib/queries/businesses";
 import { NewBusinessDialog } from "./NewBusinessDialog";
 
@@ -30,6 +32,8 @@ export function OnboardingWizard({
   hasAnyApiKey,
   agentCount,
 }: Props) {
+  const locale = useLocale();
+  const t: T = (key, vars) => translate(locale, key, vars);
   const [showBusinessDialog, setShowBusinessDialog] = useState(false);
 
   const hasBusinesses = businesses.length > 0;
@@ -71,7 +75,7 @@ export function OnboardingWizard({
               letterSpacing: "-0.3px",
             }}
           >
-            Welkom bij AIO Control
+            {t("onboarding.title")}
           </h2>
           <p
             style={{
@@ -80,8 +84,7 @@ export function OnboardingWizard({
               margin: 0,
             }}
           >
-            Drie stappen en je hebt een agent draaien. Skip wat je niet
-            nodig hebt; we tonen dit blok totdat alles staat.
+            {t("onboarding.body")}
           </p>
         </div>
       </div>
@@ -96,53 +99,56 @@ export function OnboardingWizard({
       >
         <Step
           n={1}
-          title="Maak een business"
+          title={t("onboarding.business.title")}
           done={stepDone(1)}
-          desc="Een business is een container voor agents en KPI's. Etsy, YouTube, lead-gen — wat je maar wilt automatiseren."
+          desc={t("onboarding.business.desc")}
+          t={t}
         >
           {!stepDone(1) && (
             <button
               onClick={() => setShowBusinessDialog(true)}
               style={btn}
             >
-              + Nieuwe business
+              {t("onboarding.business.cta")}
             </button>
           )}
         </Step>
 
         <Step
           n={2}
-          title="API keys instellen"
+          title={t("onboarding.keys.title")}
           done={stepDone(2)}
-          desc="Plak je Anthropic / MiniMax / OpenRouter / OpenAI key. Workspace-default werkt direct, maar je kunt later overrides per business of topic zetten."
+          desc={t("onboarding.keys.desc")}
+          t={t}
         >
           {!stepDone(2) && (
             <Link
               href={`/${workspaceSlug}/settings#api-keys`}
               style={btn}
             >
-              → Open API Keys
+              {t("onboarding.keys.cta")}
             </Link>
           )}
         </Step>
 
         <Step
           n={3}
-          title="Eerste agent maken"
+          title={t("onboarding.agent.title")}
           done={stepDone(3)}
-          desc="Kies een provider, schrijf een system prompt, ga praten via de chat-bubble rechtsonder of schedule 'm dagelijks."
+          desc={t("onboarding.agent.desc")}
+          t={t}
         >
           {!stepDone(3) && businesses.length > 0 && (
             <Link
               href={`/${workspaceSlug}/business/${businesses[0]!.slug}/agents`}
               style={btn}
             >
-              → Open Agents van {businesses[0]!.name}
+              {t("onboarding.agent.cta", { business: businesses[0]!.name })}
             </Link>
           )}
           {!stepDone(3) && businesses.length === 0 && (
             <span style={{ fontSize: 11.5, color: "var(--app-fg-3)" }}>
-              Maak eerst een business aan.
+              {t("onboarding.agent.wait")}
             </span>
           )}
         </Step>
@@ -164,12 +170,14 @@ function Step({
   title,
   desc,
   done,
+  t,
   children,
 }: {
   n: number;
   title: string;
   desc: string;
   done: boolean;
+  t: T;
   children?: React.ReactNode;
 }) {
   return (
@@ -197,7 +205,7 @@ function Step({
           textTransform: "uppercase",
         }}
       >
-        {done ? "✓ KLAAR" : `STAP ${n}`}
+        {done ? t("onboarding.done") : t("onboarding.step", { n })}
       </div>
       <div style={{ fontSize: 14, fontWeight: 700 }}>{title}</div>
       <div style={{ fontSize: 11.5, color: "var(--app-fg-3)", lineHeight: 1.45 }}>
