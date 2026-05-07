@@ -7,6 +7,11 @@
 
 import { revalidatePath } from "next/cache";
 
+import {
+  getPopularOnlineSkill,
+  getSkillFromGitHubUrl,
+  listPopularOnlineSkills,
+} from "../../lib/skills/online-catalog";
 import { createSupabaseServerClient } from "../../lib/supabase/server";
 
 export type ActionResult<T> =
@@ -19,6 +24,15 @@ export type SkillInput = {
   name: string;
   description: string;
   body: string;
+};
+
+export type OnlineSkillPreview = {
+  id: string;
+  name: string;
+  description: string;
+  source_url: string;
+  source_provider: string;
+  body_chars: number;
 };
 
 export async function createSkill(
@@ -43,7 +57,7 @@ export async function createSkill(
   if (error || !data) {
     return { ok: false, error: error?.message ?? "Insert failed." };
   }
-  revalidatePath(`/${input.workspace_slug}/skills`);
+  revalidateSkillPaths(input.workspace_slug);
   return { ok: true, data: { id: data.id } };
 }
 
@@ -76,7 +90,7 @@ export async function updateSkill(input: {
     .update(patch)
     .eq("id", input.id);
   if (error) return { ok: false, error: error.message };
-  revalidatePath(`/${input.workspace_slug}/skills`);
+  revalidateSkillPaths(input.workspace_slug);
   return { ok: true, data: null };
 }
 
@@ -90,8 +104,99 @@ export async function archiveSkill(input: {
     .update({ archived_at: new Date().toISOString() })
     .eq("id", input.id);
   if (error) return { ok: false, error: error.message };
-  revalidatePath(`/${input.workspace_slug}/skills`);
+  revalidateSkillPaths(input.workspace_slug);
   return { ok: true, data: null };
+}
+
+export async function previewPopularOnlineSkills(): Promise<
+  ActionResult<OnlineSkillPreview[]>
+> {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Niet ingelogd." };
+
+  const skills = await listPopularOnlineSkills();
+  return {
+    ok: true,
+    data: skills.map((skill) => ({
+      id: skill.id,
+      name: skill.name,
+      description: skill.description,
+      source_url: skill.source_url,
+      source_provider: skill.source_provider,
+      body_chars: skill.body.length,
+    })),
+  };
+}
+
+export async function importPopularOnlineSkill(input: {
+  workspace_slug: string;
+  workspace_id: string;
+  template_id: string;
+}): Promise<ActionResult<{ id: string; name: string }>> {
+  const skill = await getPopularOnlineSkill(input.template_id);
+  if (!skill) return { ok: false, error: "Online skill niet gevonden." };
+  return upsertImportedSkill({
+    workspace_slug: input.workspace_slug,
+    workspace_id: input.workspace_id,
+    name: skill.name,
+    description: skill.description,
+    body: skill.body,
+  });
+}
+
+export async function importSkillFromGitHubUrl(input: {
+  workspace_slug: string;
+  workspace_id: string;
+  url: string;
+}): Promise<ActionResult<{ id: string; name: string }>> {
+  const skill = await getSkillFromGitHubUrl(input.url);
+  if (!skill) {
+    return {
+      ok: false,
+      error:
+        "Geen geldige GitHub markdown skill gevonden. Gebruik een github.com/.../blob/.../*.md of raw.githubusercontent.com URL.",
+    };
+  }
+  return upsertImportedSkill({
+    workspace_slug: input.workspace_slug,
+    workspace_id: input.workspace_id,
+    name: skill.name,
+    description: skill.description,
+    body: skill.body,
+  });
+}
+
+async function upsertImportedSkill(input: SkillInput): Promise<
+  ActionResult<{ id: string; name: string }>
+> {
+  if (!input.name.trim()) return { ok: false, error: "Naam mag niet leeg zijn." };
+  if (!input.description.trim())
+    return { ok: false, error: "Beschrijving mag niet leeg zijn." };
+  if (!input.body.trim()) return { ok: false, error: "Body mag niet leeg zijn." };
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("skills")
+    .upsert(
+      {
+        workspace_id: input.workspace_id,
+        name: input.name.trim(),
+        description: input.description.trim(),
+        body: input.body.trim(),
+        archived_at: null,
+      },
+      { onConflict: "workspace_id,name" },
+    )
+    .select("id, name")
+    .single();
+  if (error || !data) {
+    return { ok: false, error: error?.message ?? "Import failed." };
+  }
+  revalidateSkillPaths(input.workspace_slug);
+  return { ok: true, data: { id: data.id, name: data.name } };
 }
 
 /** Replace the agent's allowed_skills array with the given ids. Pass
@@ -116,5 +221,13 @@ export async function setAgentSkills(input: {
   } else {
     revalidatePath(`/${input.workspace_slug}/agents`);
   }
+  revalidatePath(`/${input.workspace_slug}/skills`);
+  revalidatePath(`/${input.workspace_slug}/profile`);
   return { ok: true, data: null };
+}
+
+function revalidateSkillPaths(workspaceSlug: string) {
+  revalidatePath(`/${workspaceSlug}/skills`);
+  revalidatePath(`/${workspaceSlug}/profile`);
+  revalidatePath(`/${workspaceSlug}/agents`);
 }

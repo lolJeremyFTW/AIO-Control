@@ -10,6 +10,10 @@ export type SkillPlan = {
   body: string;
 };
 
+export type SkillDraftPlan = SkillPlan & {
+  explanation: string;
+};
+
 export type SchedulePlan = {
   kind: "cron" | "webhook" | "manual";
   cron_expr?: string;
@@ -248,6 +252,53 @@ const TOOL: Anthropic.Tool = {
     },
   },
 };
+
+const SKILL_TOOL: Anthropic.Tool = {
+  name: "create_skill",
+  description: "Maak een compacte AIO Control skill.",
+  input_schema: {
+    type: "object" as const,
+    required: ["name", "description", "body", "explanation"],
+    properties: {
+      name: {
+        type: "string",
+        description:
+          "Korte naam, liefst slug-achtig of identifier-achtig, max 50 tekens.",
+      },
+      description: {
+        type: "string",
+        description:
+          "Een zin die exact zegt wanneer een agent deze skill moet gebruiken.",
+      },
+      body: {
+        type: "string",
+        description:
+          "Compacte markdown instructies. Richtlijn: 150-450 woorden.",
+      },
+      explanation: {
+        type: "string",
+        description: "Korte uitleg waarom deze skill zo is opgebouwd.",
+      },
+    },
+  },
+};
+
+function buildSkillSystem(provider: FlowPlanProvider): string {
+  return `Je bent een senior AI-operations architect voor AIO Control.
+Je maakt losse skills: compacte markdown-snippets die alleen per gekozen agent in de system-prompt worden geladen.
+
+Ontwerpregels:
+- Maak precies 1 skill.
+- Skills moeten context-bloat verminderen: zet alleen herbruikbare procedurele kennis in de body.
+- De description is de trigger: wanneer moet een agent deze skill gebruiken?
+- De body is operationeel en compact. Gebruik concrete stappen, checks en outputcriteria.
+- Vermijd algemene "wees behulpzaam" regels; die horen niet in een skill.
+- Vermijd secrets, API keys, accountgegevens en grote achtergrondcontext.
+- Schrijf in dezelfde taal als de gebruikersbeschrijving.
+- Gebruik markdown, maar houd het klein genoeg om vaak in een system-prompt mee te sturen.
+
+Provider voor generatie: ${provider}.`;
+}
 
 function buildBusinessSystem(provider: FlowPlanProvider): string {
   const base = buildSystem(provider);
@@ -567,6 +618,22 @@ function normalizeBusinessBlueprintPlan(
   };
 }
 
+function normalizeSkillDraftPlan(input: Partial<SkillDraftPlan>): SkillDraftPlan {
+  const name = input.name?.trim() || "Nieuwe skill";
+  const description =
+    input.description?.trim() ||
+    "Gebruik deze skill wanneer de taak deze procedurele werkwijze nodig heeft.";
+  const body =
+    input.body?.trim() ||
+    "## Werkwijze\n1. Lees de taak en bepaal of deze skill past.\n2. Voer de stappen compact uit.\n3. Geef een concreet resultaat terug.";
+  return {
+    name,
+    description,
+    body,
+    explanation: input.explanation?.trim() ?? "",
+  };
+}
+
 function normalizeTopicSuggestionsPlan(
   input: Partial<BusinessTopicSuggestionsPlan>,
 ): BusinessTopicSuggestionsPlan {
@@ -638,6 +705,60 @@ export async function generateFlowPlan(
     skills: input.skills ?? [],
     explanation: input.explanation,
   };
+}
+
+export async function generateSkillDraftPlan(
+  input: {
+    request: string;
+    existingSkills?: Array<{ name: string; description: string }>;
+  },
+  apiKey: string,
+  provider: FlowPlanProvider = "claude",
+): Promise<SkillDraftPlan> {
+  const clientOpts: ConstructorParameters<typeof Anthropic>[0] = { apiKey };
+  if (provider === "minimax") {
+    clientOpts.baseURL = minimaxAnthropicBase();
+    clientOpts.defaultHeaders = { Authorization: `Bearer ${apiKey}` };
+  }
+
+  const model = provider === "minimax" ? MINIMAX_MODEL : "claude-sonnet-4-6";
+  const client = new Anthropic(clientOpts);
+
+  const msg = await client.messages.create({
+    model,
+    max_tokens: 4096,
+    system: buildSkillSystem(provider),
+    tools: [SKILL_TOOL],
+    tool_choice: { type: "tool", name: "create_skill" },
+    messages: [
+      {
+        role: "user",
+        content:
+          "Maak een AIO Control skill op basis van deze wens.\n" +
+          "Gebruik verplicht de create_skill tool. Als de provider geen tool-call kan teruggeven, antwoord dan uitsluitend met een JSON object volgens hetzelfde schema.\n\n" +
+          JSON.stringify(
+            {
+              request: input.request,
+              existing_skills: input.existingSkills ?? [],
+            },
+            null,
+            2,
+          ),
+      },
+    ],
+  });
+
+  const toolBlock = msg.content.find((block) => block.type === "tool_use");
+  if (!toolBlock || toolBlock.type !== "tool_use") {
+    const parsed =
+      parseJsonObjectFromText<Partial<SkillDraftPlan>>(textFromMessage(msg));
+    if (parsed) return normalizeSkillDraftPlan(parsed);
+    throw new Error(
+      "AI gaf geen bruikbare skill terug. Probeer opnieuw met een concretere beschrijving.",
+    );
+  }
+
+  return normalizeSkillDraftPlan(toolBlock.input as Partial<SkillDraftPlan>);
 }
 
 export async function generateBusinessBlueprintPlan(
