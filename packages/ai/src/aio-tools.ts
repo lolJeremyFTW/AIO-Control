@@ -60,6 +60,41 @@ export const AIO_TOOLS: Record<string, AioToolSpec> = {
       additionalProperties: false,
     },
   },
+  list_nav_nodes: {
+    name: "list_nav_nodes",
+    category: "read",
+    description:
+      "List topics/nav-nodes from local Supabase, including which business each topic belongs to. Use search='outreach' or business_id to resolve user phrases like 'topic outreach in TrompTechDesigns'.",
+    parameters: {
+      type: "object",
+      properties: {
+        business_id: {
+          type: "string",
+          description: "Optional business UUID filter.",
+        },
+        search: {
+          type: "string",
+          description: "Optional search over topic name, slug, sub, path, and business name.",
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+  resolve_topic: {
+    name: "resolve_topic",
+    category: "read",
+    description:
+      "Resolve natural names from local Supabase to IDs. Example: business='TrompTechDesigns', topic='outreach' returns business_id, nav_node_id, business_slug, and topic path.",
+    parameters: {
+      type: "object",
+      properties: {
+        business: { type: "string", description: "Business name, slug, sub, or UUID." },
+        topic: { type: "string", description: "Topic/nav-node name, slug, path, or UUID." },
+      },
+      required: ["business", "topic"],
+      additionalProperties: false,
+    },
+  },
   list_integrations: {
     name: "list_integrations",
     category: "read",

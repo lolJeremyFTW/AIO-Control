@@ -8,6 +8,8 @@ type Props = {
   baseHref: string;
   /** Current nav_node name shown as the section label */
   topicName: string;
+  /** Extra topic-level tabs, usually generated dashboards published by agents. */
+  extraTabs?: Array<{ label: string; href: string; external?: boolean }>;
 };
 
 const SUB_TABS = [
@@ -16,7 +18,7 @@ const SUB_TABS = [
   { label: "Runs", suffix: "/runs" },
 ] as const;
 
-export function TopicTabs({ baseHref, topicName }: Props) {
+export function TopicTabs({ baseHref, topicName, extraTabs = [] }: Props) {
   const path = usePathname() ?? "";
 
   return (
@@ -79,6 +81,40 @@ export function TopicTabs({ baseHref, topicName }: Props) {
             >
               {label}
             </Link>
+          </span>
+        );
+      })}
+
+      {extraTabs.map((tab) => {
+        const active = !tab.external && path === tab.href;
+        return (
+          <span
+            key={`${tab.label}:${tab.href}`}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              transform: "translateY(1px)",
+              borderBottom: active
+                ? "2px solid var(--tt-green)"
+                : "2px solid transparent",
+            }}
+          >
+            <a
+              href={tab.href}
+              target={tab.external ? "_blank" : undefined}
+              rel={tab.external ? "noopener noreferrer" : undefined}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                padding: "8px 10px 8px 14px",
+                fontSize: 12.5,
+                fontWeight: 700,
+                color: active ? "var(--app-fg)" : "var(--app-fg-3)",
+                textDecoration: "none",
+              }}
+            >
+              {tab.label}
+            </a>
           </span>
         );
       })}

@@ -86,6 +86,8 @@ export default async function NavNodePage({ params, searchParams }: Props) {
 
   const baseHref = `/${workspace.slug}/business/${biz.slug}`;
   const topicBaseHref = `${baseHref}/n/${navPath.join("/")}`;
+  const savedDashboardForTabs = await getModuleDashboard(current.id);
+  const topicExtraTabs = dashboardTabsFromContent(savedDashboardForTabs?.content);
 
   // ── Agents sub-route ────────────────────────────────────────────────
   if (subRoute === "agents") {
@@ -128,7 +130,11 @@ export default async function NavNodePage({ params, searchParams }: Props) {
 
     return (
       <>
-        <TopicTabs baseHref={topicBaseHref} topicName={current.name} />
+        <TopicTabs
+          baseHref={topicBaseHref}
+          topicName={current.name}
+          extraTabs={topicExtraTabs}
+        />
         <div className="content">
         <div className="page-title-row">
           <h1>Agents — {current.name}</h1>
@@ -167,7 +173,11 @@ export default async function NavNodePage({ params, searchParams }: Props) {
     const businessAgents = allAgents.filter((a) => a.business_id === biz.id);
     return (
       <>
-        <TopicTabs baseHref={topicBaseHref} topicName={current.name} />
+        <TopicTabs
+          baseHref={topicBaseHref}
+          topicName={current.name}
+          extraTabs={topicExtraTabs}
+        />
         <div className="content">
         <div className="page-title-row">
           <h1>Runs — {current.name}</h1>
@@ -192,7 +202,7 @@ export default async function NavNodePage({ params, searchParams }: Props) {
   // ── Overview (default) ──────────────────────────────────────────────
   const [children, savedDashboard] = await Promise.all([
     current ? listNavNodes(biz.id, current.id) : Promise.resolve([]),
-    current ? getModuleDashboard(current.id) : Promise.resolve(null),
+    Promise.resolve(savedDashboardForTabs),
   ]);
 
   const breadcrumb = [
@@ -206,7 +216,11 @@ export default async function NavNodePage({ params, searchParams }: Props) {
 
   return (
     <>
-      <TopicTabs baseHref={topicBaseHref} topicName={current?.name ?? ""} />
+      <TopicTabs
+        baseHref={topicBaseHref}
+        topicName={current?.name ?? ""}
+        extraTabs={topicExtraTabs}
+      />
       <div className="content">
 
       <div
@@ -364,4 +378,20 @@ export default async function NavNodePage({ params, searchParams }: Props) {
       </div>
     </>
   );
+}
+
+function dashboardTabsFromContent(
+  content: string | undefined,
+): Array<{ label: string; href: string; external?: boolean }> {
+  if (!content) return [];
+  const link = content.match(/\[Open interactief dashboard\]\(([^)]+)\)/i);
+  if (!link?.[1]) return [];
+  const heading = content.match(/^#\s+(.+)$/m);
+  return [
+    {
+      label: heading?.[1]?.trim() || "AI Dashboard",
+      href: link[1],
+      external: true,
+    },
+  ];
 }

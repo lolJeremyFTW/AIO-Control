@@ -51,6 +51,11 @@ const ListAgentsSchema = z.object({
   business_id: z.string().uuid().optional(),
 });
 
+const ListNavNodesSchema = z.object({
+  business_id: z.string().uuid().optional(),
+  search: z.string().min(1).optional(),
+});
+
 const ReadSecretSchema = z.object({
   name: z.string().min(1),
 });
@@ -67,6 +72,13 @@ const ListRunsSchema = z.object({
 const PublishDashboardSchema = z.object({
   business_id: z.string().uuid(),
   nav_node_id: z.string().uuid().optional(),
+  label: z.string().min(1).max(80),
+  html_content: z.string().min(10),
+});
+
+const PublishTopicDashboardSchema = z.object({
+  business: z.string().min(1),
+  topic: z.string().min(1),
   label: z.string().min(1).max(80),
   html_content: z.string().min(10),
 });
@@ -93,6 +105,31 @@ const SendTelegramSchema = z.object({
   /** parse_mode passed straight to Telegram. Default "Markdown". */
   parse_mode: z.enum(["Markdown", "MarkdownV2", "HTML"]).optional().default("Markdown"),
 });
+
+const AIO_DASHBOARD_STYLE_GUIDE = `
+Use AIO Control dashboard styling only:
+- Use CSS variables: --app-bg, --app-fg, --app-fg-2, --app-fg-3, --app-border, --app-border-2, --app-card, --app-card-2, --tt-green, --rose, --amber, --type.
+- Support both body[data-theme="dark"] and body[data-theme="light"].
+- Use compact KPI tiles, 8-12px radii, subtle borders, no unrelated gradients/orbs/stock visuals.
+- Do not hardcode a dark-only or light-only palette; prefer var(...) for every surface/text/border.
+- Match the AIO dashboard feel: quiet operator UI, card grid, dense tables, clear status pills.
+`.trim();
+
+function aioDashboardShell(html: string): string {
+  const themeBoot = `<script>(function(){try{var t=localStorage.getItem('aio-theme')||(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');document.body.setAttribute('data-theme',t);document.documentElement.style.colorScheme=t;}catch(e){}})();<\/script>`;
+  const style = `<style>
+:root{color-scheme:dark;--tt-green:#39b255;--tt-green-soft:#6fd189;--rose:#e6526b;--amber:#ffb800;--app-bg:#15171a;--app-fg:#f0eee5;--app-fg-2:#b9b6a8;--app-fg-3:rgba(255,255,255,.55);--app-border:rgba(255,255,255,.1);--app-border-2:rgba(255,255,255,.06);--app-card:#1a1d1f;--app-card-2:rgba(255,255,255,.04);--type:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+body[data-theme="light"]{color-scheme:light;--app-bg:#f6f4ee;--app-fg:#1a1c1a;--app-fg-2:#3b3d3a;--app-fg-3:#6a6c66;--app-border:#b6b3a6;--app-border-2:#dcd7c8;--app-card:#fff;--app-card-2:#f1eee3}
+*{box-sizing:border-box}body{margin:0;background:var(--app-bg);color:var(--app-fg);font-family:var(--type);font-size:14px;line-height:1.45}main,.aio-dashboard{width:min(1180px,calc(100vw - 32px));margin:0 auto;padding:24px 0}section,.card,.tile,.panel{background:var(--app-card);border:1.5px solid var(--app-border);border-radius:10px}h1,h2,h3,p{margin-top:0}h1{font-size:24px;letter-spacing:0}h2{font-size:17px}h3{font-size:14px}a{color:var(--tt-green)}table{width:100%;border-collapse:collapse;background:var(--app-card);border:1px solid var(--app-border);border-radius:10px;overflow:hidden}th,td{padding:9px 10px;border-bottom:1px solid var(--app-border-2);text-align:left}th{font-size:11px;text-transform:uppercase;color:var(--app-fg-3);letter-spacing:.08em}button,.pill{border-radius:999px;border:1px solid var(--app-border);background:var(--app-card-2);color:var(--app-fg);padding:6px 10px}.muted{color:var(--app-fg-3)}.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.kpi,.tile{padding:12px 14px}.kpi-label{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--app-fg-3);font-weight:700}.kpi-value{font-size:22px;font-weight:750;color:var(--app-fg)}@media(max-width:720px){main,.aio-dashboard{width:min(100vw - 20px,1180px);padding:14px 0}table{font-size:12px}}
+</style>`;
+  const input = html.trim();
+  const withStyle = /<\/head>/i.test(input)
+    ? input.replace(/<\/head>/i, `${style}</head>`)
+    : `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${style}</head><body>${input}</body></html>`;
+  return /<body[^>]*>/i.test(withStyle)
+    ? withStyle.replace(/<body([^>]*)>/i, `<body$1>${themeBoot}`)
+    : withStyle.replace(/<\/head>/i, `</head><body>${themeBoot}</body>`);
+}
 
 // ── Tool implementations ─────────────────────────────────────────────────────
 
@@ -177,6 +214,211 @@ async function listAgents(
   return JSON.stringify({ agents: data ?? [] });
 }
 
+async function listNavNodes(args: unknown): Promise<string> {
+  const parsed = ListNavNodesSchema.safeParse(args);
+  if (!parsed.success) {
+    return JSON.stringify({
+      error: "validation_failed",
+      details: parsed.error.flatten(),
+    });
+  }
+  const { business_id, search } = parsed.data;
+
+  let query = supabaseAio
+    .from("nav_nodes")
+    .select("id, business_id, parent_id, slug, name, sub, href, sort_order")
+    .eq("workspace_id", WORKSPACE_ID)
+    .is("archived_at", null)
+    .order("sort_order", { ascending: true });
+  if (business_id) query = query.eq("business_id", business_id);
+
+  const { data, error } = await query;
+
+  if (error) {
+    return JSON.stringify({ error: "db_error", message: error.message });
+  }
+
+  const nodes = await withBusinessAndPath(data ?? []);
+  const filtered = search
+    ? nodes.filter((node) =>
+        [node.name, node.slug, node.sub, node.business_name, node.path]
+          .filter(Boolean)
+          .some((value) =>
+            String(value).toLowerCase().includes(search.toLowerCase()),
+          ),
+      )
+    : nodes;
+
+  return JSON.stringify({ nav_nodes: filtered });
+}
+
+type NavNodeLookupRow = {
+  id: string;
+  business_id: string;
+  parent_id: string | null;
+  slug: string;
+  name: string;
+  sub: string | null;
+  href: string | null;
+  sort_order: number;
+};
+
+async function withBusinessAndPath(nodes: NavNodeLookupRow[]) {
+  const businessIds = Array.from(new Set(nodes.map((n) => n.business_id)));
+  const { data: businesses } = await supabaseAio
+    .from("businesses")
+    .select("id, name, slug")
+    .eq("workspace_id", WORKSPACE_ID)
+    .in("id", businessIds.length > 0 ? businessIds : ["00000000-0000-0000-0000-000000000000"]);
+
+  const businessById = new Map(
+    (businesses ?? []).map((b) => [
+      b.id as string,
+      { name: b.name as string, slug: b.slug as string | null },
+    ]),
+  );
+  const nodeById = new Map(nodes.map((n) => [n.id, n]));
+
+  function pathFor(node: NavNodeLookupRow): string {
+    const parts: string[] = [];
+    let current: NavNodeLookupRow | undefined = node;
+    const seen = new Set<string>();
+    while (current && !seen.has(current.id)) {
+      seen.add(current.id);
+      parts.unshift(current.slug);
+      current = current.parent_id ? nodeById.get(current.parent_id) : undefined;
+    }
+    return parts.join("/");
+  }
+
+  return nodes.map((node) => {
+    const business = businessById.get(node.business_id);
+    return {
+      ...node,
+      business_name: business?.name ?? null,
+      business_slug: business?.slug ?? null,
+      path: pathFor(node),
+    };
+  });
+}
+
+function norm(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "")
+    .trim();
+}
+
+async function resolveBusinessTopic(
+  businessRef: string,
+  topicRef: string,
+): Promise<
+  | {
+      business_id: string;
+      business_name: string;
+      business_slug: string | null;
+      nav_node_id: string;
+      topic_name: string;
+      topic_slug: string;
+      topic_path: string;
+    }
+  | { error: string; matches?: unknown[] }
+> {
+  const businessNeedle = norm(businessRef);
+  const topicNeedle = norm(topicRef);
+
+  const { data: businesses, error: bizError } = await supabaseAio
+    .from("businesses")
+    .select("id, name, slug, sub")
+    .eq("workspace_id", WORKSPACE_ID)
+    .order("created_at", { ascending: true });
+  if (bizError) return { error: bizError.message };
+
+  const businessMatches = (businesses ?? []).filter((b) =>
+    [b.id, b.name, b.slug, b.sub]
+      .filter(Boolean)
+      .some((value) => norm(String(value)).includes(businessNeedle)),
+  );
+  if (businessMatches.length === 0) {
+    return { error: `Business '${businessRef}' not found in current workspace.` };
+  }
+  if (businessMatches.length > 1) {
+    return {
+      error: `Business '${businessRef}' is ambiguous.`,
+      matches: businessMatches.map((b) => ({
+        id: b.id,
+        name: b.name,
+        slug: b.slug,
+      })),
+    };
+  }
+
+  const business = businessMatches[0]!;
+  const { data: nodes, error: nodeError } = await supabaseAio
+    .from("nav_nodes")
+    .select("id, business_id, parent_id, slug, name, sub, href, sort_order")
+    .eq("workspace_id", WORKSPACE_ID)
+    .eq("business_id", business.id)
+    .is("archived_at", null)
+    .order("sort_order", { ascending: true });
+  if (nodeError) return { error: nodeError.message };
+
+  const decorated = await withBusinessAndPath((nodes ?? []) as NavNodeLookupRow[]);
+  const topicMatches = decorated.filter((node) =>
+    [node.id, node.name, node.slug, node.sub, node.path]
+      .filter(Boolean)
+      .some((value) => norm(String(value)).includes(topicNeedle)),
+  );
+  if (topicMatches.length === 0) {
+    return {
+      error: `Topic '${topicRef}' not found in business '${business.name}'.`,
+    };
+  }
+  const exact =
+    topicMatches.find((node) => norm(node.name) === topicNeedle) ??
+    topicMatches.find((node) => norm(node.slug) === topicNeedle) ??
+    topicMatches.find((node) => norm(node.path) === topicNeedle);
+  if (!exact && topicMatches.length > 1) {
+    return {
+      error: `Topic '${topicRef}' is ambiguous in business '${business.name}'.`,
+      matches: topicMatches.map((node) => ({
+        id: node.id,
+        name: node.name,
+        slug: node.slug,
+        path: node.path,
+      })),
+    };
+  }
+
+  const topic = exact ?? topicMatches[0]!;
+  return {
+    business_id: business.id as string,
+    business_name: business.name as string,
+    business_slug: (business.slug as string | null) ?? null,
+    nav_node_id: topic.id,
+    topic_name: topic.name,
+    topic_slug: topic.slug,
+    topic_path: topic.path,
+  };
+}
+
+async function resolveTopic(args: unknown): Promise<string> {
+  const parsed = z
+    .object({ business: z.string().min(1), topic: z.string().min(1) })
+    .safeParse(args);
+  if (!parsed.success) {
+    return JSON.stringify({
+      error: "validation_failed",
+      details: parsed.error.flatten(),
+    });
+  }
+  const resolved = await resolveBusinessTopic(
+    parsed.data.business,
+    parsed.data.topic,
+  );
+  return JSON.stringify(resolved);
+}
+
 async function readSecret(args: unknown): Promise<string> {
   const parsed = ReadSecretSchema.safeParse(args);
   if (!parsed.success) {
@@ -245,7 +487,8 @@ async function publishDashboard(args: unknown): Promise<string> {
   if (!parsed.success) {
     return JSON.stringify({ error: "validation_failed", details: parsed.error.flatten() });
   }
-  const { business_id, label, html_content } = parsed.data;
+  const { business_id, label } = parsed.data;
+  const html_content = aioDashboardShell(parsed.data.html_content);
   const navNodeId = parsed.data.nav_node_id ?? (CURRENT_NAV_NODE_ID || undefined);
 
   // Check if a dashboard with this label already exists for the business
@@ -313,6 +556,29 @@ async function publishDashboard(args: unknown): Promise<string> {
   }
 
   return JSON.stringify({ ok: true, url, tab_id: tabResult.tab_id, slug });
+}
+
+async function publishTopicDashboardByName(args: unknown): Promise<string> {
+  const parsed = PublishTopicDashboardSchema.safeParse(args);
+  if (!parsed.success) {
+    return JSON.stringify({
+      error: "validation_failed",
+      details: parsed.error.flatten(),
+    });
+  }
+
+  const resolved = await resolveBusinessTopic(
+    parsed.data.business,
+    parsed.data.topic,
+  );
+  if ("error" in resolved) return JSON.stringify(resolved);
+
+  return publishDashboard({
+    business_id: resolved.business_id,
+    nav_node_id: resolved.nav_node_id,
+    label: parsed.data.label,
+    html_content: parsed.data.html_content,
+  });
 }
 
 async function publishTopicDashboard(input: {
@@ -620,6 +886,48 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "list_nav_nodes",
+      description:
+        "List topics/nav-nodes from local Supabase, including the business each topic belongs to and its path. Use search='outreach' or business_id to narrow results.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          business_id: {
+            type: "string",
+            format: "uuid",
+            description:
+              "Optionele UUID van de business waarvan je topics wil vinden. Laat leeg om topics van alle businesses te zien.",
+          },
+          search: {
+            type: "string",
+            description:
+              "Optionele zoekterm, bijvoorbeeld 'outreach'. Zoekt in name, slug en sub.",
+          },
+        },
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "resolve_topic",
+      description:
+        "Resolve natural names from local Supabase to IDs. Example: business='TrompTechDesigns', topic='outreach' returns business_id, nav_node_id, business_slug, and topic path.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          business: {
+            type: "string",
+            description: "Business name, slug, sub, or UUID.",
+          },
+          topic: {
+            type: "string",
+            description: "Topic/nav-node name, slug, path, or UUID.",
+          },
+        },
+        required: ["business", "topic"],
+        additionalProperties: false,
+      },
+    },
+    {
       name: "list_agents",
       description:
         "List agents in the workspace. Filter by scope: all (default), global (no business), or business (scoped).",
@@ -700,7 +1008,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       description:
         "Sla een HTML-dashboard op en pin het als tab in de BusinessTabs-nav van de business. " +
         "Geeft {url, tab_id, slug} terug. Zelfde label = update HTML in-place (stabiele URL). " +
-        "Gebruik voor rijke visuele samenvattingen, statistieken, KPI-overzichten.",
+        "Gebruik voor rijke visuele samenvattingen, statistieken, KPI-overzichten. " +
+        AIO_DASHBOARD_STYLE_GUIDE,
       inputSchema: {
         type: "object",
         properties: {
@@ -724,10 +1033,43 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             type: "string",
             description:
               "Volledige HTML-pagina (incl. <html>, <head>, <body>). " +
-              "Mag inline CSS en vanilla JS bevatten. Geen externe iframes.",
+              "Mag inline CSS en vanilla JS bevatten. Geen externe iframes. " +
+              "Gebruik AIO CSS variables en body[data-theme] voor light/dark compatibility.",
           },
         },
         required: ["business_id", "label", "html_content"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "publish_topic_dashboard",
+      description:
+        "Maak of update een HTML-dashboard voor een topic in een business, zonder UUIDs nodig te hebben. Voorbeeld: business='TrompTechDesigns', topic='outreach'. Het dashboard wordt opgeslagen, aan de topic-banner/tab gekoppeld en als publiek /d/<slug> dashboard beschikbaar gemaakt. " +
+        AIO_DASHBOARD_STYLE_GUIDE,
+      inputSchema: {
+        type: "object",
+        properties: {
+          business: {
+            type: "string",
+            description: "Business name, slug, sub, or UUID.",
+          },
+          topic: {
+            type: "string",
+            description: "Topic/nav-node name, slug, path, or UUID.",
+          },
+          label: {
+            type: "string",
+            maxLength: 80,
+            description:
+              "Tab-label dat in de topic banner verschijnt, bijv. 'Test dashboard'.",
+          },
+          html_content: {
+            type: "string",
+            description:
+              "Volledige HTML-pagina (incl. <html>, <head>, <body>). Mag inline CSS en vanilla JS bevatten. Gebruik AIO CSS variables en body[data-theme] voor light/dark compatibility.",
+          },
+        },
+        required: ["business", "topic", "label", "html_content"],
         additionalProperties: false,
       },
     },
@@ -831,6 +1173,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     case "list_agents":
       result = await listAgents(args);
       break;
+    case "list_nav_nodes":
+      result = await listNavNodes(args);
+      break;
+    case "resolve_topic":
+      result = await resolveTopic(args);
+      break;
     case "read_secret":
       if (!ALLOW_READ_SECRET) {
         result = JSON.stringify({ error: "read_secret_disabled" });
@@ -843,6 +1191,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       break;
     case "publish_dashboard":
       result = await publishDashboard(args);
+      break;
+    case "publish_topic_dashboard":
+      result = await publishTopicDashboardByName(args);
       break;
     case "upsert_custom_tab":
       result = await upsertCustomTab(args);

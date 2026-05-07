@@ -83,6 +83,53 @@ export async function executeAioTool(
         return { kind: "ok", data: data ?? [] };
       }
 
+      case "list_nav_nodes": {
+        let q = admin
+          .from("nav_nodes")
+          .select("id, business_id, parent_id, slug, name, sub, href, sort_order")
+          .eq("workspace_id", ctx.workspaceId)
+          .is("archived_at", null)
+          .order("sort_order", { ascending: true });
+        if (a.business_id) q = q.eq("business_id", String(a.business_id));
+        const { data, error } = await q;
+        if (error) return { kind: "error", error: error.message };
+        const decorated = await decorateNavNodesForTools(
+          ctx.workspaceId,
+          (data ?? []) as ToolNavNode[],
+        );
+        const search = typeof a.search === "string" ? normalizeToolLookup(a.search) : "";
+        const filtered = search
+          ? decorated.filter((node) =>
+              [node.name, node.slug, node.sub, node.path, node.business_name]
+                .filter(Boolean)
+                .some((value) =>
+                  normalizeToolLookup(String(value)).includes(search),
+                ),
+            )
+          : decorated;
+        return { kind: "ok", data: filtered };
+      }
+
+      case "resolve_topic": {
+        const business = String(a.business ?? "").trim();
+        const topic = String(a.topic ?? "").trim();
+        if (!business || !topic) {
+          return {
+            kind: "error",
+            error: "resolve_topic needs `business` and `topic`.",
+          };
+        }
+        const resolved = await resolveTopicForTools(
+          ctx.workspaceId,
+          business,
+          topic,
+        );
+        if ("error" in resolved) {
+          return { kind: "error", error: String(resolved.error) };
+        }
+        return { kind: "ok", data: resolved };
+      }
+
       case "list_integrations": {
         const { data, error } = await admin
           .from("integrations")
@@ -536,4 +583,130 @@ function humanizeWriteSummary(name: string, a: Record<string, unknown>): string 
     else lines.push(`  ${k}: ${JSON.stringify(v)}`);
   }
   return lines.join("\n");
+}
+
+type ToolNavNode = {
+  id: string;
+  business_id: string;
+  parent_id: string | null;
+  slug: string;
+  name: string;
+  sub: string | null;
+  href: string | null;
+  sort_order: number;
+};
+
+function normalizeToolLookup(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+async function decorateNavNodesForTools(
+  workspaceId: string,
+  nodes: ToolNavNode[],
+) {
+  const admin = getServiceRoleSupabase();
+  const businessIds = Array.from(new Set(nodes.map((n) => n.business_id)));
+  const { data: businesses } =
+    businessIds.length === 0
+      ? { data: [] }
+      : await admin
+          .from("businesses")
+          .select("id, name, slug")
+          .eq("workspace_id", workspaceId)
+          .in("id", businessIds);
+  const businessById = new Map(
+    (businesses ?? []).map((b) => [
+      b.id as string,
+      { name: b.name as string, slug: b.slug as string | null },
+    ]),
+  );
+  const nodeById = new Map(nodes.map((n) => [n.id, n]));
+
+  function pathFor(node: ToolNavNode): string {
+    const parts: string[] = [];
+    let current: ToolNavNode | undefined = node;
+    const seen = new Set<string>();
+    while (current && !seen.has(current.id)) {
+      seen.add(current.id);
+      parts.unshift(current.slug);
+      current = current.parent_id ? nodeById.get(current.parent_id) : undefined;
+    }
+    return parts.join("/");
+  }
+
+  return nodes.map((node) => {
+    const business = businessById.get(node.business_id);
+    return {
+      ...node,
+      business_name: business?.name ?? null,
+      business_slug: business?.slug ?? null,
+      path: pathFor(node),
+    };
+  });
+}
+
+async function resolveTopicForTools(
+  workspaceId: string,
+  businessRef: string,
+  topicRef: string,
+) {
+  const admin = getServiceRoleSupabase();
+  const businessNeedle = normalizeToolLookup(businessRef);
+  const topicNeedle = normalizeToolLookup(topicRef);
+  const { data: businesses, error: bizError } = await admin
+    .from("businesses")
+    .select("id, name, slug, sub")
+    .eq("workspace_id", workspaceId)
+    .order("created_at", { ascending: true });
+  if (bizError) return { error: bizError.message };
+  const businessMatches = (businesses ?? []).filter((b) =>
+    [b.id, b.name, b.slug, b.sub]
+      .filter(Boolean)
+      .some((value) => normalizeToolLookup(String(value)).includes(businessNeedle)),
+  );
+  if (businessMatches.length === 0) {
+    return { error: `Business '${businessRef}' not found.` };
+  }
+  if (businessMatches.length > 1) {
+    return { error: `Business '${businessRef}' is ambiguous.` };
+  }
+
+  const business = businessMatches[0]!;
+  const { data: nodes, error: nodeError } = await admin
+    .from("nav_nodes")
+    .select("id, business_id, parent_id, slug, name, sub, href, sort_order")
+    .eq("workspace_id", workspaceId)
+    .eq("business_id", business.id)
+    .is("archived_at", null)
+    .order("sort_order", { ascending: true });
+  if (nodeError) return { error: nodeError.message };
+  const decorated = await decorateNavNodesForTools(
+    workspaceId,
+    (nodes ?? []) as ToolNavNode[],
+  );
+  const matches = decorated.filter((node) =>
+    [node.id, node.name, node.slug, node.sub, node.path]
+      .filter(Boolean)
+      .some((value) => normalizeToolLookup(String(value)).includes(topicNeedle)),
+  );
+  if (matches.length === 0) {
+    return { error: `Topic '${topicRef}' not found in '${business.name}'.` };
+  }
+  const exact =
+    matches.find((node) => normalizeToolLookup(node.name) === topicNeedle) ??
+    matches.find((node) => normalizeToolLookup(node.slug) === topicNeedle) ??
+    matches.find((node) => normalizeToolLookup(node.path) === topicNeedle);
+  if (!exact && matches.length > 1) {
+    return { error: `Topic '${topicRef}' is ambiguous in '${business.name}'.` };
+  }
+  const topic = exact ?? matches[0]!;
+  return {
+    business_id: business.id as string,
+    business_name: business.name as string,
+    business_slug: (business.slug as string | null) ?? null,
+    nav_node_id: topic.id,
+    topic_name: topic.name,
+    topic_slug: topic.slug,
+    topic_path: topic.path,
+  };
 }
