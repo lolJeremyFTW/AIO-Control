@@ -77,6 +77,7 @@ build_and_stage() {
   build_status=$?
   set -e
   kill "$static_dir_keeper" 2>/dev/null || true
+  wait "$static_dir_keeper" 2>/dev/null || true
   if [[ $build_status -ne 0 ]]; then
     return "$build_status"
   fi
