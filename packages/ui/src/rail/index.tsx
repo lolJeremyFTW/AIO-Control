@@ -661,10 +661,12 @@ function TopicRow({
   // variant or a logo we honour that instead.
   const letter = topic.label.slice(0, 1).toUpperCase();
   const variant = topic.variant ?? "dashed";
+  const isSubtopic = (topic.depth ?? 0) > 0;
   return (
     <div
       className={
         "nav-row " +
+        (isSubtopic ? "subtopic " : "") +
         (selected ? "selected " : "") +
         (dropActive ? "drop-active" : "")
       }
@@ -703,6 +705,7 @@ function TopicRow({
           colorHex={topic.colorHex}
           logoUrl={topic.logoUrl}
           selected={selected}
+          size={isSubtopic ? 34 : 44}
           tooltip={!expanded ? topic.label : null}
           badge={topic.badge ?? null}
         />

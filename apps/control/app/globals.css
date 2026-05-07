@@ -186,6 +186,13 @@ body[data-theme="light"] .nav-row:hover {
   justify-content: center;
   align-items: center;
 }
+.nav-row.subtopic {
+  min-height: 44px;
+}
+.nav-row.subtopic .node {
+  font-size: 13px;
+  border-width: 1.25px;
+}
 .nav-row-text {
   overflow: hidden;
   opacity: 0;
