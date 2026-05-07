@@ -14,6 +14,9 @@ import "server-only";
 
 import { sendCustom } from "./custom-integration";
 import { isEmailConfigured, parseRecipients, sendEmail } from "./email";
+import { sendDiscordText } from "./providers/discord";
+import { sendSlackText } from "./providers/slack";
+import type { NotificationTarget } from "./providers/types";
 import { sendTelegram } from "./telegram";
 import { getServiceRoleSupabase } from "../supabase/service";
 
@@ -37,6 +40,8 @@ type RunRow = {
 type AgentLite = {
   id: string;
   name: string;
+  business_id?: string | null;
+  nav_node_id?: string | null;
   telegram_target_id: string | null;
   custom_integration_id: string | null;
   notify_email?: string | null;
@@ -45,14 +50,32 @@ type AgentLite = {
 type ScheduleLite = {
   id: string;
   title: string | null;
+  business_id?: string | null;
+  nav_node_id?: string | null;
   telegram_target_id: string | null;
   custom_integration_id: string | null;
+};
+
+type GenericNotificationTarget = NotificationTarget & {
+  provider: "slack" | "discord";
+  send_run_done: boolean;
+  send_run_fail: boolean;
+  send_queue_review: boolean;
+  scope?: "workspace" | "business" | "navnode";
+  scope_id?: string;
+  created_at?: string;
 };
 
 export async function dispatchRunEvent(
   run: RunRow,
   event: "done" | "failed",
-): Promise<{ telegram: boolean; custom: boolean; email: boolean }> {
+): Promise<{
+  telegram: boolean;
+  custom: boolean;
+  email: boolean;
+  slack: boolean;
+  discord: boolean;
+}> {
   const supabase = getServiceRoleSupabase();
 
   // 1. Look up the agent + schedule (if any) so we know which target
@@ -62,7 +85,7 @@ export async function dispatchRunEvent(
     const { data } = await supabase
       .from("agents")
       .select(
-        "id, name, telegram_target_id, custom_integration_id, notify_email",
+        "id, name, business_id, nav_node_id, telegram_target_id, custom_integration_id, notify_email",
       )
       .eq("id", run.agent_id)
       .maybeSingle();
@@ -72,7 +95,9 @@ export async function dispatchRunEvent(
   if (run.schedule_id) {
     const { data } = await supabase
       .from("schedules")
-      .select("id, title, telegram_target_id, custom_integration_id")
+      .select(
+        "id, title, business_id, nav_node_id, telegram_target_id, custom_integration_id",
+      )
       .eq("id", run.schedule_id)
       .maybeSingle();
     schedule = (data as ScheduleLite | null) ?? null;
@@ -117,11 +142,30 @@ export async function dispatchRunEvent(
     schedule?.custom_integration_id ?? agent?.custom_integration_id ?? null;
 
   // 3. If no specific target, fall back to ANY enabled workspace-scope row.
-  const sentTelegram = await fireTelegram(supabase, run, agent, event, telegramId);
+  const sentTelegram = await fireTelegram(
+    supabase,
+    run,
+    agent,
+    event,
+    telegramId,
+  );
   const sentCustom = await fireCustom(supabase, run, agent, event, customId);
   const sentEmail = await fireEmail(supabase, run, agent, event);
+  const sentGeneric = await fireNotificationTargets(
+    supabase,
+    run,
+    agent,
+    schedule,
+    event,
+  );
 
-  return { telegram: sentTelegram, custom: sentCustom, email: sentEmail };
+  return {
+    telegram: sentTelegram,
+    custom: sentCustom,
+    email: sentEmail,
+    slack: sentGeneric.slack,
+    discord: sentGeneric.discord,
+  };
 }
 
 async function fireTelegram(
@@ -165,7 +209,8 @@ async function fireTelegram(
   // Control; callback_data buttons trigger a server-side action via
   // /api/integrations/telegram/webhook. We mix both kinds.
   const origin = process.env.NEXT_PUBLIC_TRIGGER_ORIGIN ?? "";
-  const buttons: { text: string; url?: string; callback_data?: string }[][] = [];
+  const buttons: { text: string; url?: string; callback_data?: string }[][] =
+    [];
   const slug = origin ? await workspaceSlug(supabase, run.workspace_id) : "";
 
   // Row 1: action buttons (callback) — only when we have an agent so
@@ -292,12 +337,12 @@ async function fireEmail(
     parseRecipients(agent?.notify_email ?? null).length > 0
       ? parseRecipients(agent?.notify_email ?? null)
       : parseRecipients(
-            (business as { notify_email?: string | null } | null)?.notify_email ??
-              null,
+            (business as { notify_email?: string | null } | null)
+              ?.notify_email ?? null,
           ).length > 0
         ? parseRecipients(
-            (business as { notify_email?: string | null } | null)?.notify_email ??
-              null,
+            (business as { notify_email?: string | null } | null)
+              ?.notify_email ?? null,
           )
         : parseRecipients(workspace?.notify_email ?? null);
 
@@ -328,11 +373,269 @@ async function fireEmail(
   return true;
 }
 
+async function fireNotificationTargets(
+  supabase: ReturnType<typeof getServiceRoleSupabase>,
+  run: RunRow,
+  agent: AgentLite | null,
+  schedule: ScheduleLite | null,
+  event: "done" | "failed",
+): Promise<{ slack: boolean; discord: boolean }> {
+  const targets = await resolveNotificationTargets(
+    supabase,
+    run,
+    agent,
+    schedule,
+    event,
+  );
+  if (targets.length === 0) return { slack: false, discord: false };
+
+  const text = await formatRunMessageWithLinks(supabase, run, agent, event);
+  const results = await Promise.all(
+    targets.map(async (target) => {
+      const res =
+        target.provider === "slack"
+          ? await sendSlackText({
+              workspace_id: run.workspace_id,
+              target,
+              text,
+            })
+          : await sendDiscordText({
+              workspace_id: run.workspace_id,
+              target,
+              text,
+            });
+      if (!res.ok) {
+        console.error(`${target.provider} notification failed`, {
+          target_id: target.id,
+          error: res.error,
+        });
+        return { provider: target.provider, sent: false };
+      }
+      return { provider: target.provider, sent: true };
+    }),
+  );
+
+  return {
+    slack: results.some((r) => r.provider === "slack" && r.sent),
+    discord: results.some((r) => r.provider === "discord" && r.sent),
+  };
+}
+
+async function resolveNotificationTargets(
+  supabase: ReturnType<typeof getServiceRoleSupabase>,
+  run: RunRow,
+  agent: AgentLite | null,
+  schedule: ScheduleLite | null,
+  event: "done" | "failed",
+): Promise<GenericNotificationTarget[]> {
+  const eventName = event === "done" ? "run_done" : "run_fail";
+  const ownerLevels = ownerPriority(run, agent, schedule);
+
+  const boundTargets = await resolveBoundNotificationTargets(
+    supabase,
+    run.workspace_id,
+    ownerLevels,
+    eventName,
+    event,
+  );
+  if (boundTargets.length > 0) return boundTargets;
+
+  return resolveScopedNotificationTargets(
+    supabase,
+    run.workspace_id,
+    ownerLevels,
+    event,
+  );
+}
+
+function ownerPriority(
+  run: RunRow,
+  agent: AgentLite | null,
+  schedule: ScheduleLite | null,
+): Array<{
+  owner_type: "schedule" | "agent" | "navnode" | "business" | "workspace";
+  owner_id: string;
+}> {
+  const businessId =
+    run.business_id ?? schedule?.business_id ?? agent?.business_id ?? null;
+  const navNodeId =
+    run.nav_node_id ?? schedule?.nav_node_id ?? agent?.nav_node_id ?? null;
+  return [
+    run.schedule_id
+      ? { owner_type: "schedule" as const, owner_id: run.schedule_id }
+      : null,
+    run.agent_id
+      ? { owner_type: "agent" as const, owner_id: run.agent_id }
+      : null,
+    navNodeId ? { owner_type: "navnode" as const, owner_id: navNodeId } : null,
+    businessId
+      ? { owner_type: "business" as const, owner_id: businessId }
+      : null,
+    { owner_type: "workspace" as const, owner_id: run.workspace_id },
+  ].filter((level): level is NonNullable<typeof level> => level != null);
+}
+
+async function resolveBoundNotificationTargets(
+  supabase: ReturnType<typeof getServiceRoleSupabase>,
+  workspaceId: string,
+  ownerLevels: Array<{
+    owner_type: "schedule" | "agent" | "navnode" | "business" | "workspace";
+    owner_id: string;
+  }>,
+  eventName: "run_done" | "run_fail",
+  event: "done" | "failed",
+): Promise<GenericNotificationTarget[]> {
+  const ownerTypes = [...new Set(ownerLevels.map((level) => level.owner_type))];
+  const ownerIds = [...new Set(ownerLevels.map((level) => level.owner_id))];
+  const { data: bindings } = await supabase
+    .from("notification_bindings")
+    .select("owner_type, owner_id, target_id, event_mask")
+    .eq("workspace_id", workspaceId)
+    .in("owner_type", ownerTypes)
+    .in("owner_id", ownerIds);
+
+  const rows = (
+    (bindings ?? []) as Array<{
+      owner_type: string;
+      owner_id: string;
+      target_id: string;
+      event_mask: string[];
+    }>
+  ).filter((binding) => (binding.event_mask ?? []).includes(eventName));
+
+  for (const level of ownerLevels) {
+    const matches = rows.filter(
+      (binding) =>
+        binding.owner_type === level.owner_type &&
+        binding.owner_id === level.owner_id,
+    );
+    if (matches.length === 0) continue;
+    const targets = await fetchNotificationTargets(
+      supabase,
+      workspaceId,
+      matches.map((binding) => binding.target_id),
+      event,
+    );
+    if (targets.length > 0) return targets;
+  }
+  return [];
+}
+
+async function resolveScopedNotificationTargets(
+  supabase: ReturnType<typeof getServiceRoleSupabase>,
+  workspaceId: string,
+  ownerLevels: Array<{
+    owner_type: "schedule" | "agent" | "navnode" | "business" | "workspace";
+    owner_id: string;
+  }>,
+  event: "done" | "failed",
+): Promise<GenericNotificationTarget[]> {
+  const scopeLevels = ownerLevels
+    .filter(
+      (
+        level,
+      ): level is {
+        owner_type: "navnode" | "business" | "workspace";
+        owner_id: string;
+      } =>
+        level.owner_type === "navnode" ||
+        level.owner_type === "business" ||
+        level.owner_type === "workspace",
+    )
+    .map((level) => ({
+      scope: level.owner_type,
+      scope_id: level.owner_id,
+    }));
+
+  const { data } = await supabase
+    .from("notification_targets")
+    .select(
+      "id, workspace_id, provider, scope, scope_id, config, enabled, send_run_done, send_run_fail, send_queue_review, created_at",
+    )
+    .eq("workspace_id", workspaceId)
+    .in("provider", ["slack", "discord"])
+    .eq("enabled", true)
+    .order("created_at", { ascending: true });
+
+  const allTargets = ((data ?? []) as GenericNotificationTarget[]).filter(
+    (target) => targetEnabledForEvent(target, event),
+  );
+
+  for (const level of scopeLevels) {
+    const matches = allTargets.filter(
+      (target) =>
+        target.scope === level.scope && target.scope_id === level.scope_id,
+    );
+    if (matches.length > 0) return dedupeTargets(matches);
+  }
+  return [];
+}
+
+async function fetchNotificationTargets(
+  supabase: ReturnType<typeof getServiceRoleSupabase>,
+  workspaceId: string,
+  targetIds: string[],
+  event: "done" | "failed",
+): Promise<GenericNotificationTarget[]> {
+  const ids = [...new Set(targetIds)];
+  if (ids.length === 0) return [];
+  const { data } = await supabase
+    .from("notification_targets")
+    .select(
+      "id, workspace_id, provider, scope, scope_id, config, enabled, send_run_done, send_run_fail, send_queue_review, created_at",
+    )
+    .eq("workspace_id", workspaceId)
+    .in("provider", ["slack", "discord"])
+    .eq("enabled", true)
+    .in("id", ids)
+    .order("created_at", { ascending: true });
+
+  return dedupeTargets(
+    ((data ?? []) as GenericNotificationTarget[]).filter((target) =>
+      targetEnabledForEvent(target, event),
+    ),
+  );
+}
+
+function targetEnabledForEvent(
+  target: GenericNotificationTarget,
+  event: "done" | "failed",
+): boolean {
+  if (event === "done") return target.send_run_done;
+  return target.send_run_fail;
+}
+
+function dedupeTargets(
+  targets: GenericNotificationTarget[],
+): GenericNotificationTarget[] {
+  const byId = new Map<string, GenericNotificationTarget>();
+  for (const target of targets) byId.set(target.id, target);
+  return [...byId.values()];
+}
+
+async function formatRunMessageWithLinks(
+  supabase: ReturnType<typeof getServiceRoleSupabase>,
+  run: RunRow,
+  agent: AgentLite | null,
+  event: "done" | "failed",
+): Promise<string> {
+  const text = formatRunMessage(run, agent, event);
+  const origin = process.env.NEXT_PUBLIC_TRIGGER_ORIGIN ?? "";
+  if (!origin) return text;
+
+  const slug = await workspaceSlug(supabase, run.workspace_id);
+  if (!slug) return text;
+
+  const links: string[] = [];
+  if (run.business_id) {
+    links.push(`Open business: ${origin}/${slug}/business/${run.business_id}`);
+  }
+  links.push(`All runs: ${origin}/${slug}/runs`);
+  return `${text}\n\n${links.join("\n")}`;
+}
+
 function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 function formatRunMessage(
