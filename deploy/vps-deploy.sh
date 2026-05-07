@@ -59,7 +59,10 @@ build_and_stage() {
   # exists, failing with "File '...validator.ts' not found." Running
   # typegen explicitly first removes the race.
   ( cd "$APP" && BASE_PATH="$base_path" pnpm exec next typegen )
-  BASE_PATH="$base_path" pnpm exec turbo run build --force --filter=@aio/control
+  # Next 16's Turbopack build has intermittently failed on the VPS while
+  # writing temporary manifest/source-map files under .next. Webpack is slower
+  # but stable here, and still emits the same standalone output.
+  ( cd "$APP" && BASE_PATH="$base_path" pnpm exec next build --webpack )
 
   # Stage the standalone bundle. Standalone produces apps/control under
   # the .next/standalone tree because we're in a monorepo — preserve that.
