@@ -140,28 +140,9 @@ export function BusinessTabs({
   const path = usePathname() ?? "";
   const base = `/${workspaceSlug}/business/${businessId}`;
 
-  // On topic pages (/n/…) hide the full business tab strip — the
-  // TopicTabs component inside the page renders its own navigation.
-  // Show only a small breadcrumb so the user can navigate back.
-  if (path.includes("/n/")) {
-    return (
-      <div style={{ marginBottom: 12 }}>
-        <Link
-          href={base}
-          style={{
-            fontSize: 12,
-            color: "var(--app-fg-3)",
-            textDecoration: "none",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 4,
-          }}
-        >
-          ← {businessId}
-        </Link>
-      </div>
-    );
-  }
+  // On topic pages (/n/…) hide the business tab strip entirely —
+  // TopicTabs inside the page renders its own navigation.
+  if (path.includes("/n/")) return null;
 
   const [localTopicTabs, setLocalTopicTabs] = useState<BusinessTabsTopicEntry[]>(topicTabs ?? []);
   const [showAdd, setShowAdd] = useState(false);
