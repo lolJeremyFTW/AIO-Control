@@ -15,6 +15,10 @@ import {
   getValidNotificationTargetIds,
   replaceNotificationBindings,
 } from "../../lib/notify/bindings";
+import {
+  deleteScheduleMemoryFiles,
+  ensureScheduleMemoryFiles,
+} from "../../lib/runs/schedule-memory";
 import { mergeScheduleSnapshotIntoInput } from "../../lib/runs/schedule-label";
 import { createSupabaseServerClient } from "../../lib/supabase/server";
 
@@ -149,6 +153,12 @@ export async function createCronSchedule(input: {
     revalidatePath(
       `/${input.workspace_slug}/business/${input.business_id ?? ""}`,
     );
+    await ensureScheduleMemoryFiles({
+      id: data.id,
+      title: input.title,
+      kind: "cron",
+      cron_expr: input.cron_expr,
+    }).catch((err) => console.warn("[schedule-memory] create failed", err));
     return {
       ok: true,
       data: { id: data.id, routine_id: data.provider_routine_id },
@@ -199,6 +209,12 @@ export async function createCronSchedule(input: {
   revalidatePath(
     `/${input.workspace_slug}/business/${input.business_id ?? ""}`,
   );
+  await ensureScheduleMemoryFiles({
+    id: data.id,
+    title: input.title,
+    kind: "cron",
+    cron_expr: input.cron_expr,
+  }).catch((err) => console.warn("[schedule-memory] create failed", err));
   return { ok: true, data: { id: data.id, routine_id: null } };
 }
 
@@ -540,6 +556,9 @@ export async function deleteSchedule(input: {
     .delete()
     .eq("id", input.schedule_id);
   if (error) return { ok: false, error: error.message };
+  await deleteScheduleMemoryFiles(input.schedule_id).catch((err) =>
+    console.warn("[schedule-memory] delete failed", err),
+  );
   revalidatePath(`/${input.workspace_slug}`);
   return { ok: true, data: null };
 }

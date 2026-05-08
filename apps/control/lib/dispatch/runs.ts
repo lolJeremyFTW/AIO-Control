@@ -9,11 +9,7 @@
 
 import "server-only";
 
-import {
-  streamChat,
-  type AgentConfig,
-  type ProviderId,
-} from "@aio/ai/router";
+import { streamChat, type AgentConfig, type ProviderId } from "@aio/ai/router";
 import type { ChatMessage } from "@aio/ai/ag-ui";
 
 import { resolveOllamaEndpoint } from "../ollama/endpoint";
@@ -26,6 +22,11 @@ import { getServiceRoleSupabase } from "../supabase/service";
 import { resolveApiKey } from "../api-keys/resolve";
 import { resolveCodexCredential } from "../openai-codex/oauth";
 import type { RunStep } from "../runs/message-history";
+import {
+  readScheduleMemoryBlock,
+  recordScheduleRunMemory,
+  type ScheduleMemorySource,
+} from "../runs/schedule-memory";
 import { dispatchRunEvent } from "../notify/dispatch";
 
 type DispatchResult = {
@@ -47,7 +48,9 @@ const DEFER_REASONS = {
 // the cron-scheduler's 90-min zombie threshold so a hung run gets the
 // specific "timeout" error_text instead of "abandoned (zombie cleanup)".
 // Per-agent override: set config.timeoutMs (ms) on the agent row.
-const MAX_RUN_MS = Number(process.env.AGENT_RUN_TIMEOUT_MS ?? String(20 * 60_000));
+const MAX_RUN_MS = Number(
+  process.env.AGENT_RUN_TIMEOUT_MS ?? String(20 * 60_000),
+);
 
 export async function dispatchRun(runId: string): Promise<DispatchResult> {
   const supabase = getServiceRoleSupabase();
@@ -56,7 +59,7 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
   const { data: run, error: runErr } = await supabase
     .from("runs")
     .select(
-      `id, workspace_id, agent_id, business_id, nav_node_id, input, status,
+      `id, workspace_id, agent_id, business_id, nav_node_id, schedule_id, triggered_by, input, status,
        agents:agent_id ( id, name, provider, model, config, key_source, archived_at, next_agent_on_done, next_agent_on_fail ),
        businesses:business_id ( id, status, openclaw_agent_name )`,
     )
@@ -64,7 +67,11 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
     .maybeSingle();
 
   if (runErr || !run) {
-    return { ok: false, status: "failed", error: runErr?.message ?? "run not found" };
+    return {
+      ok: false,
+      status: "failed",
+      error: runErr?.message ?? "run not found",
+    };
   }
   if (run.status === "done" || run.status === "failed") {
     return { ok: true, status: run.status as "done" | "failed" };
@@ -91,7 +98,11 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
     next_agent_on_done: string | null;
     next_agent_on_fail: string | null;
   };
-  type BizRow = { id: string; status: string; openclaw_agent_name: string | null };
+  type BizRow = {
+    id: string;
+    status: string;
+    openclaw_agent_name: string | null;
+  };
 
   const agent = run.agents as unknown as AgentRow | null;
   const business = run.businesses as unknown as BizRow | null;
@@ -117,7 +128,11 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
   }
   if (business && business.status === "paused") {
     // We keep the row queued so a future run-now / unpause picks it up.
-    return { ok: true, status: "deferred", error: DEFER_REASONS.business_paused };
+    return {
+      ok: true,
+      status: "deferred",
+      error: DEFER_REASONS.business_paused,
+    };
   }
 
   // Check spend limits before we even start. If we're over the daily
@@ -178,8 +193,12 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
 
   // Build the message list. The webhook payload shape and the manual
   // "Run now" payload both come through run.input — accept both shapes.
-  const input = (run.input ?? {}) as { prompt?: string; payload?: unknown; messages?: ChatMessage[] };
-  const messages: ChatMessage[] = input.messages
+  const input = (run.input ?? {}) as {
+    prompt?: string;
+    payload?: unknown;
+    messages?: ChatMessage[];
+  };
+  let messages: ChatMessage[] = input.messages
     ? input.messages
     : [
         {
@@ -189,6 +208,22 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
             (input.payload ? JSON.stringify(input.payload) : "(no input)"),
         },
       ];
+  const visibleMessages = messages;
+  const scheduleMemorySource = await loadScheduleMemorySource(
+    supabase,
+    (run.schedule_id as string | null) ?? null,
+  );
+  if (scheduleMemorySource) {
+    const memoryBlock = await readScheduleMemoryBlock(
+      scheduleMemorySource,
+    ).catch((err) => {
+      console.warn("[schedule-memory] read failed", err);
+      return null;
+    });
+    if (memoryBlock) {
+      messages = prependScheduleMemory(messages, memoryBlock);
+    }
+  }
 
   const config = (agent.config ?? {}) as AgentConfig;
   if (agent.model && !config.model) config.model = agent.model;
@@ -219,12 +254,9 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
   let outputTokens = 0;
   let errorText: string | null = null;
 
-  // Build a structured replay of the run as it streams. The drawer
-  // renders this chat-style (user → assistant → tool_call → result →
-  // error). Seed it with the user-side input we built above so old
-  // viewers still see what was sent in even if the model produced
-  // nothing.
-  const history: RunStep[] = messages.map((m) => ({
+  // Build a structured replay of the run as it streams. Keep injected
+  // schedule memory out of message_history so the run drawer stays light.
+  const history: RunStep[] = visibleMessages.map((m) => ({
     kind: m.role === "assistant" ? ("assistant" as const) : ("user" as const),
     text: m.content,
     at: startedAt,
@@ -256,7 +288,10 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
     .maybeSingle();
   const workspaceOwnerId = (runtimeRow?.owner_id as string | null) ?? null;
   if (!workspaceOwnerId) {
-    return await markFailed(runId, "Workspace owner missing; cannot resolve owner-scoped credentials.");
+    return await markFailed(
+      runId,
+      "Workspace owner missing; cannot resolve owner-scoped credentials.",
+    );
   }
   const hermesAgentName =
     (runtimeRow?.hermes_agent_name as string | null) ?? null;
@@ -270,12 +305,12 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
   // keys stored in Settings → API Keys are ignored for cron/webhook runs.
   const apiKey =
     agent.provider === "openai_codex"
-      ? (
+      ? ((
           await resolveCodexCredential({
             workspaceId: run.workspace_id,
             ownerUserId: workspaceOwnerId,
           })
-        )?.accessToken ?? null
+        )?.accessToken ?? null)
       : await resolveApiKey(agent.provider, {
           workspaceId: run.workspace_id,
           businessId: run.business_id,
@@ -285,7 +320,8 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
 
   // Resolve MCP tool keys (brave, firecrawl) so agents can use these
   // servers in cron/webhook runs without them being in process.env.
-  const mcpServers: string[] = (config as { mcpServers?: string[] }).mcpServers ?? [];
+  const mcpServers: string[] =
+    (config as { mcpServers?: string[] }).mcpServers ?? [];
   const mcpToolKeyMap: Record<string, { envVar: string; provider: string }> = {
     brave: { envVar: "BRAVE_API_KEY", provider: "brave" },
     firecrawl: { envVar: "FIRECRAWL_API_KEY", provider: "firecrawl" },
@@ -358,7 +394,8 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
         ollamaEndpoint,
         hermesAgentName,
         openclawAgentName,
-        mcpToolKeys: Object.keys(mcpToolKeys).length > 0 ? mcpToolKeys : undefined,
+        mcpToolKeys:
+          Object.keys(mcpToolKeys).length > 0 ? mcpToolKeys : undefined,
       },
     })) {
       if (event.type === "token") {
@@ -491,6 +528,19 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
     })
     .eq("id", runId);
 
+  if (scheduleMemorySource) {
+    await recordScheduleRunMemory({
+      schedule: scheduleMemorySource,
+      runId,
+      status: finalStatus,
+      endedAt: endedAt.toISOString(),
+      durationMs,
+      costCents: cost,
+      outputText: output,
+      errorText,
+    }).catch((err) => console.warn("[schedule-memory] write failed", err));
+  }
+
   // Fire outbound notifications (Telegram / custom HTTP / email).
   //
   // De-noise rule: if this fail will be auto-retried (next_retry_at set),
@@ -521,7 +571,14 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
   // the input prompt. We pull the next_agent_id from the agent row
   // (which we already have in scope) and only queue when the run
   // ended in the matching status (done/failed).
-  await maybeQueueChain(supabase, agent, business, finalStatus, output, errorText);
+  await maybeQueueChain(
+    supabase,
+    agent,
+    business,
+    finalStatus,
+    output,
+    errorText,
+  );
 
   return {
     ok: !errorText,
@@ -532,7 +589,10 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
   };
 }
 
-async function markFailed(runId: string, reason: string): Promise<DispatchResult> {
+async function markFailed(
+  runId: string,
+  reason: string,
+): Promise<DispatchResult> {
   const supabase = getServiceRoleSupabase();
   await supabase
     .from("runs")
@@ -545,7 +605,68 @@ async function markFailed(runId: string, reason: string): Promise<DispatchResult
       next_retry_at: null,
     })
     .eq("id", runId);
+  const { data: failedRun } = await supabase
+    .from("runs")
+    .select("schedule_id, created_at")
+    .eq("id", runId)
+    .maybeSingle();
+  const scheduleMemorySource = await loadScheduleMemorySource(
+    supabase,
+    (failedRun?.schedule_id as string | null) ?? null,
+  );
+  if (scheduleMemorySource) {
+    const endedAt = new Date().toISOString();
+    await recordScheduleRunMemory({
+      schedule: scheduleMemorySource,
+      runId,
+      status: "failed",
+      endedAt,
+      durationMs: failedRun?.created_at
+        ? new Date(endedAt).getTime() -
+          new Date(failedRun.created_at as string).getTime()
+        : null,
+      costCents: 0,
+      errorText: reason,
+    }).catch((err) =>
+      console.warn("[schedule-memory] failed-write failed", err),
+    );
+  }
   return { ok: false, status: "failed", error: reason };
+}
+
+async function loadScheduleMemorySource(
+  supabase: ReturnType<typeof getServiceRoleSupabase>,
+  scheduleId: string | null,
+): Promise<ScheduleMemorySource | null> {
+  if (!scheduleId) return null;
+  const { data, error } = await supabase
+    .from("schedules")
+    .select("id, title, kind, cron_expr")
+    .eq("id", scheduleId)
+    .maybeSingle();
+  if (error || !data) {
+    if (error) console.warn("[schedule-memory] schedule lookup failed", error);
+    return null;
+  }
+  return {
+    id: data.id as string,
+    title: (data.title as string | null) ?? null,
+    kind: (data.kind as string | null) ?? null,
+    cron_expr: (data.cron_expr as string | null) ?? null,
+  };
+}
+
+function prependScheduleMemory(
+  messages: ChatMessage[],
+  memoryBlock: string,
+): ChatMessage[] {
+  const idx = messages.findIndex((message) => message.role === "user");
+  if (idx === -1) return [{ role: "user", content: memoryBlock }, ...messages];
+  return messages.map((message, i) =>
+    i === idx
+      ? { ...message, content: `${memoryBlock}\n\n---\n\n${message.content}` }
+      : message,
+  );
 }
 
 // Queues the next agent in a chain. The previous run's output (or

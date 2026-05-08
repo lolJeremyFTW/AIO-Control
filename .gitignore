@@ -30,6 +30,7 @@ dist
 # VPS staged build artifacts (platform-specific symlinks; must not sync between machines)
 .staged-aio/
 .staged-root/
+.aio/
 
 
 # Debug
