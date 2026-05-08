@@ -19,13 +19,13 @@
 //                           with the prompt appended after if no -q)
 //   HERMES_TIMEOUT_MS       hard kill after this many ms (default 120_000)
 
-import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 
 import type { AGUIEvent } from "../ag-ui";
 import type { StreamChatOptions } from "../router";
 import { resolveCliBin } from "./cli-bin";
 import { scopedSubprocessEnv } from "./scoped-env";
+import { runtimeSpawn } from "./subprocess";
 
 export async function* streamHermes(
   opts: StreamChatOptions,
@@ -83,7 +83,7 @@ export async function* streamHermes(
     args = ["chat", "-Q", ...modelFlags, "-q", prompt];
   }
 
-  const child = spawn(binary, args, {
+  const child = runtimeSpawn(binary, args, {
     stdio: ["pipe", "pipe", "pipe"],
     env: scopedSubprocessEnv(opts),
   });
@@ -181,9 +181,7 @@ function extractReply(stdout: string): string {
   const lines = trimmed.split("\n");
   while (
     lines.length > 0 &&
-    /^(session_id|model|provider|cost|tokens|elapsed)\s*:/i.test(
-      lines[0] ?? "",
-    )
+    /^(session_id|model|provider|cost|tokens|elapsed)\s*:/i.test(lines[0] ?? "")
   ) {
     lines.shift();
   }
@@ -191,7 +189,14 @@ function extractReply(stdout: string): string {
 }
 
 function pickText(obj: Record<string, unknown>): string | null {
-  for (const key of ["content", "reply", "message", "text", "output", "answer"]) {
+  for (const key of [
+    "content",
+    "reply",
+    "message",
+    "text",
+    "output",
+    "answer",
+  ]) {
     const v = obj[key];
     if (typeof v === "string" && v) return v;
   }

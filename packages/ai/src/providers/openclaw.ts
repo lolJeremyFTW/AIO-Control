@@ -16,13 +16,13 @@
 //   OPENCLAW_DEFAULT_ARGS     extra args appended before -m
 //   OPENCLAW_TIMEOUT_MS       hard kill after this many ms (default 120_000)
 
-import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 
 import type { AGUIEvent } from "../ag-ui";
 import type { StreamChatOptions } from "../router";
 import { resolveCliBin } from "./cli-bin";
 import { scopedSubprocessEnv } from "./scoped-env";
+import { runtimeSpawn } from "./subprocess";
 
 export async function* streamOpenclaw(
   opts: StreamChatOptions,
@@ -103,7 +103,7 @@ export async function* streamOpenclaw(
         prompt,
       ];
 
-  const child = spawn(binary, args, {
+  const child = runtimeSpawn(binary, args, {
     stdio: ["pipe", "pipe", "pipe"],
     env: scopedSubprocessEnv(opts),
   });

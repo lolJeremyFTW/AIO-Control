@@ -20,11 +20,7 @@
 //
 // Returns:  { models: [{ id, label, group }] }
 
-import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
 
 import { NextResponse } from "next/server";
 
@@ -33,6 +29,7 @@ import { createSupabaseServerClient } from "../../../../../lib/supabase/server";
 export const dynamic = "force-dynamic";
 
 type Model = { id: string; label: string; group: string };
+type ChildProcessModule = typeof import("node:child_process");
 
 export async function GET(
   req: Request,
@@ -92,7 +89,9 @@ async function readOpenclawModels(agentName: string): Promise<Model[]> {
   const providersWithJsonModels = new Set(fromJson.map((m) => m.group));
   const needsCatalog =
     authedProviders.size > 0 &&
-    [...authedProviders].some((provider) => !providersWithJsonModels.has(provider));
+    [...authedProviders].some(
+      (provider) => !providersWithJsonModels.has(provider),
+    );
   const fromCli = needsCatalog ? await readCatalog() : [];
 
   const seen = new Set<string>();
@@ -124,13 +123,27 @@ async function readAuthedProviders(
 ): Promise<Set<string>> {
   const result = new Set<string>();
   const candidates = [
-    join(home, ".openclaw", "agents", agentName, "agent", "auth-profiles.json"),
-    join(home, ".openclaw", "agents", "main", "agent", "auth-profiles.json"),
+    hostPath(
+      home,
+      ".openclaw",
+      "agents",
+      agentName,
+      "agent",
+      "auth-profiles.json",
+    ),
+    hostPath(
+      home,
+      ".openclaw",
+      "agents",
+      "main",
+      "agent",
+      "auth-profiles.json",
+    ),
   ];
   for (const path of candidates) {
     try {
-      if (!existsSync(path)) continue;
-      const raw = await readFile(path, "utf8");
+      const raw = await readOptionalTextFile(path);
+      if (!raw) continue;
       const json = JSON.parse(raw) as {
         profiles?: Record<string, { provider?: string }>;
       };
@@ -150,13 +163,13 @@ async function readModelsJson(
   home: string,
 ): Promise<Model[]> {
   const candidates = [
-    join(home, ".openclaw", "agents", agentName, "agent", "models.json"),
-    join(home, ".openclaw", "agents", "main", "agent", "models.json"),
+    hostPath(home, ".openclaw", "agents", agentName, "agent", "models.json"),
+    hostPath(home, ".openclaw", "agents", "main", "agent", "models.json"),
   ];
   for (const path of candidates) {
     try {
-      if (!existsSync(path)) continue;
-      const raw = await readFile(path, "utf8");
+      const raw = await readOptionalTextFile(path);
+      if (!raw) continue;
       const json = JSON.parse(raw) as {
         providers?: Record<
           string,
@@ -191,17 +204,20 @@ async function readCatalog(): Promise<Model[]> {
   }
   return new Promise((resolve) => {
     let stdout = "";
-    const child = spawn(
+    const child = runtimeSpawn(
       process.env.OPENCLAW_BIN ?? "openclaw",
       ["capability", "model", "list"],
       { stdio: ["ignore", "pipe", "pipe"] },
     );
-    const timeout = setTimeout(() => {
-      child.kill("SIGKILL");
-      resolve([]);
-    }, Number(process.env.OPENCLAW_MODEL_CATALOG_TIMEOUT_MS ?? 45_000));
-    child.stdout.setEncoding("utf8");
-    child.stdout.on("data", (chunk: string) => {
+    const timeout = setTimeout(
+      () => {
+        child.kill("SIGKILL");
+        resolve([]);
+      },
+      Number(process.env.OPENCLAW_MODEL_CATALOG_TIMEOUT_MS ?? 45_000),
+    );
+    child.stdout?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk: string) => {
       stdout += chunk;
     });
     child.once("error", () => {
@@ -245,13 +261,13 @@ async function readHermesModels(): Promise<Model[]> {
   // ones this server can authenticate against". Keeps the list short.
   const home = homedir();
   const candidates = [
-    join(home, ".hermes", "models_dev_cache.json"),
+    hostPath(home, ".hermes", "models_dev_cache.json"),
     "/root/.hermes/models_dev_cache.json",
   ];
   for (const path of candidates) {
     try {
-      if (!existsSync(path)) continue;
-      const raw = await readFile(path, "utf8");
+      const raw = await readOptionalTextFile(path);
+      if (!raw) continue;
       const json = JSON.parse(raw) as Record<
         string,
         {
@@ -282,4 +298,32 @@ async function readHermesModels(): Promise<Model[]> {
     }
   }
   return [];
+}
+
+async function readOptionalTextFile(path: string): Promise<string | null> {
+  try {
+    // Host-local CLI config files are runtime inputs, not standalone assets.
+    // process.getBuiltinModule avoids static fs imports in the route module.
+    const { readFile } = process.getBuiltinModule(
+      "node:fs/promises",
+    ) as typeof import("node:fs/promises");
+    return await readFile(path, "utf8");
+  } catch {
+    return null;
+  }
+}
+
+function hostPath(root: string, ...parts: string[]): string {
+  return [root.replace(/[\\/]+$/, ""), ...parts].join("/");
+}
+
+function runtimeSpawn(
+  command: string,
+  args: string[],
+  options: Parameters<ChildProcessModule["spawn"]>[2],
+) {
+  const { spawn } = process.getBuiltinModule(
+    "node:child_process",
+  ) as ChildProcessModule;
+  return spawn(command, args, options);
 }

@@ -1,6 +1,9 @@
 import type { StreamChatOptions } from "../router";
+import { withCliBinPath } from "./cli-bin";
 
-export function scopedSubprocessEnv(opts: StreamChatOptions): NodeJS.ProcessEnv {
+export function scopedSubprocessEnv(
+  opts: StreamChatOptions,
+): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     ...(opts.tenant?.mcpToolKeys ?? {}),
@@ -22,5 +25,5 @@ export function scopedSubprocessEnv(opts: StreamChatOptions): NodeJS.ProcessEnv 
     env.AIO_RUN_ID = opts.runId;
   }
 
-  return env;
+  return withCliBinPath(env);
 }

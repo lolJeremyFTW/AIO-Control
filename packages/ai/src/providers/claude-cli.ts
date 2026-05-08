@@ -11,12 +11,12 @@
 // claude-3-7-sonnet-20250219 id). Leave empty to use Claude's
 // default.
 
-import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 
 import type { AGUIEvent } from "../ag-ui";
 import type { StreamChatOptions } from "../router";
-import { resolveCliBin } from "./cli-bin";
+import { resolveCliBin, withCliBinPath } from "./cli-bin";
+import { runtimeSpawn } from "./subprocess";
 
 export async function* streamClaudeCli(
   opts: StreamChatOptions,
@@ -62,11 +62,13 @@ export async function* streamClaudeCli(
     // Skip silently.
   }
 
-  // resolveCliBin walks ~/.npm-global, /opt/homebrew, /usr/local, /usr,
-  // /snap so a default Linux/Mac install of Claude Code is found
-  // automatically. CLAUDE_BIN env still overrides for non-standard paths.
+  // CLAUDE_BIN still overrides for non-standard paths. Otherwise spawn
+  // resolves "claude" via an augmented PATH with common Linux/Mac CLI dirs.
   const binary = resolveCliBin("claude", "CLAUDE_BIN");
-  const child = spawn(binary, args, { stdio: ["pipe", "pipe", "pipe"] });
+  const child = runtimeSpawn(binary, args, {
+    stdio: ["pipe", "pipe", "pipe"],
+    env: withCliBinPath(process.env),
+  });
   child.stdin.write(prompt);
   child.stdin.end();
 
@@ -146,8 +148,15 @@ export async function* streamClaudeCli(
           };
           inputTokens = u.input_tokens ?? inputTokens;
           outputTokens = u.output_tokens ?? outputTokens;
-        } else if (type === "result" && evt.usage && typeof evt.usage === "object") {
-          const u = evt.usage as { input_tokens?: number; output_tokens?: number };
+        } else if (
+          type === "result" &&
+          evt.usage &&
+          typeof evt.usage === "object"
+        ) {
+          const u = evt.usage as {
+            input_tokens?: number;
+            output_tokens?: number;
+          };
           inputTokens = u.input_tokens ?? inputTokens;
           outputTokens = u.output_tokens ?? outputTokens;
         }
