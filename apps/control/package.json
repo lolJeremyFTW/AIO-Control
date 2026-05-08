@@ -7,12 +7,16 @@
     "build": "next build",
     "start": "next start --port 3010",
     "lint": "eslint --max-warnings 0",
-    "check-types": "next typegen && tsc --noEmit"
+    "check-types": "next typegen && tsc --noEmit",
+    "remotion:studio": "remotion studio remotion/index.ts",
+    "remotion:still": "remotion still remotion/index.ts AioDashboardTour --frame=90 --scale=0.25 --output=remotion-still.png",
+    "seed:remotion-demo": "node scripts/seed-remotion-demo.mjs"
   },
   "dependencies": {
     "@aio/ai": "workspace:*",
     "@aio/db": "workspace:*",
     "@aio/ui": "workspace:*",
+    "@remotion/player": "4.0.459",
     "@supabase/ssr": "^0.7.0",
     "@supabase/supabase-js": "^2.49.0",
     "@types/nodemailer": "^8.0.0",
@@ -21,9 +25,12 @@
     "nodemailer": "^8.0.7",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "web-push": "^3.6.7"
+    "remotion": "4.0.459",
+    "web-push": "^3.6.7",
+    "zod": "4.3.6"
   },
   "devDependencies": {
+    "@remotion/cli": "4.0.459",
     "@repo/eslint-config": "workspace:*",
     "@repo/typescript-config": "workspace:*",
     "@types/node": "^22.15.3",

@@ -68,6 +68,9 @@ export async function updateSession(request: NextRequest) {
     path.startsWith("/r/") ||
     // Public agent dashboards — slug in URL is the only auth needed.
     path.startsWith("/d/") ||
+    // Public documentation — anyone can read the handbook.
+    path === "/docs" ||
+    path.startsWith("/docs/") ||
     // Telegram webhook authenticates via the secret in the URL.
     path.startsWith("/api/integrations/telegram/webhook") ||
     // Slack and Discord inbound routes authenticate provider signatures
