@@ -28,6 +28,7 @@ const CURRENT_AGENT_ID = process.env.AIO_AGENT_ID ?? "";
 const CURRENT_RUN_ID = process.env.AIO_RUN_ID ?? "";
 const ALLOW_READ_SECRET = process.env.AIO_MCP_ALLOW_READ_SECRET === "true";
 const AGENT_SECRET_KEY = process.env.AGENT_SECRET_KEY ?? "";
+const CANONICAL_DASHBOARD_ORIGIN = "https://aio.tromptech.life";
 const APP_ORIGIN = dashboardOrigin(
   process.env.AIO_DASHBOARD_ORIGIN ??
     process.env.NEXT_PUBLIC_DASHBOARD_ORIGIN ??
@@ -55,27 +56,34 @@ const supabaseAio = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 
 // ── Input schemas (Zod) ────────────────────────────────────────────────────
 function dashboardOrigin(value: string | undefined): string {
-  const raw = (value || "https://aio.tromptech.life").replace(/\/+$/, "");
+  const raw = (value || CANONICAL_DASHBOARD_ORIGIN).replace(/\/+$/, "");
   try {
     const url = new URL(raw);
+    const pathname = url.pathname || "/";
     if (
       url.hostname === "tromptech.life" &&
-      (url.pathname === "" || url.pathname === "/aio")
+      (pathname === "/" || pathname === "/aio")
     ) {
-      return "https://aio.tromptech.life";
+      return CANONICAL_DASHBOARD_ORIGIN;
     }
-    return url.origin + (url.pathname === "/" ? "" : url.pathname);
+    return url.origin + (pathname === "/" ? "" : pathname);
   } catch {
-    return "https://aio.tromptech.life";
+    return CANONICAL_DASHBOARD_ORIGIN;
   }
 }
 
 function normalizeCustomTabUrl(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return value;
+  if (trimmed.startsWith("/d/")) return `${APP_ORIGIN}${trimmed}`;
+  if (trimmed.startsWith("/aio/d/")) return `${APP_ORIGIN}${trimmed.slice(4)}`;
   try {
-    if (value.startsWith("/d/")) return `${APP_ORIGIN}${value}`;
-    const url = new URL(value);
-    if (url.pathname.startsWith("/d/")) {
-      return `${APP_ORIGIN}${url.pathname}${url.search}${url.hash}`;
+    const url = new URL(trimmed);
+    const dashboardPath = url.pathname.startsWith("/aio/d/")
+      ? url.pathname.slice(4)
+      : url.pathname;
+    if (dashboardPath.startsWith("/d/")) {
+      return `${APP_ORIGIN}${dashboardPath}${url.search}${url.hash}`;
     }
   } catch {
     // Schema validation catches invalid URLs for MCP calls; keep this helper
@@ -1405,7 +1413,7 @@ async function publishDashboard(args: unknown): Promise<string> {
     if (error) return JSON.stringify({ error: "db_error", message: error.message });
   }
 
-  const url = `${APP_ORIGIN}/d/${slug}`;
+  const url = normalizeCustomTabUrl(`${APP_ORIGIN}/d/${slug}`);
 
   if (navNodeId) {
     const topicResult = await publishTopicDashboard({

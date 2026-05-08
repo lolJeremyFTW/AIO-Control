@@ -20,6 +20,7 @@ import {
 } from "../../../../../../lib/auth/workspace";
 import { resolveApiKey } from "../../../../../../lib/api-keys/resolve";
 import { getDict } from "../../../../../../lib/i18n/server";
+import { normalizeDashboardUrl } from "../../../../../../lib/dashboards/urls";
 import { listAgentsForWorkspace } from "../../../../../../lib/queries/agents";
 import {
   listBusinesses,
@@ -448,6 +449,7 @@ export default async function NavNodePage({ params, searchParams }: Props) {
       .maybeSingle();
 
     if (!tab) notFound();
+    const tabUrl = normalizeDashboardUrl(tab.url as string);
 
     return (
       <>
@@ -460,7 +462,7 @@ export default async function NavNodePage({ params, searchParams }: Props) {
         />
         <div className="content">
           <iframe
-            src={tab.url}
+            src={tabUrl}
             title={tab.label}
             style={{
               width: "100%",
@@ -470,7 +472,7 @@ export default async function NavNodePage({ params, searchParams }: Props) {
               background: "var(--app-card)",
             }}
             allow="fullscreen"
-            sandbox={iframeSandboxFor(tab.url)}
+            sandbox={iframeSandboxFor(tabUrl)}
           />
         </div>
       </>

@@ -8,6 +8,7 @@ import {
   listBusinesses,
   findBusiness,
 } from "../../../../../../lib/queries/businesses";
+import { normalizeDashboardUrl } from "../../../../../../lib/dashboards/urls";
 import { createSupabaseServerClient } from "../../../../../../lib/supabase/server";
 
 type Props = {
@@ -45,10 +46,11 @@ export default async function CustomTabPage({ params }: Props) {
     .maybeSingle();
 
   if (!data) notFound();
+  const tabUrl = normalizeDashboardUrl(data.url as string);
 
   return (
     <iframe
-      src={data.url}
+      src={tabUrl}
       title={data.label}
       style={{
         width: "100%",
@@ -57,7 +59,7 @@ export default async function CustomTabPage({ params }: Props) {
         borderRadius: 10,
       }}
       allow="fullscreen"
-      sandbox={iframeSandboxFor(data.url)}
+      sandbox={iframeSandboxFor(tabUrl)}
     />
   );
 }

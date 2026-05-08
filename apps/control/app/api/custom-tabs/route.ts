@@ -1,4 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import {
+  dashboardOrigin,
+  normalizeDashboardUrl,
+} from "../../../lib/dashboards/urls";
 import { createSupabaseServerClient } from "../../../lib/supabase/server";
 
 const UUID_RE =
@@ -17,20 +21,6 @@ async function resolveBusinessId(
   return (data?.id as string) ?? null;
 }
 
-function normalizeCustomTabUrl(value: string): string {
-  try {
-    if (value.startsWith("/d/")) return `https://aio.tromptech.life${value}`;
-    const url = new URL(value);
-    if (url.pathname.startsWith("/d/")) {
-      return `https://aio.tromptech.life${url.pathname}${url.search}${url.hash}`;
-    }
-  } catch {
-    // Let the insert fail normally for malformed URLs; this endpoint has
-    // historically accepted external URLs as plain strings.
-  }
-  return value;
-}
-
 export async function GET(req: NextRequest) {
   const businessIdParam = req.nextUrl.searchParams.get("business_id");
   const navNodeId = req.nextUrl.searchParams.get("nav_node_id");
@@ -38,6 +28,7 @@ export async function GET(req: NextRequest) {
   if (!businessIdParam && !navNodeId) return NextResponse.json({ tabs: [] });
 
   const supabase = await createSupabaseServerClient();
+  const origin = dashboardOrigin(req.nextUrl.origin);
   let q = supabase
     .from("custom_tabs")
     .select("id, label, url, sort_order")
@@ -52,8 +43,14 @@ export async function GET(req: NextRequest) {
   }
 
   const { data, error } = await q;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ tabs: data ?? [] });
+  if (error)
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({
+    tabs: (data ?? []).map((tab) => ({
+      ...tab,
+      url: normalizeDashboardUrl(tab.url as string, origin),
+    })),
+  });
 }
 
 export async function POST(req: NextRequest) {
@@ -77,12 +74,16 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = await createSupabaseServerClient();
+  const origin = dashboardOrigin(req.nextUrl.origin);
 
   let business_id: string | null = null;
   if (businessIdParam) {
     business_id = await resolveBusinessId(supabase, businessIdParam);
     if (!business_id)
-      return NextResponse.json({ error: "Business not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Business not found" },
+        { status: 404 },
+      );
   }
 
   const { data, error } = await supabase
@@ -92,11 +93,12 @@ export async function POST(req: NextRequest) {
       workspace_id,
       nav_node_id: nav_node_id ?? null,
       label,
-      url: normalizeCustomTabUrl(url),
+      url: normalizeDashboardUrl(url, origin),
     })
     .select("id")
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error)
+    return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ id: data.id });
 }

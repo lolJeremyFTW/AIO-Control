@@ -1,4 +1,5 @@
 import { getServiceRoleSupabase } from "../supabase/service";
+import { normalizeDashboardLinks } from "../dashboards/urls";
 
 export type ModuleDashboard = {
   id: string;
@@ -18,5 +19,9 @@ export async function getModuleDashboard(
     .select("id, nav_node_id, workspace_id, content, run_id, generated_at")
     .eq("nav_node_id", navNodeId)
     .maybeSingle();
-  return data ?? null;
+  if (!data) return null;
+  return {
+    ...data,
+    content: normalizeDashboardLinks(data.content as string),
+  } as ModuleDashboard;
 }
