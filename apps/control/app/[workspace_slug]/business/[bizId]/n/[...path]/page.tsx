@@ -44,6 +44,7 @@ import type {
 import { AgentsList } from "../../../../../../components/AgentsList";
 import { GenerateDashboardCard } from "../../../../../../components/GenerateDashboardCard";
 import { NewNavNodeButton } from "../../../../../../components/NewNavNodeButton";
+import { OutreachPipelineModule } from "../../../../../../components/OutreachPipelineModule";
 import { RunsPage } from "../../../../../../components/RunsPage";
 import { RunsTimeline } from "../../../../../../components/RunsTimeline";
 import { SavedModuleDashboard } from "../../../../../../components/SavedModuleDashboard";
@@ -55,7 +56,7 @@ import { TopicTabs } from "../../../../../../components/TopicTabs";
 import { getModuleDashboard } from "../../../../../../lib/queries/dashboards";
 import { createSupabaseServerClient } from "../../../../../../lib/supabase/server";
 
-const TOPIC_SUBROUTES = ["agents", "runs", "routines"] as const;
+const TOPIC_SUBROUTES = ["agents", "runs", "pipeline", "routines"] as const;
 type TopicSubroute = (typeof TOPIC_SUBROUTES)[number];
 
 type Props = {
@@ -276,6 +277,154 @@ export default async function NavNodePage({ params, searchParams }: Props) {
   }
 
   // ── Overview (default) ──────────────────────────────────────────────
+  if (subRoute === "pipeline") {
+    const supabase = await createSupabaseServerClient();
+    const since24h = new Date(Date.now() - 24 * 60 * 60_000).toISOString();
+    const topicAgents = allAgents.filter(
+      (a) =>
+        a.business_id === biz.id &&
+        ((a.topic_ids ?? []).includes(current.id) ||
+          a.nav_node_id === current.id),
+    );
+    const fallbackAgents =
+      topicAgents.length > 0
+        ? topicAgents
+        : allAgents.filter((a) => a.business_id === biz.id || a.business_id === null);
+
+    const [
+      { data: config },
+      { data: recentRuns },
+      { data: recentEvents },
+      { count: total },
+      { count: eligible },
+      { count: modulePrepared },
+      { count: sent },
+      { count: pendingWhatsapp },
+      { count: failedQa24h },
+    ] = await Promise.all([
+      supabase
+        .from("outreach_pipeline_configs")
+        .select(
+          "id, enabled, interval_seconds, batch_size, last_started_at, last_finished_at, last_error, total_cycles, total_outreached_count, total_duplicate_skipped, pipeline_steps, pipeline_blueprint",
+        )
+        .eq("workspace_id", workspace.id)
+        .eq("business_id", biz.id)
+        .eq("nav_node_id", current.id)
+        .maybeSingle(),
+      supabase
+        .from("outreach_pipeline_runs")
+        .select(
+          "id, status, claimed_count, outreached_count, duplicate_skipped_count, error_count, started_at, ended_at",
+        )
+        .eq("workspace_id", workspace.id)
+        .eq("business_id", biz.id)
+        .eq("nav_node_id", current.id)
+        .order("created_at", { ascending: false })
+        .limit(8),
+      supabase
+        .from("outreach_pipeline_events")
+        .select(
+          "id, run_id, stage, agent_name, event_type, message, delta_outreached, created_at",
+        )
+        .eq("workspace_id", workspace.id)
+        .eq("business_id", biz.id)
+        .eq("nav_node_id", current.id)
+        .order("created_at", { ascending: false })
+        .limit(80),
+      supabase
+        .from("outreach_leads")
+        .select("id", { count: "exact", head: true })
+        .eq("workspace_id", workspace.id)
+        .eq("business_id", biz.id),
+      supabase
+        .from("outreach_leads")
+        .select("id", { count: "exact", head: true })
+        .eq("workspace_id", workspace.id)
+        .eq("business_id", biz.id)
+        .in("status", ["new", "pitched", "approved", "freebie_ready"])
+        .is("outreach_pipeline_outreached_at", null)
+        .is("sent_at", null)
+        .not("lead_name", "is", null),
+      supabase
+        .from("outreach_leads")
+        .select("id", { count: "exact", head: true })
+        .eq("workspace_id", workspace.id)
+        .eq("business_id", biz.id)
+        .eq("sent_via", "aio_pipeline_local_outbox_pending"),
+      supabase
+        .from("outreach_leads")
+        .select("id", { count: "exact", head: true })
+        .eq("workspace_id", workspace.id)
+        .eq("business_id", biz.id)
+        .eq("status", "sent"),
+      supabase
+        .from("outreach_leads")
+        .select("id", { count: "exact", head: true })
+        .eq("workspace_id", workspace.id)
+        .eq("business_id", biz.id)
+        .eq("status", "pending_whatsapp"),
+      supabase
+        .from("outreach_pipeline_events")
+        .select("id", { count: "exact", head: true })
+        .eq("workspace_id", workspace.id)
+        .eq("business_id", biz.id)
+        .eq("event_type", "error")
+        .eq("nav_node_id", current.id)
+        .gte("created_at", since24h),
+    ]);
+
+    return (
+      <>
+        <TopicTabs
+          baseHref={topicBaseHref}
+          topicName={current.name}
+          navNodeId={current.id}
+          workspaceId={workspace.id}
+          routinesCount={routinesCount ?? 0}
+        />
+        <div className="content">
+          <div className="page-title-row">
+            <h1>Pipeline - {current.name}</h1>
+            <span className="sub">
+              Main topic-agent orchestreert, subagents werken context-arm.
+            </span>
+          </div>
+          <OutreachPipelineModule
+            workspaceSlug={workspace.slug}
+            businessSlug={biz.slug}
+            workspaceId={workspace.id}
+            businessId={biz.id}
+            navNodeId={current.id}
+            scopeName={current.name}
+            scopeKind="topic"
+            config={(config as Parameters<typeof OutreachPipelineModule>[0]["config"]) ?? null}
+            stats={{
+              total: total ?? 0,
+              eligible: eligible ?? 0,
+              moduleOutreached: modulePrepared ?? 0,
+              sent: sent ?? 0,
+              pendingWhatsapp: pendingWhatsapp ?? 0,
+              failedQa24h: failedQa24h ?? 0,
+            }}
+            recentRuns={(recentRuns ?? []) as Parameters<
+              typeof OutreachPipelineModule
+            >[0]["recentRuns"]}
+            recentEvents={(recentEvents ?? []) as Parameters<
+              typeof OutreachPipelineModule
+            >[0]["recentEvents"]}
+            agents={fallbackAgents.map((agent) => ({
+              id: agent.id,
+              name: agent.name,
+              provider: agent.provider,
+              model: agent.model,
+              kind: agent.kind,
+            }))}
+          />
+        </div>
+      </>
+    );
+  }
+
   if (subRoute === "routines") {
     const supabase = await createSupabaseServerClient();
     const hdrs = await headers();

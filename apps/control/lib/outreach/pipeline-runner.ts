@@ -12,6 +12,7 @@ type PipelineConfig = {
   id: string;
   workspace_id: string;
   business_id: string;
+  nav_node_id: string | null;
   enabled: boolean;
   interval_seconds: number;
   batch_size: number;
@@ -28,6 +29,7 @@ type PipelineRun = {
   id: string;
   workspace_id: string;
   business_id: string;
+  nav_node_id: string | null;
   config_id: string | null;
 };
 
@@ -61,7 +63,7 @@ type ProcessContext = {
 };
 
 type ProcessResult =
-  | { kind: "outreached"; leadId: string }
+  | { kind: "prepared"; leadId: string }
   | { kind: "duplicate"; leadId: string }
   | { kind: "error"; leadId: string; error: string };
 
@@ -72,7 +74,7 @@ export async function tickOutreachPipeline(): Promise<void> {
   const { data, error } = await supabase
     .from("outreach_pipeline_configs")
     .select(
-      "id, workspace_id, business_id, enabled, interval_seconds, batch_size, delivery_mode, last_started_at, last_finished_at, last_error, total_cycles, total_outreached_count, total_duplicate_skipped",
+      "id, workspace_id, business_id, nav_node_id, enabled, interval_seconds, batch_size, delivery_mode, last_started_at, last_finished_at, last_error, total_cycles, total_outreached_count, total_duplicate_skipped",
     )
     .eq("enabled", true);
   if (error) {
@@ -123,7 +125,7 @@ export async function runOutreachPipelineCycle(
     const { data: configRow, error: configError } = await supabase
       .from("outreach_pipeline_configs")
       .select(
-        "id, workspace_id, business_id, enabled, interval_seconds, batch_size, delivery_mode, last_started_at, last_finished_at, last_error, total_cycles, total_outreached_count, total_duplicate_skipped",
+        "id, workspace_id, business_id, nav_node_id, enabled, interval_seconds, batch_size, delivery_mode, last_started_at, last_finished_at, last_error, total_cycles, total_outreached_count, total_duplicate_skipped",
       )
       .eq("id", configId)
       .maybeSingle();
@@ -159,11 +161,12 @@ export async function runOutreachPipelineCycle(
       .insert({
         workspace_id: config.workspace_id,
         business_id: config.business_id,
+        nav_node_id: config.nav_node_id,
         config_id: config.id,
         status: "running",
         started_at: startedAt,
       })
-      .select("id, workspace_id, business_id, config_id")
+      .select("id, workspace_id, business_id, nav_node_id, config_id")
       .single();
     if (runError || !runRow) {
       throw new Error(runError?.message ?? "Could not create pipeline run.");
@@ -225,7 +228,7 @@ export async function runOutreachPipelineCycle(
       results.push(await processLead(config, run, lead, ctx));
     }
 
-    const outreached = results.filter((r) => r.kind === "outreached").length;
+    const outreached = results.filter((r) => r.kind === "prepared").length;
     const duplicates = results.filter((r) => r.kind === "duplicate").length;
     const errors = results.filter((r) => r.kind === "error").length;
 
@@ -450,14 +453,14 @@ async function processLead(
         angle_scores: scores,
         angle,
         pitch,
-        status: "outreached",
-        sent_via: "aio_pipeline_local_outbox",
+        status: "pending_whatsapp",
+        sent_via: "aio_pipeline_local_outbox_pending",
         freebie_generated_at: lead.freebie_generated_at ?? nowIso,
         freebie_path: `/r/${token}`,
         wa_link: buildWhatsAppLink(lead.telefoon, pitch),
         outreach_automation_proposal: proposal,
         outreach_pipeline_qa: qa,
-        outreach_pipeline_outreached_at: nowIso,
+        outreach_pipeline_outreached_at: null,
         outreach_sent_checksum: checksum,
         outreach_pipeline_claimed_at: null,
         outreach_pipeline_error: null,
@@ -471,12 +474,12 @@ async function processLead(
       run,
       "outreach_sender",
       "metric",
-      "Lead geoutreached.",
+      "Lead voorbereid in local outbox; nog niet extern verstuurd.",
       lead.id,
       { url },
       1,
     );
-    return { kind: "outreached", leadId: lead.id };
+    return { kind: "prepared", leadId: lead.id };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await supabase
@@ -546,6 +549,7 @@ async function emit(
     run_id: run.id,
     workspace_id: run.workspace_id,
     business_id: run.business_id,
+    nav_node_id: run.nav_node_id,
     lead_id: leadId ?? null,
     stage,
     agent_name: stageSpec.agent,

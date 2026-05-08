@@ -6,8 +6,29 @@ import {
   runOutreachPipelineNow,
   updateOutreachPipelineConfig,
 } from "../app/actions/outreach-pipeline";
-import { getSupabaseBrowserClient } from "../lib/supabase/client";
 import { OUTREACH_PIPELINE_STAGES } from "../lib/outreach/pipeline-stages";
+import { getSupabaseBrowserClient } from "../lib/supabase/client";
+
+type PipelineStep = {
+  id: string;
+  label: string;
+  agent: string;
+  task: string;
+  handoff: string;
+  provider: string;
+  model: string;
+  agent_id: string | null;
+  context_policy: "handoff_only" | "none";
+  needs: string;
+  qa_rule: string;
+};
+
+type PipelineBlueprint = {
+  orchestrator_agent_id: string | null;
+  learning_enabled: boolean;
+  correction_rules: string[];
+  steps: PipelineStep[];
+};
 
 type Config = {
   id: string;
@@ -20,6 +41,8 @@ type Config = {
   total_cycles: number;
   total_outreached_count: number;
   total_duplicate_skipped: number;
+  pipeline_steps?: unknown;
+  pipeline_blueprint?: unknown;
 };
 
 type RunRow = {
@@ -53,26 +76,54 @@ type Stats = {
   failedQa24h: number;
 };
 
+type AgentOption = {
+  id: string;
+  name: string;
+  provider: string;
+  model: string | null;
+  kind: string;
+};
+
 type Props = {
   workspaceSlug: string;
   businessSlug: string;
   workspaceId: string;
   businessId: string;
+  navNodeId?: string | null;
+  scopeName: string;
+  scopeKind: "business" | "topic";
   config: Config | null;
   stats: Stats;
   recentRuns: RunRow[];
   recentEvents: EventRow[];
+  agents: AgentOption[];
 };
+
+const PROVIDERS = [
+  "openai_codex",
+  "openclaw",
+  "hermes",
+  "claude",
+  "claude_cli",
+  "openrouter",
+  "ollama",
+  "minimax",
+  "codex",
+] as const;
 
 export function OutreachPipelineModule({
   workspaceSlug,
   businessSlug,
   workspaceId,
   businessId,
+  navNodeId = null,
+  scopeName,
+  scopeKind,
   config: initialConfig,
   stats,
   recentRuns,
   recentEvents,
+  agents,
 }: Props) {
   const [config, setConfig] = useState<Config | null>(initialConfig);
   const [events, setEvents] = useState<EventRow[]>(recentEvents);
@@ -81,6 +132,9 @@ export function OutreachPipelineModule({
     initialConfig?.interval_seconds ?? 10,
   );
   const [batchSize, setBatchSize] = useState(initialConfig?.batch_size ?? 3);
+  const [blueprint, setBlueprint] = useState<PipelineBlueprint>(() =>
+    normalizeBlueprint(initialConfig, agents),
+  );
   const [outreached, setOutreached] = useState(stats.moduleOutreached);
   const [info, setInfo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -90,12 +144,13 @@ export function OutreachPipelineModule({
     setConfig(initialConfig);
     setIntervalSeconds(initialConfig?.interval_seconds ?? 10);
     setBatchSize(initialConfig?.batch_size ?? 3);
-  }, [initialConfig]);
+    setBlueprint(normalizeBlueprint(initialConfig, agents));
+  }, [initialConfig, agents]);
 
   useEffect(() => {
     const supabase = getSupabaseBrowserClient();
     const channel = supabase
-      .channel(`outreach-pipeline-${businessId}`)
+      .channel(`outreach-pipeline-${businessId}-${navNodeId ?? "business"}`)
       .on(
         "postgres_changes",
         {
@@ -128,7 +183,7 @@ export function OutreachPipelineModule({
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [businessId]);
+  }, [businessId, navNodeId]);
 
   const latestByStage = useMemo(() => {
     const map = new Map<string, EventRow>();
@@ -138,6 +193,7 @@ export function OutreachPipelineModule({
     return map;
   }, [events]);
 
+  const orchestrator = agents.find((agent) => agent.id === blueprint.orchestrator_agent_id);
   const running = config?.enabled ?? false;
   const lastRun = runs[0] ?? null;
 
@@ -150,9 +206,12 @@ export function OutreachPipelineModule({
         business_slug: businessSlug,
         workspace_id: workspaceId,
         business_id: businessId,
+        nav_node_id: navNodeId,
         enabled: patch?.enabled ?? config?.enabled ?? false,
         interval_seconds: intervalSeconds,
         batch_size: batchSize,
+        pipeline_blueprint: blueprint,
+        pipeline_steps: blueprint.steps,
       });
       if (!res.ok) {
         setError(res.error);
@@ -171,15 +230,63 @@ export function OutreachPipelineModule({
         business_slug: businessSlug,
         workspace_id: workspaceId,
         business_id: businessId,
+        nav_node_id: navNodeId,
       });
       if (!res.ok) {
         setError(res.error);
         return;
       }
       setInfo(
-        `Cycle klaar: ${res.data.outreached} geoutreached, ${res.data.duplicates} duplicate skips, ${res.data.errors} errors.`,
+        `Cycle klaar: ${res.data.outreached} klaargezet in local outbox, ${res.data.duplicates} duplicate skips, ${res.data.errors} errors.`,
       );
     });
+  };
+
+  const updateStep = (index: number, patch: Partial<PipelineStep>) => {
+    setBlueprint((current) => ({
+      ...current,
+      steps: current.steps.map((step, i) =>
+        i === index ? { ...step, ...patch } : step,
+      ),
+    }));
+  };
+
+  const addStep = () => {
+    setBlueprint((current) => ({
+      ...current,
+      steps: [
+        ...current.steps,
+        {
+          id: `custom_${current.steps.length + 1}`,
+          label: "Nieuwe stap",
+          agent: "Subagent",
+          task: "Voer een kleine, afgebakende taak uit.",
+          handoff: "Geef alleen resultaat, bronnen en onzekerheden terug.",
+          provider: "openai_codex",
+          model: "",
+          agent_id: null,
+          context_policy: "handoff_only",
+          needs: "Alleen de instructie van de orchestrator.",
+          qa_rule: "Orchestrator controleert bruikbaarheid en risico.",
+        },
+      ],
+    }));
+  };
+
+  const removeStep = (index: number) => {
+    setBlueprint((current) => ({
+      ...current,
+      steps: current.steps.filter((_, i) => i !== index),
+    }));
+  };
+
+  const updateRule = (index: number, value: string) => {
+    setBlueprint((current) => ({
+      ...current,
+      correction_rules: current.correction_rules.map((rule, i) =>
+        i === index ? value : rule,
+      ),
+    }));
   };
 
   return (
@@ -191,26 +298,19 @@ export function OutreachPipelineModule({
           100% { box-shadow: 0 0 0 0 rgba(57,178,85,0); }
         }
         @keyframes pipelineFlow {
-          from { transform: translateX(-28px); opacity: .2; }
-          to { transform: translateX(28px); opacity: .8; }
+          from { stroke-dashoffset: 42; }
+          to { stroke-dashoffset: 0; }
         }
       `}</style>
 
       <section style={panelStyle}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 12,
-            flexWrap: "wrap",
-          }}
-        >
+        <div style={topRowStyle}>
           <div>
-            <h2 style={titleStyle}>Silent outreach pipeline</h2>
+            <h2 style={titleStyle}>Pipeline builder - {scopeName}</h2>
             <p style={subStyle}>
-              Draait naast cron jobs. Schrijft alleen visuele events en telt
-              duplicate-safe outreach in Supabase.
+              {scopeKind === "topic" ? "Topic" : "Business"} pipeline met main
+              agent als orchestrator en QA. Subagents krijgen alleen de
+              minimale handoff-context die ze nodig hebben.
             </p>
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -233,15 +333,8 @@ export function OutreachPipelineModule({
           </div>
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(6, minmax(0, 1fr))",
-            gap: 10,
-            marginTop: 16,
-          }}
-        >
-          <Metric label="Module outreach" value={outreached} accent="#39b255" />
+        <div style={metricsGridStyle}>
+          <Metric label="Local outbox" value={outreached} accent="#39b255" />
           <Metric label="Eligible now" value={stats.eligible} />
           <Metric label="Alle leads" value={stats.total} />
           <Metric label="Sent" value={stats.sent} />
@@ -249,15 +342,7 @@ export function OutreachPipelineModule({
           <Metric label="QA errors 24h" value={stats.failedQa24h} accent="#c44d4d" />
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "160px 160px 1fr",
-            gap: 10,
-            alignItems: "end",
-            marginTop: 14,
-          }}
-        >
+        <div style={settingsGridStyle}>
           <Field label="Loop interval">
             <input
               type="number"
@@ -278,7 +363,26 @@ export function OutreachPipelineModule({
               style={inputStyle}
             />
           </Field>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <Field label="Orchestrator / QA agent">
+            <select
+              value={blueprint.orchestrator_agent_id ?? ""}
+              onChange={(e) =>
+                setBlueprint((current) => ({
+                  ...current,
+                  orchestrator_agent_id: e.target.value || null,
+                }))
+              }
+              style={inputStyle}
+            >
+              <option value="">Kies main agent</option>
+              {agents.map((agent) => (
+                <option key={agent.id} value={agent.id}>
+                  {agent.name} - {agent.provider}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <div style={{ display: "flex", alignItems: "end", gap: 10 }}>
             <button
               type="button"
               disabled={pending}
@@ -307,97 +411,220 @@ export function OutreachPipelineModule({
       </section>
 
       <section style={panelStyle}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "baseline",
-            justifyContent: "space-between",
-            gap: 12,
-            marginBottom: 12,
-          }}
-        >
-          <h2 style={titleStyle}>Agent pings</h2>
+        <div style={topRowStyle}>
+          <div>
+            <h2 style={titleStyle}>n8n-style handoff visualizer</h2>
+            <p style={subStyle}>
+              Orchestrator geeft per node exact mee wat nodig is. Subagents
+              starten context-arm; QA en correcties landen terug bij de main agent.
+            </p>
+          </div>
           {lastRun && (
-            <span style={subStyle}>
-              Laatste run: {lastRun.status} · {lastRun.outreached_count} outreach
+            <span style={pillStyle}>
+              Laatste run: {lastRun.status} · {lastRun.outreached_count} prepared
             </span>
           )}
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-            gap: 10,
-          }}
-        >
-          {OUTREACH_PIPELINE_STAGES.map((stage, index) => {
-            const event = latestByStage.get(stage.key);
-            const status = event?.event_type ?? "skip";
-            const active =
-              event &&
-              Date.now() - new Date(event.created_at).getTime() < 9000 &&
-              event.event_type !== "skip";
-            return (
-              <div key={stage.key} style={agentNodeStyle(status, !!active)}>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 8,
-                  }}
-                >
-                  <span style={nodeIndexStyle}>{String(index + 1).padStart(2, "0")}</span>
-                  <span style={nodeStatusStyle(status)}>{status}</span>
-                </div>
-                <strong style={{ fontSize: 13 }}>{stage.agent}</strong>
-                <span style={{ color: "var(--app-fg-3)", fontSize: 11.5 }}>
-                  {stage.label}
-                </span>
-                {event?.message && (
-                  <span
-                    style={{
-                      color: "var(--app-fg-2)",
-                      fontSize: 11,
-                      lineHeight: 1.35,
-                      marginTop: 4,
-                    }}
-                  >
-                    {event.message.length > 74
-                      ? `${event.message.slice(0, 73)}...`
-                      : event.message}
-                  </span>
-                )}
-              </div>
-            );
-          })}
+        <PipelineGraph
+          blueprint={blueprint}
+          orchestratorName={orchestrator?.name ?? "Main agent"}
+          latestByStage={latestByStage}
+          running={running}
+        />
+      </section>
+
+      <section style={panelStyle}>
+        <div style={topRowStyle}>
+          <div>
+            <h2 style={titleStyle}>Subagent stappen</h2>
+            <p style={subStyle}>
+              Elke stap mag een eigen provider/model hebben. Context blijft
+              beperkt tot de handoff van de orchestrator.
+            </p>
+          </div>
+          <button type="button" onClick={addStep} style={secondaryButtonStyle(false)}>
+            + Stap
+          </button>
         </div>
 
-        <div
-          aria-hidden
-          style={{
-            position: "relative",
-            height: 6,
-            marginTop: 14,
-            overflow: "hidden",
-            borderRadius: 99,
-            background: "var(--app-card-2)",
-            border: "1px solid var(--app-border-2)",
-          }}
-        >
-          <span
-            style={{
-              position: "absolute",
-              inset: "1px auto 1px 50%",
-              width: 60,
-              borderRadius: 99,
-              background: "#39b255",
-              animation: running
-                ? "pipelineFlow 1.1s ease-in-out infinite alternate"
-                : "none",
-            }}
-          />
+        <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+          {blueprint.steps.map((step, index) => (
+            <div key={`${step.id}-${index}`} style={stepEditorStyle}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <span style={nodeIndexStyle}>{String(index + 1).padStart(2, "0")}</span>
+                <input
+                  value={step.label}
+                  onChange={(e) => updateStep(index, { label: e.target.value })}
+                  style={{ ...inputStyle, fontWeight: 800 }}
+                />
+                <button
+                  type="button"
+                  onClick={() => removeStep(index)}
+                  style={dangerButtonStyle(false)}
+                >
+                  Verwijder
+                </button>
+              </div>
+              <div style={stepFormGridStyle}>
+                <Field label="Subagent naam">
+                  <input
+                    value={step.agent}
+                    onChange={(e) => updateStep(index, { agent: e.target.value })}
+                    style={inputStyle}
+                  />
+                </Field>
+                <Field label="Bestaande agent">
+                  <select
+                    value={step.agent_id ?? ""}
+                    onChange={(e) => {
+                      const selected = agents.find((a) => a.id === e.target.value);
+                      updateStep(index, {
+                        agent_id: e.target.value || null,
+                        provider: selected?.provider ?? step.provider,
+                        model: selected?.model ?? step.model,
+                        agent: selected?.name ?? step.agent,
+                      });
+                    }}
+                    style={inputStyle}
+                  >
+                    <option value="">Ad-hoc subagent</option>
+                    {agents.map((agent) => (
+                      <option key={agent.id} value={agent.id}>
+                        {agent.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Provider">
+                  <select
+                    value={step.provider}
+                    onChange={(e) => updateStep(index, { provider: e.target.value })}
+                    style={inputStyle}
+                  >
+                    {PROVIDERS.map((provider) => (
+                      <option key={provider} value={provider}>
+                        {provider}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Model">
+                  <input
+                    value={step.model}
+                    placeholder="Default model"
+                    onChange={(e) => updateStep(index, { model: e.target.value })}
+                    style={inputStyle}
+                  />
+                </Field>
+              </div>
+              <div style={wideStepGridStyle}>
+                <Field label="Wat de orchestrator doorgeeft">
+                  <textarea
+                    value={step.needs}
+                    onChange={(e) => updateStep(index, { needs: e.target.value })}
+                    style={textareaStyle}
+                  />
+                </Field>
+                <Field label="Taak van deze subagent">
+                  <textarea
+                    value={step.task}
+                    onChange={(e) => updateStep(index, { task: e.target.value })}
+                    style={textareaStyle}
+                  />
+                </Field>
+                <Field label="Output / handoff terug">
+                  <textarea
+                    value={step.handoff}
+                    onChange={(e) => updateStep(index, { handoff: e.target.value })}
+                    style={textareaStyle}
+                  />
+                </Field>
+                <Field label="QA regel door orchestrator">
+                  <textarea
+                    value={step.qa_rule}
+                    onChange={(e) => updateStep(index, { qa_rule: e.target.value })}
+                    style={textareaStyle}
+                  />
+                </Field>
+              </div>
+              <label style={checkStyle}>
+                <input
+                  type="checkbox"
+                  checked={step.context_policy === "handoff_only"}
+                  onChange={(e) =>
+                    updateStep(index, {
+                      context_policy: e.target.checked ? "handoff_only" : "none",
+                    })
+                  }
+                />
+                Geen brede context; alleen orchestrator-handoff naar deze subagent.
+              </label>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section style={panelStyle}>
+        <div style={topRowStyle}>
+          <div>
+            <h2 style={titleStyle}>Self-learning correcties</h2>
+            <p style={subStyle}>
+              De orchestrator gebruikt deze regels bij QA en mag nieuwe
+              correcties toevoegen wanneer runs falen of handmatig worden aangepast.
+            </p>
+          </div>
+          <label style={checkStyle}>
+            <input
+              type="checkbox"
+              checked={blueprint.learning_enabled}
+              onChange={(e) =>
+                setBlueprint((current) => ({
+                  ...current,
+                  learning_enabled: e.target.checked,
+                }))
+              }
+            />
+            Self-learning actief
+          </label>
+        </div>
+        <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+          {blueprint.correction_rules.map((rule, index) => (
+            <div key={index} style={{ display: "flex", gap: 8 }}>
+              <input
+                value={rule}
+                onChange={(e) => updateRule(index, e.target.value)}
+                style={inputStyle}
+              />
+              <button
+                type="button"
+                onClick={() =>
+                  setBlueprint((current) => ({
+                    ...current,
+                    correction_rules: current.correction_rules.filter((_, i) => i !== index),
+                  }))
+                }
+                style={dangerButtonStyle(false)}
+              >
+                x
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={() =>
+              setBlueprint((current) => ({
+                ...current,
+                correction_rules: [
+                  ...current.correction_rules,
+                  "Als QA faalt: sla oorzaak op als regel en laat de relevante subagent opnieuw proberen.",
+                ],
+              }))
+            }
+            style={secondaryButtonStyle(false)}
+          >
+            + Correctieregel
+          </button>
         </div>
       </section>
 
@@ -429,6 +656,73 @@ export function OutreachPipelineModule({
           </div>
         )}
       </section>
+    </div>
+  );
+}
+
+function PipelineGraph({
+  blueprint,
+  orchestratorName,
+  latestByStage,
+  running,
+}: {
+  blueprint: PipelineBlueprint;
+  orchestratorName: string;
+  latestByStage: Map<string, EventRow>;
+  running: boolean;
+}) {
+  return (
+    <div style={graphWrapStyle}>
+      <div style={orchestratorStyle}>
+        <span style={nodeStatusStyle("qa")}>ORCHESTRATOR + QA</span>
+        <strong>{orchestratorName}</strong>
+        <span style={graphSubStyle}>verdeelt taken · checkt output · leert regels</span>
+      </div>
+      <svg
+        aria-hidden
+        viewBox="0 0 1000 90"
+        preserveAspectRatio="none"
+        style={{ width: "100%", height: 70, display: "block" }}
+      >
+        <path
+          d="M 500 0 C 500 42, 120 36, 80 82 M 500 0 C 500 42, 880 36, 920 82 M 500 0 L 500 82"
+          fill="none"
+          stroke="var(--app-border)"
+          strokeWidth="3"
+          strokeDasharray={running ? "10 8" : "0"}
+          style={{ animation: running ? "pipelineFlow 1.3s linear infinite" : "none" }}
+        />
+      </svg>
+      <div style={graphNodesStyle}>
+        {blueprint.steps.map((step, index) => {
+          const event = latestByStage.get(step.id);
+          const fallbackEvent = latestByStage.get(
+            OUTREACH_PIPELINE_STAGES[index]?.key ?? "",
+          );
+          const latest = event ?? fallbackEvent;
+          const status = latest?.event_type ?? "skip";
+          const active =
+            latest &&
+            Date.now() - new Date(latest.created_at).getTime() < 9000 &&
+            latest.event_type !== "skip";
+          return (
+            <div key={`${step.id}-${index}`} style={agentNodeStyle(status, !!active)}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                <span style={nodeIndexStyle}>{String(index + 1).padStart(2, "0")}</span>
+                <span style={nodeStatusStyle(status)}>{status}</span>
+              </div>
+              <strong style={{ fontSize: 13 }}>{step.agent}</strong>
+              <span style={{ color: "var(--app-fg-3)", fontSize: 11.5 }}>
+                {step.provider}{step.model ? ` · ${step.model}` : ""}
+              </span>
+              <span style={{ color: "var(--app-fg-2)", fontSize: 11, lineHeight: 1.35 }}>
+                {step.needs}
+              </span>
+              <span style={handoffStyle}>handoff: {step.handoff}</span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -469,6 +763,83 @@ function Field({
   );
 }
 
+function normalizeBlueprint(config: Config | null, agents: AgentOption[]): PipelineBlueprint {
+  const raw = config?.pipeline_blueprint;
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    const obj = raw as Partial<PipelineBlueprint>;
+    const steps = Array.isArray(obj.steps) && obj.steps.length > 0
+      ? obj.steps.map(normalizeStep)
+      : defaultSteps();
+    return {
+      orchestrator_agent_id:
+        typeof obj.orchestrator_agent_id === "string"
+          ? obj.orchestrator_agent_id
+          : defaultOrchestrator(agents),
+      learning_enabled: obj.learning_enabled !== false,
+      correction_rules:
+        Array.isArray(obj.correction_rules) && obj.correction_rules.length > 0
+          ? obj.correction_rules.filter((rule): rule is string => typeof rule === "string")
+          : defaultRules(),
+      steps,
+    };
+  }
+  return {
+    orchestrator_agent_id: defaultOrchestrator(agents),
+    learning_enabled: true,
+    correction_rules: defaultRules(),
+    steps: defaultSteps(),
+  };
+}
+
+function normalizeStep(raw: Partial<PipelineStep>): PipelineStep {
+  return {
+    id: raw.id || "step",
+    label: raw.label || "Stap",
+    agent: raw.agent || "Subagent",
+    task: raw.task || "Taak uitvoeren.",
+    handoff: raw.handoff || "Resultaat teruggeven.",
+    provider: raw.provider || "openai_codex",
+    model: raw.model || "",
+    agent_id: raw.agent_id ?? null,
+    context_policy: raw.context_policy === "none" ? "none" : "handoff_only",
+    needs: raw.needs || raw.task || "Alleen de instructie van de orchestrator.",
+    qa_rule: raw.qa_rule || "Orchestrator controleert output.",
+  };
+}
+
+function defaultOrchestrator(agents: AgentOption[]): string | null {
+  return (
+    agents.find((agent) => agent.kind === "router")?.id ??
+    agents.find((agent) => agent.kind === "reviewer")?.id ??
+    agents[0]?.id ??
+    null
+  );
+}
+
+function defaultSteps(): PipelineStep[] {
+  return OUTREACH_PIPELINE_STAGES.map((stage) => ({
+    id: stage.key,
+    label: stage.label,
+    agent: stage.agent,
+    task: `Voer de stap "${stage.label}" uit zonder extra business-context te laden.`,
+    handoff: "Kort resultaat, bewijs, risico's en aanbevolen volgende actie.",
+    provider: "openai_codex",
+    model: "",
+    agent_id: null,
+    context_policy: "handoff_only",
+    needs: "Alleen lead, doel, vorige output en expliciete acceptatiecriteria.",
+    qa_rule: "Orchestrator valideert op volledigheid, duplicate risico en tone-of-voice.",
+  }));
+}
+
+function defaultRules(): string[] {
+  return [
+    "Subagents krijgen geen volledige thread/context; alleen het handoff-pakket van de orchestrator.",
+    "Bij fout of twijfel corrigeert de orchestrator de instructie en probeert alleen de betreffende stap opnieuw.",
+    "Nieuwe correcties worden als regel opgeslagen wanneer QA dezelfde fout vaker ziet.",
+  ];
+}
+
 function timeAgo(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
   const m = Math.floor(ms / 60_000);
@@ -484,6 +855,14 @@ const panelStyle: React.CSSProperties = {
   background: "var(--app-card)",
   borderRadius: 12,
   padding: 16,
+};
+
+const topRowStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+  flexWrap: "wrap",
 };
 
 const titleStyle: React.CSSProperties = {
@@ -509,6 +888,40 @@ const inputStyle: React.CSSProperties = {
   borderRadius: 8,
   fontFamily: "var(--type)",
   fontSize: 13,
+};
+
+const textareaStyle: React.CSSProperties = {
+  ...inputStyle,
+  minHeight: 72,
+  resize: "vertical",
+  lineHeight: 1.4,
+};
+
+const metricsGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
+  gap: 10,
+  marginTop: 16,
+};
+
+const settingsGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "150px 140px minmax(220px, 1fr) auto",
+  gap: 10,
+  alignItems: "end",
+  marginTop: 14,
+};
+
+const stepFormGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+  gap: 10,
+};
+
+const wideStepGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gap: 10,
 };
 
 const metricStyle: React.CSSProperties = {
@@ -544,6 +957,68 @@ const errorStyle: React.CSSProperties = {
   padding: "8px 10px",
   fontSize: 12.5,
   margin: "10px 0 0",
+};
+
+const graphWrapStyle: React.CSSProperties = {
+  marginTop: 14,
+  border: "1px solid var(--app-border-2)",
+  background: "var(--app-card-2)",
+  borderRadius: 8,
+  padding: 14,
+  overflowX: "auto",
+};
+
+const orchestratorStyle: React.CSSProperties = {
+  width: "min(420px, 100%)",
+  margin: "0 auto",
+  border: "1.5px solid var(--tt-green)",
+  background: "rgba(57,178,85,.08)",
+  borderRadius: 8,
+  padding: 12,
+  display: "flex",
+  flexDirection: "column",
+  gap: 5,
+  textAlign: "center",
+};
+
+const graphSubStyle: React.CSSProperties = {
+  color: "var(--app-fg-3)",
+  fontSize: 11.5,
+};
+
+const graphNodesStyle: React.CSSProperties = {
+  minWidth: 860,
+  display: "grid",
+  gridTemplateColumns: "repeat(4, minmax(190px, 1fr))",
+  gap: 10,
+};
+
+const stepEditorStyle: React.CSSProperties = {
+  border: "1px solid var(--app-border-2)",
+  background: "var(--app-card-2)",
+  borderRadius: 8,
+  padding: 12,
+  display: "grid",
+  gap: 10,
+};
+
+const checkStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 8,
+  color: "var(--app-fg-2)",
+  fontSize: 12,
+  fontWeight: 700,
+};
+
+const pillStyle: React.CSSProperties = {
+  border: "1px solid var(--app-border-2)",
+  background: "var(--app-card-2)",
+  color: "var(--app-fg-3)",
+  borderRadius: 999,
+  padding: "6px 10px",
+  fontSize: 11.5,
+  fontWeight: 800,
 };
 
 function primaryButtonStyle(pending: boolean): React.CSSProperties {
@@ -589,13 +1064,13 @@ function agentNodeStyle(
         ? "rgba(196,77,77,.06)"
         : active
           ? "rgba(57,178,85,.07)"
-          : "var(--app-card-2)",
+          : "var(--app-card)",
     borderRadius: 8,
     padding: 12,
-    minHeight: 122,
+    minHeight: 150,
     display: "flex",
     flexDirection: "column",
-    gap: 5,
+    gap: 6,
     animation: active ? "pipelinePulse 1.25s ease-out infinite" : "none",
   };
 }
@@ -607,8 +1082,19 @@ const nodeIndexStyle: React.CSSProperties = {
   letterSpacing: ".08em",
 };
 
-function nodeStatusStyle(status: EventRow["event_type"] | "skip"): React.CSSProperties {
-  const color = statusColor(status);
+const handoffStyle: React.CSSProperties = {
+  color: "#2f9347",
+  background: "rgba(57,178,85,.07)",
+  border: "1px solid rgba(57,178,85,.22)",
+  borderRadius: 7,
+  padding: "5px 7px",
+  fontSize: 10.5,
+  lineHeight: 1.35,
+  marginTop: "auto",
+};
+
+function nodeStatusStyle(status: EventRow["event_type"] | "skip" | "qa"): React.CSSProperties {
+  const color = statusColor(status === "qa" ? "qa" : status);
   return {
     color,
     border: `1px solid ${color}`,

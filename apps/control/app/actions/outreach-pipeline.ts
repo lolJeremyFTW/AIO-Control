@@ -14,9 +14,12 @@ type ConfigPatch = {
   business_slug: string;
   workspace_id: string;
   business_id: string;
+  nav_node_id?: string | null;
   enabled?: boolean;
   interval_seconds?: number;
   batch_size?: number;
+  pipeline_steps?: unknown;
+  pipeline_blueprint?: unknown;
 };
 
 type ConfigLite = {
@@ -34,11 +37,13 @@ export async function updateOutreachPipelineConfig(
     supabase,
     input.workspace_id,
     input.business_id,
+    input.nav_node_id ?? null,
   );
 
   const patch = {
     workspace_id: input.workspace_id,
     business_id: input.business_id,
+    nav_node_id: input.nav_node_id ?? null,
     enabled: input.enabled ?? existing?.enabled ?? false,
     interval_seconds:
       input.interval_seconds !== undefined
@@ -49,6 +54,14 @@ export async function updateOutreachPipelineConfig(
         ? clampInt(input.batch_size, 1, 25)
         : (existing?.batch_size ?? 3),
     delivery_mode: "local_outbox",
+    pipeline_steps:
+      input.pipeline_steps !== undefined
+        ? sanitizePipelineSteps(input.pipeline_steps)
+        : undefined,
+    pipeline_blueprint:
+      input.pipeline_blueprint !== undefined
+        ? sanitizePipelineBlueprint(input.pipeline_blueprint)
+        : undefined,
   };
 
   const query = existing
@@ -80,6 +93,7 @@ export async function runOutreachPipelineNow(input: {
   business_slug: string;
   workspace_id: string;
   business_id: string;
+  nav_node_id?: string | null;
 }): Promise<
   OutreachPipelineActionResult<{
     claimed: number;
@@ -123,13 +137,15 @@ async function getExistingConfig(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
   workspaceId: string,
   businessId: string,
+  navNodeId: string | null,
 ): Promise<ConfigLite | null> {
-  const { data } = await supabase
+  let query = supabase
     .from("outreach_pipeline_configs")
     .select("id, enabled, interval_seconds, batch_size")
     .eq("workspace_id", workspaceId)
-    .eq("business_id", businessId)
-    .maybeSingle();
+    .eq("business_id", businessId);
+  query = navNodeId ? query.eq("nav_node_id", navNodeId) : query.is("nav_node_id", null);
+  const { data } = await query.maybeSingle();
   return (data as ConfigLite | null) ?? null;
 }
 
@@ -137,4 +153,78 @@ function clampInt(value: number, min: number, max: number): number {
   const n = Math.floor(Number(value));
   if (!Number.isFinite(n)) return min;
   return Math.max(min, Math.min(max, n));
+}
+
+function sanitizePipelineSteps(value: unknown): Array<{
+  id: string;
+  label: string;
+  agent: string;
+  task: string;
+  handoff: string;
+}> {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 24).map((raw, index) => {
+    const row = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+    const id = cleanText(row.id, `step_${index + 1}`)
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]/g, "_")
+      .slice(0, 48);
+    return {
+      id,
+      label: cleanText(row.label, `Stap ${index + 1}`).slice(0, 80),
+      agent: cleanText(row.agent, "Agent").slice(0, 80),
+      task: cleanText(row.task, "Taak uitvoeren").slice(0, 180),
+      handoff: cleanText(row.handoff, "Output doorgeven").slice(0, 180),
+    };
+  });
+}
+
+function cleanText(value: unknown, fallback: string): string {
+  const text = typeof value === "string" ? value.trim() : "";
+  return text || fallback;
+}
+
+function sanitizePipelineBlueprint(value: unknown): {
+  orchestrator_agent_id: string | null;
+  learning_enabled: boolean;
+  correction_rules: string[];
+  steps: ReturnType<typeof sanitizePipelineSteps>;
+} {
+  const row = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const orchestrator =
+    typeof row.orchestrator_agent_id === "string" &&
+    /^[0-9a-f-]{20,}$/i.test(row.orchestrator_agent_id)
+      ? row.orchestrator_agent_id
+      : null;
+  const rules = Array.isArray(row.correction_rules)
+    ? row.correction_rules
+        .map((item) => cleanText(item, ""))
+        .filter(Boolean)
+        .slice(0, 20)
+        .map((item) => item.slice(0, 220))
+    : [];
+  const steps = sanitizePipelineSteps(
+    Array.isArray(row.steps) ? row.steps : [],
+  ).map((step, index) => {
+    const raw = Array.isArray(row.steps) ? row.steps[index] : null;
+    const obj = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+    return {
+      ...step,
+      provider: cleanText(obj.provider, "openai_codex").slice(0, 40),
+      model: cleanText(obj.model, "").slice(0, 120),
+      agent_id:
+        typeof obj.agent_id === "string" && /^[0-9a-f-]{20,}$/i.test(obj.agent_id)
+          ? obj.agent_id
+          : null,
+      context_policy: cleanText(obj.context_policy, "handoff_only").slice(0, 40),
+      needs: cleanText(obj.needs, step.task).slice(0, 220),
+      qa_rule: cleanText(obj.qa_rule, "Orchestrator controleert output.").slice(0, 220),
+    };
+  });
+  return {
+    orchestrator_agent_id: orchestrator,
+    learning_enabled: row.learning_enabled !== false,
+    correction_rules: rules,
+    steps,
+  };
 }
