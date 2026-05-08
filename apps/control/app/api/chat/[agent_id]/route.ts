@@ -5,11 +5,7 @@
 
 import { NextResponse } from "next/server";
 
-import {
-  streamChat,
-  type AgentConfig,
-  type ProviderId,
-} from "@aio/ai/router";
+import { streamChat, type AgentConfig, type ProviderId } from "@aio/ai/router";
 import type { AGUIEvent, ChatMessage } from "@aio/ai/ag-ui";
 
 import { AIO_TOOLS, defaultToolsForKind } from "@aio/ai/aio-tools";
@@ -35,10 +31,7 @@ import { checkSpendLimit } from "../../../../lib/dispatch/spend-limit";
 import { dispatchRunEvent } from "../../../../lib/notify/dispatch";
 import { getAgentById } from "../../../../lib/queries/agents";
 import { createSupabaseServerClient } from "../../../../lib/supabase/server";
-import {
-  ensureThreadForChat,
-  persistChatTurn,
-} from "../../../actions/chat";
+import { ensureThreadForChat, persistChatTurn } from "../../../actions/chat";
 
 export const dynamic = "force-dynamic";
 
@@ -77,7 +70,8 @@ export async function POST(
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!user)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const agent = await getAgentById(agent_id);
   if (!agent) {
@@ -182,12 +176,12 @@ export async function POST(
   // per request — providers reuse it.
   const apiKey =
     agent.provider === "openai_codex"
-      ? (
+      ? ((
           await resolveCodexCredential({
             workspaceId: agent.workspace_id,
             ownerUserId: user.id,
           })
-        )?.accessToken ?? null
+        )?.accessToken ?? null)
       : await resolveApiKey(agent.provider, {
           workspaceId: agent.workspace_id,
           businessId: agent.business_id,
@@ -198,14 +192,15 @@ export async function POST(
   // Resolve MCP tool keys so interactive chat sessions can use brave/
   // firecrawl without them being in process.env.
   const chatMcpServers: string[] =
-    ((agent as { config?: { mcpServers?: string[] } }).config?.mcpServers) ?? [];
-  const MCP_TOOL_KEY_MAP: Record<string, { envVar: string; provider: string }> = {
-    brave: { envVar: "BRAVE_API_KEY", provider: "brave" },
-    firecrawl: { envVar: "FIRECRAWL_API_KEY", provider: "firecrawl" },
-    "firecrawl-pc": { envVar: "FIRECRAWL_API_KEY", provider: "firecrawl" },
-    "openai-images": { envVar: "OPENAI_API_KEY", provider: "openai" },
-    "minimax-images": { envVar: "MINIMAX_API_KEY", provider: "minimax" },
-  };
+    (agent as { config?: { mcpServers?: string[] } }).config?.mcpServers ?? [];
+  const MCP_TOOL_KEY_MAP: Record<string, { envVar: string; provider: string }> =
+    {
+      brave: { envVar: "BRAVE_API_KEY", provider: "brave" },
+      firecrawl: { envVar: "FIRECRAWL_API_KEY", provider: "firecrawl" },
+      "firecrawl-pc": { envVar: "FIRECRAWL_API_KEY", provider: "firecrawl" },
+      "openai-images": { envVar: "OPENAI_API_KEY", provider: "openai" },
+      "minimax-images": { envVar: "MINIMAX_API_KEY", provider: "minimax" },
+    };
   const mcpToolKeys: Record<string, string> = {};
   for (const [server, spec] of Object.entries(MCP_TOOL_KEY_MAP)) {
     if (chatMcpServers.includes(server)) {
@@ -327,14 +322,11 @@ export async function POST(
 
           let toolResultJson: string;
           if (body.approve_tool.decision === "approve") {
-            const res = await executeAioWriteTool(
-              pending.name,
-              pending.args,
-              {
-                workspaceId: pending.workspace_id,
-                defaultBusinessId: pending.business_id,
-              },
-            );
+            const res = await executeAioWriteTool(pending.name, pending.args, {
+              workspaceId: pending.workspace_id,
+              defaultBusinessId: pending.business_id,
+              agentId: pending.agent_id,
+            });
             if (res.kind === "ok") {
               toolResultJson = JSON.stringify(res.data);
             } else if (res.kind === "error") {
@@ -413,10 +405,12 @@ export async function POST(
               workspaceId: agent.workspace_id,
               businessId: agent.business_id,
               navNodeId: agent.nav_node_id,
+              agentId: agent.id,
               ollamaEndpoint,
               hermesAgentName,
               openclawAgentName,
-              mcpToolKeys: Object.keys(mcpToolKeys).length > 0 ? mcpToolKeys : undefined,
+              mcpToolKeys:
+                Object.keys(mcpToolKeys).length > 0 ? mcpToolKeys : undefined,
             },
             sessionId: threadId ?? undefined,
             tools,
@@ -466,6 +460,9 @@ export async function POST(
             const res = await executeAioTool(tu.name, tu.args, {
               workspaceId: agent.workspace_id,
               defaultBusinessId: agent.business_id,
+              defaultNavNodeId: agent.nav_node_id,
+              agentId: agent.id,
+              runId: run.id,
               chatThreadId: threadId,
             });
             if (res.kind === "defer") {

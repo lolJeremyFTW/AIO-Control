@@ -57,6 +57,7 @@ const WRITE_TOOL_PATTERNS = [
 const AIO_READ_TOOL_NAMES = new Set([
   "list_businesses",
   "get_supabase_context",
+  "get_schedule_memory",
   "get_business_operating_snapshot",
   "list_nav_nodes",
   "resolve_topic",
@@ -190,6 +191,7 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
       AIO_BUSINESS_ID: process.env.AIO_BUSINESS_ID ?? "",
       AIO_NAV_NODE_ID: process.env.AIO_NAV_NODE_ID ?? "",
       AIO_AGENT_ID: process.env.AIO_AGENT_ID ?? "",
+      AIO_SCHEDULE_ID: process.env.AIO_SCHEDULE_ID ?? "",
       AIO_RUN_ID: process.env.AIO_RUN_ID ?? "",
       // Master key for pgcrypto symmetric decrypt — needed by the
       // send_telegram_message tool to resolve the Telegram bot token

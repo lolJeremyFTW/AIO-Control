@@ -13,6 +13,11 @@ import "server-only";
 
 import { getServiceRoleSupabase } from "../supabase/service";
 import { resolveApiKey } from "../api-keys/resolve";
+import {
+  appendScheduleResourceNotes,
+  readScheduleMemorySnapshot,
+  type ScheduleMemorySource,
+} from "../runs/schedule-memory";
 
 export type AioToolContext = {
   workspaceId: string;
@@ -24,6 +29,7 @@ export type AioToolContext = {
   /** Current agent/run attribution for durable review learning. */
   agentId?: string | null;
   runId?: string | null;
+  scheduleId?: string | null;
   /** Present for interactive chat turns so meta tools can write back to
    *  the same thread after the stream has closed. */
   chatThreadId?: string | null;
@@ -40,11 +46,31 @@ export type AioToolResult =
   | {
       kind: "defer";
       event:
-        | { type: "ask_followup"; question: string; options?: { label: string; description?: string }[] }
-        | { type: "confirm_required"; summary: string; kind: string; pending: { name: string; args: unknown } }
+        | {
+            type: "ask_followup";
+            question: string;
+            options?: { label: string; description?: string }[];
+          }
+        | {
+            type: "confirm_required";
+            summary: string;
+            kind: string;
+            pending: { name: string; args: unknown };
+          }
         | { type: "open_ui_at"; path: string; label?: string }
-        | { type: "todo_set"; items: Array<{ id: string; content: string; status: "pending" | "in_progress" | "completed" }> }
-        | { type: "chat_ping_scheduled"; delayMinutes: number; message: string };
+        | {
+            type: "todo_set";
+            items: Array<{
+              id: string;
+              content: string;
+              status: "pending" | "in_progress" | "completed";
+            }>;
+          }
+        | {
+            type: "chat_ping_scheduled";
+            delayMinutes: number;
+            message: string;
+          };
     };
 
 function redactedDatabaseUrl(value: string | undefined): string | null {
@@ -62,11 +88,15 @@ function envVar(name: string): string | undefined {
   return process.env[name];
 }
 
-function getSupabaseContextForTool(ctx: AioToolContext): Record<string, unknown> {
+function getSupabaseContextForTool(
+  ctx: AioToolContext,
+): Record<string, unknown> {
   const supabaseUrl =
     envVar("SUPABASE_URL") ?? envVar("NEXT_PUBLIC_SUPABASE_URL") ?? null;
   const schema = envVar("AIO_SUPABASE_SCHEMA") ?? "aio_control";
-  const restUrl = supabaseUrl ? `${supabaseUrl.replace(/\/+$/, "")}/rest/v1` : null;
+  const restUrl = supabaseUrl
+    ? `${supabaseUrl.replace(/\/+$/, "")}/rest/v1`
+    : null;
   const databaseUrl = envVar("DATABASE_URL");
   return {
     ok: true,
@@ -75,6 +105,7 @@ function getSupabaseContextForTool(ctx: AioToolContext): Record<string, unknown>
       business_id: ctx.defaultBusinessId,
       nav_node_id: ctx.defaultNavNodeId ?? null,
       agent_id: ctx.agentId ?? null,
+      schedule_id: ctx.scheduleId ?? null,
       run_id: ctx.runId ?? null,
     },
     supabase: {
@@ -101,8 +132,64 @@ function getSupabaseContextForTool(ctx: AioToolContext): Record<string, unknown>
       `Most domain tables live in schema '${schema}'. Direct REST calls without Accept-Profile/Content-Profile can 404 even when the table exists.`,
       "For improvements, use propose_improvement/aio__propose_improvement instead of direct REST inserts when available.",
       "For direct SQL inspection, keep queries scoped by workspace_id/business_id/nav_node_id and read-only unless a safe write is explicitly required.",
+      "Cron/schedule runs have compact schedule memory: status.md keeps the last 3 run summaries and resources.md keeps stable Supabase tables, dashboards, tabs, files, and APIs.",
     ],
   };
+}
+
+async function resolveScheduleMemorySource(
+  admin: ReturnType<typeof getServiceRoleSupabase>,
+  ctx: AioToolContext,
+  explicitScheduleId: string | null,
+): Promise<{ schedule: ScheduleMemorySource } | { error: string }> {
+  let scheduleId = explicitScheduleId ?? ctx.scheduleId ?? null;
+  if (!scheduleId && ctx.runId) {
+    const { data, error } = await admin
+      .from("runs")
+      .select("schedule_id")
+      .eq("workspace_id", ctx.workspaceId)
+      .eq("id", ctx.runId)
+      .maybeSingle();
+    if (error) return { error: error.message };
+    scheduleId = (data?.schedule_id as string | null | undefined) ?? null;
+  }
+  if (!scheduleId) {
+    return {
+      error:
+        "schedule_id is required unless this tool is called from a scheduled run.",
+    };
+  }
+
+  const { data, error } = await admin
+    .from("schedules")
+    .select("id, title, kind, cron_expr")
+    .eq("workspace_id", ctx.workspaceId)
+    .eq("id", scheduleId)
+    .maybeSingle();
+  if (error) return { error: error.message };
+  if (!data) return { error: "schedule_id not found in current workspace." };
+  return {
+    schedule: {
+      id: data.id as string,
+      title: (data.title as string | null) ?? null,
+      kind: (data.kind as string | null) ?? null,
+      cron_expr: (data.cron_expr as string | null) ?? null,
+    },
+  };
+}
+
+function normalizeResourceNotesForTool(a: Record<string, unknown>): string[] {
+  const notes: string[] = [];
+  if (typeof a.note === "string") notes.push(a.note);
+  if (Array.isArray(a.notes)) {
+    for (const note of a.notes) {
+      if (typeof note === "string") notes.push(note);
+    }
+  }
+  return notes
+    .map((note) => note.trim())
+    .filter(Boolean)
+    .slice(0, 8);
 }
 
 export async function executeAioTool(
@@ -133,6 +220,48 @@ export async function executeAioTool(
         return { kind: "ok", data: getSupabaseContextForTool(ctx) };
       }
 
+      case "get_schedule_memory": {
+        const resolved = await resolveScheduleMemorySource(
+          admin,
+          ctx,
+          typeof a.schedule_id === "string" ? a.schedule_id : null,
+        );
+        if ("error" in resolved)
+          return { kind: "error", error: resolved.error };
+        const snapshot = await readScheduleMemorySnapshot(resolved.schedule, {
+          includeFullResources: a.include_full_resources === true,
+          maxResourceChars: a.include_full_resources === true ? 10_000 : 1_800,
+        });
+        return { kind: "ok", data: snapshot };
+      }
+
+      case "remember_schedule_resource": {
+        const resolved = await resolveScheduleMemorySource(
+          admin,
+          ctx,
+          typeof a.schedule_id === "string" ? a.schedule_id : null,
+        );
+        if ("error" in resolved)
+          return { kind: "error", error: resolved.error };
+        const notes = normalizeResourceNotesForTool(a);
+        if (notes.length === 0) {
+          return {
+            kind: "error",
+            error: "remember_schedule_resource needs note or notes.",
+          };
+        }
+        const result = await appendScheduleResourceNotes(
+          resolved.schedule,
+          notes,
+          {
+            source: ctx.runId
+              ? `aio-tool run:${ctx.runId.slice(0, 8)}`
+              : "aio-tool",
+          },
+        );
+        return { kind: "ok", data: { ok: true, ...result } };
+      }
+
       case "list_agents": {
         const scope = (a.scope as string | undefined) ?? "all";
         let q = admin
@@ -145,7 +274,9 @@ export async function executeAioTool(
         if (scope === "global") q = q.is("business_id", null);
         if (scope === "business") q = q.not("business_id", "is", null);
         if (a.business_id) q = q.eq("business_id", String(a.business_id));
-        const { data, error } = await q.order("created_at", { ascending: true });
+        const { data, error } = await q.order("created_at", {
+          ascending: true,
+        });
         if (error) return { kind: "error", error: error.message };
         return { kind: "ok", data: data ?? [] };
       }
@@ -153,7 +284,9 @@ export async function executeAioTool(
       case "list_nav_nodes": {
         let q = admin
           .from("nav_nodes")
-          .select("id, business_id, parent_id, slug, name, sub, href, sort_order")
+          .select(
+            "id, business_id, parent_id, slug, name, sub, href, sort_order",
+          )
           .eq("workspace_id", ctx.workspaceId)
           .is("archived_at", null)
           .order("sort_order", { ascending: true });
@@ -164,7 +297,8 @@ export async function executeAioTool(
           ctx.workspaceId,
           (data ?? []) as ToolNavNode[],
         );
-        const search = typeof a.search === "string" ? normalizeToolLookup(a.search) : "";
+        const search =
+          typeof a.search === "string" ? normalizeToolLookup(a.search) : "";
         const filtered = search
           ? decorated.filter((node) =>
               [node.name, node.slug, node.sub, node.path, node.business_name]
@@ -215,7 +349,9 @@ export async function executeAioTool(
           )
           .eq("workspace_id", ctx.workspaceId);
         if (a.business_id) q = q.eq("business_id", String(a.business_id));
-        const { data, error } = await q.order("created_at", { ascending: false });
+        const { data, error } = await q.order("created_at", {
+          ascending: false,
+        });
         if (error) return { kind: "error", error: error.message };
         return { kind: "ok", data: data ?? [] };
       }
@@ -260,15 +396,17 @@ export async function executeAioTool(
           .limit(Math.max(limit * 4, limit));
         if (error) return { kind: "error", error: error.message };
         const rows = ((data ?? []) as Array<Record<string, unknown>>)
-          .filter((row) =>
-            !businessId ||
-            row.business_id == null ||
-            row.business_id === businessId,
+          .filter(
+            (row) =>
+              !businessId ||
+              row.business_id == null ||
+              row.business_id === businessId,
           )
-          .filter((row) =>
-            !navNodeId ||
-            row.nav_node_id == null ||
-            row.nav_node_id === navNodeId,
+          .filter(
+            (row) =>
+              !navNodeId ||
+              row.nav_node_id == null ||
+              row.nav_node_id === navNodeId,
           )
           .filter((row) => !agentId || row.agent_id === agentId)
           .filter((row) => !outcome || row.outcome === outcome)
@@ -311,16 +449,20 @@ export async function executeAioTool(
       // ── META (UI side-effects) ───────────────────────────────────
       case "ask_followup": {
         const question = String(a.question ?? "").trim();
-        if (!question) return { kind: "error", error: "ask_followup needs a `question`." };
+        if (!question)
+          return { kind: "error", error: "ask_followup needs a `question`." };
         type Opt = { label: string; description?: string };
         const options = Array.isArray(a.options)
           ? (a.options as unknown[])
-              .filter((o): o is Record<string, unknown> => !!o && typeof o === "object")
+              .filter(
+                (o): o is Record<string, unknown> =>
+                  !!o && typeof o === "object",
+              )
               .map((o) => ({
                 label: String((o as Record<string, unknown>).label ?? ""),
                 description:
                   typeof (o as Record<string, unknown>).description === "string"
-                    ? (o as Record<string, unknown>).description as string
+                    ? ((o as Record<string, unknown>).description as string)
                     : undefined,
               }))
               .filter((o: Opt) => !!o.label)
@@ -334,7 +476,10 @@ export async function executeAioTool(
       case "todo_set": {
         const items = Array.isArray(a.items)
           ? (a.items as unknown[])
-              .filter((i): i is Record<string, unknown> => !!i && typeof i === "object")
+              .filter(
+                (i): i is Record<string, unknown> =>
+                  !!i && typeof i === "object",
+              )
               .map((i) => ({
                 id: String((i as Record<string, unknown>).id ?? ""),
                 content: String((i as Record<string, unknown>).content ?? ""),
@@ -353,7 +498,8 @@ export async function executeAioTool(
 
       case "open_ui_at": {
         const path = String(a.path ?? "").trim();
-        if (!path) return { kind: "error", error: "open_ui_at needs a `path`." };
+        if (!path)
+          return { kind: "error", error: "open_ui_at needs a `path`." };
         const label = typeof a.label === "string" ? a.label : undefined;
         return { kind: "defer", event: { type: "open_ui_at", path, label } };
       }
@@ -364,7 +510,8 @@ export async function executeAioTool(
         if (!ctx.chatThreadId) {
           return {
             kind: "error",
-            error: "schedule_chat_ping werkt alleen in een actieve chat-thread.",
+            error:
+              "schedule_chat_ping werkt alleen in een actieve chat-thread.",
           };
         }
         if (!Number.isFinite(delayMinutes) || delayMinutes <= 0) {
@@ -374,7 +521,10 @@ export async function executeAioTool(
           };
         }
         if (!message) {
-          return { kind: "error", error: "schedule_chat_ping needs a message." };
+          return {
+            kind: "error",
+            error: "schedule_chat_ping needs a message.",
+          };
         }
         scheduleChatPing(ctx.chatThreadId, delayMinutes, message);
         return {
@@ -448,9 +598,7 @@ async function createHumanReviewItem(
   const admin = getServiceRoleSupabase();
   const state = a.state === "fail" ? "fail" : "review";
   const riskLevel =
-    a.risk_level === "low" || a.risk_level === "high"
-      ? a.risk_level
-      : "medium";
+    a.risk_level === "low" || a.risk_level === "high" ? a.risk_level : "medium";
   const confidence = clamp01(Number(a.confidence ?? 0.5));
   const proposedAction = cleanReviewText(a.proposed_action, 2_000);
   const extraPayload =
@@ -535,7 +683,9 @@ async function createHumanReviewItem(
 async function resolveHumanReviewScope(
   workspaceId: string,
   input: { businessId?: string | null; navNodeId?: string | null },
-): Promise<{ businessId: string; navNodeId: string | null } | { error: string }> {
+): Promise<
+  { businessId: string; navNodeId: string | null } | { error: string }
+> {
   const admin = getServiceRoleSupabase();
   let businessId = input.businessId ?? null;
   const navNodeId = input.navNodeId ?? null;
@@ -618,15 +768,21 @@ export function scheduleChatPing(
     .then(({ data, error }) => {
       if (error || !data) {
         console.error("schedule_chat_ping enqueue failed", error);
-        setTimeout(() => {
-          void insertScheduledPingMessage(threadId, message);
-        }, Math.max(delayMs, 1_000));
+        setTimeout(
+          () => {
+            void insertScheduledPingMessage(threadId, message);
+          },
+          Math.max(delayMs, 1_000),
+        );
         return;
       }
       const scheduledId = data.id as string;
-      setTimeout(() => {
-        void deliverScheduledChatPing(scheduledId);
-      }, Math.max(delayMs, 1_000));
+      setTimeout(
+        () => {
+          void deliverScheduledChatPing(scheduledId);
+        },
+        Math.max(delayMs, 1_000),
+      );
     });
 }
 
@@ -717,9 +873,7 @@ export async function executeAioWriteTool(
   try {
     switch (name) {
       case "create_business": {
-        const { createBusiness } = await import(
-          "../../app/actions/businesses"
-        );
+        const { createBusiness } = await import("../../app/actions/businesses");
         const slugRow = await getServiceRoleSupabase()
           .from("workspaces")
           .select("slug")
@@ -807,8 +961,11 @@ export async function executeAioWriteTool(
       }
 
       case "create_schedule": {
-        const { createCronSchedule, createWebhookSchedule, createManualSchedule } =
-          await import("../../app/actions/schedules");
+        const {
+          createCronSchedule,
+          createWebhookSchedule,
+          createManualSchedule,
+        } = await import("../../app/actions/schedules");
         const slugRow = await getServiceRoleSupabase()
           .from("workspaces")
           .select("slug")
@@ -864,7 +1021,10 @@ export async function executeAioWriteTool(
 
 /** Pretty-print the args block for the confirm card. JSON works but
  *  is dense; pull the most relevant fields out for human readers. */
-function humanizeWriteSummary(name: string, a: Record<string, unknown>): string {
+function humanizeWriteSummary(
+  name: string,
+  a: Record<string, unknown>,
+): string {
   const lines: string[] = [`Tool: ${name}`];
   for (const [k, v] of Object.entries(a)) {
     if (typeof v === "string" && v.length < 120) lines.push(`  ${k}: ${v}`);
@@ -951,7 +1111,9 @@ async function resolveTopicForTools(
   const businessMatches = (businesses ?? []).filter((b) =>
     [b.id, b.name, b.slug, b.sub]
       .filter(Boolean)
-      .some((value) => normalizeToolLookup(String(value)).includes(businessNeedle)),
+      .some((value) =>
+        normalizeToolLookup(String(value)).includes(businessNeedle),
+      ),
   );
   if (businessMatches.length === 0) {
     return { error: `Business '${businessRef}' not found.` };
@@ -976,7 +1138,9 @@ async function resolveTopicForTools(
   const matches = decorated.filter((node) =>
     [node.id, node.name, node.slug, node.sub, node.path]
       .filter(Boolean)
-      .some((value) => normalizeToolLookup(String(value)).includes(topicNeedle)),
+      .some((value) =>
+        normalizeToolLookup(String(value)).includes(topicNeedle),
+      ),
   );
   if (matches.length === 0) {
     return { error: `Topic '${topicRef}' not found in '${business.name}'.` };

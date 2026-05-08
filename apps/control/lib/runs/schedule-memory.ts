@@ -1,6 +1,6 @@
 import "server-only";
 
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 export type ScheduleMemorySource = {
@@ -19,6 +19,37 @@ export type ScheduleRunMemoryInput = {
   costCents?: number | null;
   outputText?: string | null;
   errorText?: string | null;
+};
+
+export type ScheduleMemoryFiles = {
+  dir: string;
+  statusFile: string;
+  resourcesFile: string;
+  metaFile: string;
+};
+
+export type ScheduleMemorySnapshot = {
+  ok: true;
+  version: 1;
+  schedule: {
+    id: string;
+    title: string | null;
+    kind: string | null;
+    cron_expr: string | null;
+  };
+  files: ScheduleMemoryFiles;
+  limits: {
+    last_runs: number;
+    summary_chars: number;
+    resource_prompt_chars: number;
+  };
+  last_runs: StatusEntry[];
+  resources: {
+    text: string;
+    line_count: number;
+    truncated: boolean;
+  };
+  block: string;
 };
 
 type StatusEntry = {
@@ -40,6 +71,8 @@ const LOCAL_SCHEDULE_MEMORY_ROOT =
   "C:\\Users\\jerem\\Desktop\\AIO-Control\\.aio\\schedule-memory";
 
 function scheduleMemoryRoot(): string {
+  const configured = envVar("AIO_SCHEDULE_MEMORY_DIR")?.trim();
+  if (configured) return configured;
   if (envVar("NODE_ENV") === "production") {
     return PRODUCTION_SCHEDULE_MEMORY_ROOT;
   }
@@ -58,46 +91,55 @@ function scheduleDir(scheduleId: string): string {
   ) {
     throw new Error(`Invalid schedule id for memory path: ${scheduleId}`);
   }
-  const root = scheduleMemoryRoot();
-  return path.join(/* turbopackIgnore: true */ root, scheduleId);
+  return path.join(
+    /* turbopackIgnore: true */ scheduleMemoryRoot(),
+    scheduleId,
+  );
 }
 
-function statusPath(scheduleId: string): string {
-  return path.join(scheduleDir(scheduleId), "status.md");
-}
-
-function resourcesPath(scheduleId: string): string {
-  return path.join(scheduleDir(scheduleId), "resources.md");
+function memoryFiles(scheduleId: string): ScheduleMemoryFiles {
+  const dir = scheduleDir(scheduleId);
+  return {
+    dir,
+    statusFile: path.join(/* turbopackIgnore: true */ dir, "status.md"),
+    resourcesFile: path.join(/* turbopackIgnore: true */ dir, "resources.md"),
+    metaFile: path.join(/* turbopackIgnore: true */ dir, "meta.json"),
+  };
 }
 
 export async function ensureScheduleMemoryFiles(
   schedule: ScheduleMemorySource,
-): Promise<{ statusFile: string; resourcesFile: string }> {
-  const dir = scheduleDir(schedule.id);
-  const statusFile = statusPath(schedule.id);
-  const resourcesFile = resourcesPath(schedule.id);
-  await mkdir(/* turbopackIgnore: true */ dir, { recursive: true });
+): Promise<ScheduleMemoryFiles> {
+  const files = memoryFiles(schedule.id);
+  await mkdir(/* turbopackIgnore: true */ files.dir, { recursive: true });
 
-  if (!(await fileExists(statusFile))) {
+  if (!(await fileExists(files.statusFile))) {
     await writeStatusFile(schedule, []);
   }
-  if (!(await fileExists(resourcesFile))) {
-    await writeFile(
-      /* turbopackIgnore: true */ resourcesFile,
+  if (!(await fileExists(files.resourcesFile))) {
+    await writeTextFile(
+      files.resourcesFile,
       [
         "# Persistent resources / contracts",
         "",
         "No persistent resources recorded yet.",
         "",
-        "- Add stable Supabase tables, dashboard slugs, file paths, external sheets/APIs, or other durable resources here.",
+        "## Supabase tables",
+        "- Add stable table names here when this schedule owns or reuses persistent data.",
+        "",
+        "## Dashboards / tabs / files",
+        "- Add stable dashboard slugs, custom tab ids, file paths, sheets, APIs, or other durable resources here.",
+        "",
+        "## Rules",
         "- Reuse listed resources before creating new Supabase tables, dashboards, or files.",
+        "- Prefer updating stable resources in-place over creating a new one each run.",
         "",
       ].join("\n"),
-      "utf8",
     );
   }
+  await writeMetaFile(schedule, files);
 
-  return { statusFile, resourcesFile };
+  return files;
 }
 
 export async function deleteScheduleMemoryFiles(
@@ -112,45 +154,42 @@ export async function deleteScheduleMemoryFiles(
 export async function readScheduleMemoryBlock(
   schedule: ScheduleMemorySource,
 ): Promise<string> {
+  return (await readScheduleMemorySnapshot(schedule)).block;
+}
+
+export async function readScheduleMemorySnapshot(
+  schedule: ScheduleMemorySource,
+  options?: { includeFullResources?: boolean; maxResourceChars?: number },
+): Promise<ScheduleMemorySnapshot> {
   const files = await ensureScheduleMemoryFiles(schedule);
   const entries = await readStatusEntries(schedule);
-  const resourcesText = await readFile(
-    /* turbopackIgnore: true */ files.resourcesFile,
-    "utf8",
-  ).catch(() => "");
-  const resources = compactResources(resourcesText);
-  const lastRuns =
-    entries.length > 0
-      ? entries
-          .map((entry) => {
-            const duration =
-              entry.duration_ms != null
-                ? `, ${Math.round(entry.duration_ms / 1000)}s`
-                : "";
-            return [
-              `- ${entry.ended_at}`,
-              `${entry.status}${duration}`,
-              `run ${shortId(entry.run_id)}: ${entry.summary}`,
-            ].join(" | ");
-          })
-          .join("\n")
-      : "- Nog geen eerdere runstatus voor deze schedule.";
+  const resourcesText = await readTextFile(files.resourcesFile);
+  const resources = compactResources(resourcesText, {
+    includeFullResources: options?.includeFullResources,
+    maxChars: options?.maxResourceChars ?? MAX_RESOURCE_PROMPT_CHARS,
+  });
+  const block = formatMemoryBlock(schedule, files, entries, resources.text);
 
-  return [
-    "<schedule_memory>",
-    `Schedule: ${schedule.title || schedule.kind || "cron"} (${schedule.id})`,
-    `Files: status=${files.statusFile} resources=${files.resourcesFile}`,
-    "Laatste 3 runstatussen:",
-    lastRuns,
-    "Vaste resources/contracts:",
-    resources ||
-      "- Nog niets vastgelegd. Check bestaande Supabase tabellen/resources voordat je nieuwe maakt.",
-    "Regels:",
-    "- Hergebruik resources hierboven.",
-    "- Maak niet elke run nieuwe Supabase tabellen/files/dashboards.",
-    "- Als je een duurzame resource kiest of maakt, zet in je eindantwoord `Resource note: ...` zodat AIO resources.md kan bijwerken.",
-    "</schedule_memory>",
-  ].join("\n");
+  return {
+    ok: true,
+    version: 1,
+    schedule: {
+      id: schedule.id,
+      title: schedule.title ?? null,
+      kind: schedule.kind ?? null,
+      cron_expr: schedule.cron_expr ?? null,
+    },
+    files,
+    limits: {
+      last_runs: MAX_STATUS_ENTRIES,
+      summary_chars: MAX_SUMMARY_CHARS,
+      resource_prompt_chars:
+        options?.maxResourceChars ?? MAX_RESOURCE_PROMPT_CHARS,
+    },
+    last_runs: entries,
+    resources,
+    block,
+  };
 }
 
 export async function recordScheduleRunMemory(
@@ -176,17 +215,46 @@ export async function recordScheduleRunMemory(
     `${input.outputText ?? ""}\n${input.errorText ?? ""}`,
   );
   if (notes.length > 0) {
-    await appendResourceNotes(input.schedule, notes);
+    await appendScheduleResourceNotes(input.schedule, notes, {
+      source: `run:${shortId(input.runId)}`,
+    });
   }
+}
+
+export async function appendScheduleResourceNotes(
+  schedule: ScheduleMemorySource,
+  notes: string[],
+  options?: { source?: string },
+): Promise<{ added: number; resourcesFile: string }> {
+  await ensureScheduleMemoryFiles(schedule);
+  const files = memoryFiles(schedule.id);
+  const current = await readTextFile(files.resourcesFile);
+  const currentLower = current.toLowerCase();
+  const source = normalizeText(options?.source ?? "agent").slice(0, 80);
+  const unique = notes
+    .map((note) => normalizeText(note).slice(0, 260))
+    .filter(Boolean)
+    .filter((note, idx, arr) => arr.indexOf(note) === idx)
+    .filter((note) => !currentLower.includes(note.toLowerCase()));
+
+  if (unique.length === 0) {
+    return { added: 0, resourcesFile: files.resourcesFile };
+  }
+
+  const stamp = new Date().toISOString();
+  const base = current
+    .replace("No persistent resources recorded yet.\n\n", "")
+    .trimEnd();
+  const lines = unique.map((note) => `- ${stamp} | ${source} | ${note}`);
+  await writeTextFile(files.resourcesFile, `${base}\n${lines.join("\n")}\n`);
+  await writeMetaFile(schedule, files);
+  return { added: unique.length, resourcesFile: files.resourcesFile };
 }
 
 async function readStatusEntries(
   schedule: ScheduleMemorySource,
 ): Promise<StatusEntry[]> {
-  const text = await readFile(
-    /* turbopackIgnore: true */ statusPath(schedule.id),
-    "utf8",
-  ).catch(() => "");
+  const text = await readTextFile(memoryFiles(schedule.id).statusFile);
   const match = text.match(
     new RegExp(`<!-- ${STATUS_MARKER}\\n([\\s\\S]*?)\\n-->`),
   );
@@ -205,22 +273,10 @@ async function writeStatusFile(
 ): Promise<void> {
   const visible =
     entries.length > 0
-      ? entries
-          .map((entry) => {
-            const duration =
-              entry.duration_ms != null
-                ? ` (${Math.round(entry.duration_ms / 1000)}s)`
-                : "";
-            return [
-              `- ${entry.ended_at}`,
-              `${entry.status}${duration}`,
-              `run ${shortId(entry.run_id)}: ${entry.summary}`,
-            ].join(" | ");
-          })
-          .join("\n")
+      ? entries.map(formatStatusLine).join("\n")
       : "- Nog geen eerdere runstatus.";
-  await writeFile(
-    /* turbopackIgnore: true */ statusPath(schedule.id),
+  await writeTextFile(
+    memoryFiles(schedule.id).statusFile,
     [
       "# Last 3 run statuses",
       "",
@@ -233,28 +289,82 @@ async function writeStatusFile(
       "-->",
       "",
     ].join("\n"),
-    "utf8",
   );
 }
 
-async function appendResourceNotes(
+async function writeMetaFile(
   schedule: ScheduleMemorySource,
-  notes: string[],
+  files: ScheduleMemoryFiles,
 ): Promise<void> {
-  const file = resourcesPath(schedule.id);
-  const current = await readFile(
-    /* turbopackIgnore: true */ file,
-    "utf8",
-  ).catch(() => "");
-  const lower = current.toLowerCase();
-  const unique = notes.filter((note) => !lower.includes(note.toLowerCase()));
-  if (unique.length === 0) return;
-  const base = current.replace("No persistent resources recorded yet.\n\n", "");
-  await writeFile(
-    /* turbopackIgnore: true */ file,
-    `${base.trimEnd()}\n${unique.map((note) => `- ${note}`).join("\n")}\n`,
-    "utf8",
+  await writeTextFile(
+    files.metaFile,
+    `${JSON.stringify(
+      {
+        version: 1,
+        schedule: {
+          id: schedule.id,
+          title: schedule.title ?? null,
+          kind: schedule.kind ?? null,
+          cron_expr: schedule.cron_expr ?? null,
+        },
+        files,
+        limits: {
+          last_runs: MAX_STATUS_ENTRIES,
+          summary_chars: MAX_SUMMARY_CHARS,
+          resource_prompt_chars: MAX_RESOURCE_PROMPT_CHARS,
+        },
+        updated_at: new Date().toISOString(),
+        rules: [
+          "Keep status.md to the last 3 run summaries.",
+          "Keep resources.md for stable Supabase tables, dashboards, tabs, files, APIs, and other durable resources.",
+          "Agents should reuse resources.md before creating new persistent resources.",
+        ],
+      },
+      null,
+      2,
+    )}\n`,
   );
+}
+
+function formatMemoryBlock(
+  schedule: ScheduleMemorySource,
+  files: ScheduleMemoryFiles,
+  entries: StatusEntry[],
+  resources: string,
+): string {
+  const lastRuns =
+    entries.length > 0
+      ? entries.map(formatStatusLine).join("\n")
+      : "- Nog geen eerdere runstatus voor deze schedule.";
+
+  return [
+    "<schedule_memory>",
+    `Schedule: ${schedule.title || schedule.kind || "cron"} (${schedule.id})`,
+    `Files: status=${files.statusFile} resources=${files.resourcesFile} meta=${files.metaFile}`,
+    "Laatste 3 runstatussen:",
+    lastRuns,
+    "Vaste resources/contracts:",
+    resources ||
+      "- Nog niets vastgelegd. Check bestaande Supabase tabellen/resources voordat je nieuwe maakt.",
+    "Regels:",
+    "- Hergebruik resources hierboven.",
+    "- Maak niet elke run nieuwe Supabase tabellen/files/dashboards.",
+    "- Gebruik `aio__get_schedule_memory` voor meer detail als die tool beschikbaar is.",
+    "- Gebruik `aio__remember_schedule_resource` of zet `Resource note: ...` in je eindantwoord wanneer je een duurzame resource kiest of maakt.",
+    "</schedule_memory>",
+  ].join("\n");
+}
+
+function formatStatusLine(entry: StatusEntry): string {
+  const duration =
+    entry.duration_ms != null
+      ? ` (${Math.round(entry.duration_ms / 1000)}s)`
+      : "";
+  return [
+    `- ${entry.ended_at}`,
+    `${entry.status}${duration}`,
+    `run ${shortId(entry.run_id)}: ${entry.summary}`,
+  ].join(" | ");
 }
 
 function summarizeRun(input: ScheduleRunMemoryInput): string {
@@ -278,15 +388,32 @@ function extractResourceNotes(text: string): string[] {
   return notes;
 }
 
-function compactResources(text: string): string {
-  const cleaned = text
+function compactResources(
+  text: string,
+  options: { includeFullResources?: boolean; maxChars: number },
+): { text: string; line_count: number; truncated: boolean } {
+  const lines = text
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line && !line.startsWith("#"))
-    .filter((line) => line !== "No persistent resources recorded yet.")
-    .join("\n");
-  if (cleaned.length <= MAX_RESOURCE_PROMPT_CHARS) return cleaned;
-  return `${cleaned.slice(0, MAX_RESOURCE_PROMPT_CHARS)}\n- ... resources.md truncated; inspect the file directly if needed.`;
+    .filter((line) => line !== "No persistent resources recorded yet.");
+  const cleaned = lines.join("\n");
+  if (options.includeFullResources || cleaned.length <= options.maxChars) {
+    return { text: cleaned, line_count: lines.length, truncated: false };
+  }
+
+  const head = lines.slice(0, 8);
+  const tail = lines.slice(-8);
+  const compact = [
+    ...head,
+    "- ... resources.md truncated; call get_schedule_memory with include_full_resources=true if needed.",
+    ...tail,
+  ].join("\n");
+  const textOut =
+    compact.length <= options.maxChars
+      ? compact
+      : `${compact.slice(0, options.maxChars - 3)}...`;
+  return { text: textOut, line_count: lines.length, truncated: true };
 }
 
 function stripNoise(text: string): string {
@@ -316,6 +443,20 @@ function sentences(
 
 function normalizeText(text: string): string {
   return text.replace(/\s+/g, " ").trim();
+}
+
+async function readTextFile(file: string): Promise<string> {
+  return await readFile(/* turbopackIgnore: true */ file, "utf8").catch(
+    () => "",
+  );
+}
+
+async function writeTextFile(file: string, text: string): Promise<void> {
+  const tmp = `${file}.${process.pid}.${Date.now()}.${Math.random()
+    .toString(36)
+    .slice(2)}.tmp`;
+  await writeFile(/* turbopackIgnore: true */ tmp, text, "utf8");
+  await rename(/* turbopackIgnore: true */ tmp, file);
 }
 
 async function fileExists(file: string): Promise<boolean> {

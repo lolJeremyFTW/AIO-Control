@@ -87,11 +87,20 @@ export function pickRouted(
     const m = rule.match;
     if (m.inputLengthMin != null && text.length < m.inputLengthMin) continue;
     if (m.inputLengthMax != null && text.length > m.inputLengthMax) continue;
-    if (m.containsAll && !m.containsAll.every((s) => lower.includes(s.toLowerCase())))
+    if (
+      m.containsAll &&
+      !m.containsAll.every((s) => lower.includes(s.toLowerCase()))
+    )
       continue;
-    if (m.containsAny && !m.containsAny.some((s) => lower.includes(s.toLowerCase())))
+    if (
+      m.containsAny &&
+      !m.containsAny.some((s) => lower.includes(s.toLowerCase()))
+    )
       continue;
-    if (m.minTurns != null && messages.filter((mm) => mm.role !== "system").length < m.minTurns)
+    if (
+      m.minTurns != null &&
+      messages.filter((mm) => mm.role !== "system").length < m.minTurns
+    )
       continue;
     return {
       provider: rule.use.provider,
@@ -120,6 +129,7 @@ export interface StreamChatOptions {
     businessId?: string | null;
     navNodeId?: string | null;
     agentId?: string | null;
+    scheduleId?: string | null;
     /** Resolved Ollama endpoint for this workspace, e.g. http://192.168.0.42:11434.
      *  Empty when the workspace hasn't configured one — providers fall
      *  back to OLLAMA_BASE_URL / localhost. */

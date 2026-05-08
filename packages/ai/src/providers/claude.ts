@@ -74,12 +74,14 @@ export async function* streamClaude(
 
   try {
     const messages = opts.messages
-      .filter((m): m is ChatMessage => m.role === "user" || m.role === "assistant")
+      .filter(
+        (m): m is ChatMessage => m.role === "user" || m.role === "assistant",
+      )
       .map((m) => {
         const blocks = decodeBlocks(m.content);
         return blocks
           ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            ({ role: m.role, content: blocks as any })
+            { role: m.role, content: blocks as any }
           : { role: m.role, content: m.content };
       });
 
@@ -209,6 +211,9 @@ async function* streamClaudeWithMcp(
       if (opts.tenant?.agentId) {
         envOverrides.AIO_AGENT_ID = opts.tenant.agentId;
       }
+      if (opts.tenant?.scheduleId) {
+        envOverrides.AIO_SCHEDULE_ID = opts.tenant.scheduleId;
+      }
       if (opts.runId) {
         envOverrides.AIO_RUN_ID = opts.runId;
       }
@@ -244,17 +249,18 @@ async function* streamClaudeWithMcp(
         properties:
           (t.parameters as { properties?: Record<string, unknown> })
             ?.properties ?? {},
-        required:
-          (t.parameters as { required?: string[] })?.required ?? [],
+        required: (t.parameters as { required?: string[] })?.required ?? [],
       },
     }));
 
     const messages: Anthropic.MessageParam[] = opts.messages
       .filter(
-        (m): m is ChatMessage =>
-          m.role === "user" || m.role === "assistant",
+        (m): m is ChatMessage => m.role === "user" || m.role === "assistant",
       )
-      .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+      .map((m) => ({
+        role: m.role as "user" | "assistant",
+        content: m.content,
+      }));
 
     let totalInputTokens = 0;
     let totalOutputTokens = 0;
@@ -283,7 +289,11 @@ async function* streamClaudeWithMcp(
             event.delta.type === "text_delta"
           ) {
             turnText += event.delta.text;
-            yield { type: "token", message_id: messageId, delta: event.delta.text };
+            yield {
+              type: "token",
+              message_id: messageId,
+              delta: event.delta.text,
+            };
           }
         }
       } catch (err) {
@@ -347,7 +357,11 @@ async function* streamClaudeWithMcp(
       }
 
       messages.push({ role: "user", content: toolResults });
-      yield { type: "message_start", message_id: randomUUID(), role: "assistant" };
+      yield {
+        type: "message_start",
+        message_id: randomUUID(),
+        role: "assistant",
+      };
       void turnText;
     }
 

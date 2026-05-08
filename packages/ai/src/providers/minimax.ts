@@ -39,17 +39,32 @@ function getHopsMax(config: { maxHops?: number }): number {
 type MinimaxErrorClass = "fatal" | "rate_limit" | "transient" | "unknown";
 function classifyMinimaxError(err: unknown): MinimaxErrorClass {
   const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
-  if (msg.includes("429") || msg.includes("rate_limit") || msg.includes("rate limit") || msg.includes("too many requests")) {
+  if (
+    msg.includes("429") ||
+    msg.includes("rate_limit") ||
+    msg.includes("rate limit") ||
+    msg.includes("too many requests")
+  ) {
     return "rate_limit";
   }
   // Context window / invalid request bugs won't fix themselves on retry.
-  if (msg.includes("context window") || msg.includes("invalid_request_error") || msg.includes("invalid params")) {
+  if (
+    msg.includes("context window") ||
+    msg.includes("invalid_request_error") ||
+    msg.includes("invalid params")
+  ) {
     return "fatal";
   }
   if (msg.includes("stalled")) return "transient";
   if (msg.includes("premature close")) return "transient";
-  if (msg.includes("econnreset") || msg.includes("etimedout") || msg.includes("socket hang up")) return "transient";
-  if (msg.includes("network") || msg.includes("fetch failed")) return "transient";
+  if (
+    msg.includes("econnreset") ||
+    msg.includes("etimedout") ||
+    msg.includes("socket hang up")
+  )
+    return "transient";
+  if (msg.includes("network") || msg.includes("fetch failed"))
+    return "transient";
   if (msg.includes("overloaded")) return "transient";
   if (/\b5\d\d\b/.test(msg)) return "transient";
   if (/\b4\d\d\b/.test(msg)) return "fatal";
@@ -83,17 +98,16 @@ function backoffMs(klass: MinimaxErrorClass, attempt: number): number {
  *  workspaces shares the cooldown (correct — same upstream bucket). Different
  *  keys are independent.
  */
-const MINIMAX_MAX_CONCURRENT = Number(process.env.MINIMAX_MAX_CONCURRENT ?? "3");
+const MINIMAX_MAX_CONCURRENT = Number(
+  process.env.MINIMAX_MAX_CONCURRENT ?? "3",
+);
 
 type KeyState = {
   inFlight: number;
   waiters: Array<() => void>;
 };
 const minimaxKeyState = new Map<string, KeyState>();
-const cooldownCache = new Map<
-  string,
-  { until: number; cachedAt: number }
->();
+const cooldownCache = new Map<string, { until: number; cachedAt: number }>();
 const COOLDOWN_CACHE_TTL_MS = 5_000;
 
 function hashKey(apiKey: string): string {
@@ -447,6 +461,9 @@ async function* streamMinimaxWithToolsAnthropic(
       if (opts.tenant?.agentId) {
         envOverrides.AIO_AGENT_ID = opts.tenant.agentId;
       }
+      if (opts.tenant?.scheduleId) {
+        envOverrides.AIO_SCHEDULE_ID = opts.tenant.scheduleId;
+      }
       if (opts.runId) {
         envOverrides.AIO_RUN_ID = opts.runId;
       }
@@ -500,8 +517,7 @@ async function* streamMinimaxWithToolsAnthropic(
         properties:
           (t.parameters as { properties?: Record<string, unknown> })
             ?.properties ?? {},
-        required:
-          (t.parameters as { required?: string[] })?.required ?? [],
+        required: (t.parameters as { required?: string[] })?.required ?? [],
       },
     }));
 
@@ -509,10 +525,12 @@ async function* streamMinimaxWithToolsAnthropic(
     // user/assistant turns — system goes in the top-level `system` param.
     const messages: Anthropic.MessageParam[] = opts.messages
       .filter(
-        (m): m is ChatMessage =>
-          m.role === "user" || m.role === "assistant",
+        (m): m is ChatMessage => m.role === "user" || m.role === "assistant",
       )
-      .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+      .map((m) => ({
+        role: m.role as "user" | "assistant",
+        content: m.content,
+      }));
 
     let totalInputTokens = 0;
     let totalOutputTokens = 0;
@@ -675,8 +693,7 @@ async function* streamMinimaxWithToolsAnthropic(
             content: [
               {
                 type: "text",
-                text:
-                  "Je vorige beurt was leeg. Ga door met de taak — voer de volgende stap uit, of geef een kort eindrapport als je klaar bent.",
+                text: "Je vorige beurt was leeg. Ga door met de taak — voer de volgende stap uit, of geef een kort eindrapport als je klaar bent.",
               },
             ],
           });
@@ -726,7 +743,11 @@ async function* streamMinimaxWithToolsAnthropic(
 
       // Signal a new assistant turn to the dispatcher so it creates a
       // fresh bubble positioned AFTER the tool call cards, not before.
-      yield { type: "message_start", message_id: randomUUID(), role: "assistant" };
+      yield {
+        type: "message_start",
+        message_id: randomUUID(),
+        role: "assistant",
+      };
     }
 
     // Hop limit reached — emit what we have as the final response.
@@ -808,6 +829,9 @@ async function* streamMinimaxWithTools(
       }
       if (opts.tenant?.agentId) {
         envOverrides.AIO_AGENT_ID = opts.tenant.agentId;
+      }
+      if (opts.tenant?.scheduleId) {
+        envOverrides.AIO_SCHEDULE_ID = opts.tenant.scheduleId;
       }
       if (opts.runId) {
         envOverrides.AIO_RUN_ID = opts.runId;
@@ -906,7 +930,11 @@ async function* streamMinimaxWithTools(
       }
 
       if (turnError) {
-        yield { type: "error", code: turnError.code, message: turnError.message };
+        yield {
+          type: "error",
+          code: turnError.code,
+          message: turnError.message,
+        };
         return;
       }
 
@@ -928,11 +956,7 @@ async function* streamMinimaxWithTools(
           usage: {
             input_tokens: totalInputTokens,
             output_tokens: totalOutputTokens,
-            cost_cents: priceTokens(
-              model,
-              totalInputTokens,
-              totalOutputTokens,
-            ),
+            cost_cents: priceTokens(model, totalInputTokens, totalOutputTokens),
           },
         };
         return;
@@ -979,11 +1003,7 @@ async function* streamMinimaxWithTools(
       usage: {
         input_tokens: totalInputTokens,
         output_tokens: totalOutputTokens,
-        cost_cents: priceTokens(
-          model,
-          totalInputTokens,
-          totalOutputTokens,
-        ),
+        cost_cents: priceTokens(model, totalInputTokens, totalOutputTokens),
       },
     };
     void assistantTextSoFar;
@@ -1135,8 +1155,7 @@ async function* streamOneTurnEvents(args: {
             };
             if (tc.id) slot.id = tc.id;
             if (tc.function?.name) slot.name = tc.function.name;
-            if (tc.function?.arguments)
-              slot.arguments += tc.function.arguments;
+            if (tc.function?.arguments) slot.arguments += tc.function.arguments;
             toolCallSlots.set(i, slot);
           }
         }

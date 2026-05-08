@@ -530,6 +530,19 @@ export async function updateSchedule(input: {
     });
     if (!bindingRes.ok) return { ok: false, error: bindingRes.error };
   }
+  const { data: memorySchedule } = await supabase
+    .from("schedules")
+    .select("id, title, kind, cron_expr")
+    .eq("id", input.schedule_id)
+    .maybeSingle();
+  if (memorySchedule) {
+    await ensureScheduleMemoryFiles({
+      id: memorySchedule.id as string,
+      title: (memorySchedule.title as string | null) ?? null,
+      kind: (memorySchedule.kind as string | null) ?? null,
+      cron_expr: (memorySchedule.cron_expr as string | null) ?? null,
+    }).catch((err) => console.warn("[schedule-memory] update failed", err));
+  }
   revalidatePath(`/${input.workspace_slug}`);
   return { ok: true, data: null };
 }

@@ -297,6 +297,9 @@ function buildCodexMcpEnv(
   if (opts.tenant && "agentId" in opts.tenant) {
     env.AIO_AGENT_ID = opts.tenant.agentId ?? "";
   }
+  if (opts.tenant && "scheduleId" in opts.tenant) {
+    env.AIO_SCHEDULE_ID = opts.tenant.scheduleId ?? "";
+  }
   if (opts.runId) {
     env.AIO_RUN_ID = opts.runId;
   }
@@ -409,7 +412,8 @@ async function* streamCodexTurnEvents(args: {
     outputItems,
     inputTokens,
     outputTokens:
-      outputTokens || (turnText ? Math.max(1, Math.ceil(turnText.length / 4)) : 0),
+      outputTokens ||
+      (turnText ? Math.max(1, Math.ceil(turnText.length / 4)) : 0),
   };
 }
 

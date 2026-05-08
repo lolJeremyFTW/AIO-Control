@@ -391,6 +391,7 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
         businessId: run.business_id,
         navNodeId: run.nav_node_id,
         agentId: agent.id,
+        scheduleId: (run.schedule_id as string | null) ?? null,
         ollamaEndpoint,
         hermesAgentName,
         openclawAgentName,

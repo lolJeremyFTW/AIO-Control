@@ -14,6 +14,8 @@ import {
   ListToolsRequestSchema,
   CallToolRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
 import { createRoutine, deleteRoutine } from "../../routines";
@@ -25,6 +27,7 @@ const WORKSPACE_ID = process.env.AIO_WORKSPACE_ID ?? "default";
 const CURRENT_BUSINESS_ID = process.env.AIO_BUSINESS_ID ?? "";
 const CURRENT_NAV_NODE_ID = process.env.AIO_NAV_NODE_ID ?? "";
 const CURRENT_AGENT_ID = process.env.AIO_AGENT_ID ?? "";
+const CURRENT_SCHEDULE_ID = process.env.AIO_SCHEDULE_ID ?? "";
 const CURRENT_RUN_ID = process.env.AIO_RUN_ID ?? "";
 const DATABASE_URL = process.env.DATABASE_URL ?? "";
 const SUPABASE_SCHEMA = process.env.AIO_SUPABASE_SCHEMA ?? "aio_control";
@@ -34,6 +37,13 @@ const SUPABASE_PSQL_COMMAND =
 const ALLOW_READ_SECRET = process.env.AIO_MCP_ALLOW_READ_SECRET === "true";
 const AGENT_SECRET_KEY = process.env.AGENT_SECRET_KEY ?? "";
 const CANONICAL_DASHBOARD_ORIGIN = "https://aio.tromptech.life";
+const STATUS_MARKER = "aio:schedule-status:v1";
+const MAX_STATUS_ENTRIES = 3;
+const MAX_RESOURCE_PROMPT_CHARS = 1200;
+const PRODUCTION_SCHEDULE_MEMORY_ROOT =
+  "/home/jeremy/aio-control/.aio/schedule-memory";
+const LOCAL_SCHEDULE_MEMORY_ROOT =
+  "C:\\Users\\jerem\\Desktop\\AIO-Control\\.aio\\schedule-memory";
 const APP_ORIGIN = dashboardOrigin(
   process.env.AIO_DASHBOARD_ORIGIN ??
     process.env.NEXT_PUBLIC_DASHBOARD_ORIGIN ??
@@ -114,7 +124,13 @@ const ReadSecretSchema = z.object({
 const BusinessOperatingSnapshotSchema = z.object({
   business_id: z.string().uuid().optional(),
   nav_node_id: z.string().uuid().nullable().optional(),
-  recent_runs_limit: z.coerce.number().int().min(1).max(50).optional().default(12),
+  recent_runs_limit: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(50)
+    .optional()
+    .default(12),
 });
 
 const ListRunsSchema = z.object({
@@ -122,9 +138,7 @@ const ListRunsSchema = z.object({
   nav_node_id: z.string().uuid().nullable().optional(),
   agent_id: z.string().uuid().optional(),
   limit: z.coerce.number().int().min(1).max(100).optional().default(20),
-  status: z
-    .enum(["queued", "running", "done", "failed", "review"])
-    .optional(),
+  status: z.enum(["queued", "running", "done", "failed", "review"]).optional(),
 });
 
 const ListReviewLearningsSchema = z.object({
@@ -205,6 +219,17 @@ const RunScheduleNowSchema = z.object({
   prompt: z.string().min(1).optional(),
 });
 
+const GetScheduleMemorySchema = z.object({
+  schedule_id: z.string().uuid().optional(),
+  include_full_resources: z.boolean().optional().default(false),
+});
+
+const RememberScheduleResourceSchema = z.object({
+  schedule_id: z.string().uuid().optional(),
+  note: z.string().min(3).max(260).optional(),
+  notes: z.array(z.string().min(3).max(260)).max(8).optional(),
+});
+
 const PublishTopicDashboardSchema = z.object({
   business: z.string().min(1),
   topic: z.string().min(1),
@@ -234,7 +259,10 @@ const SendTelegramSchema = z.object({
    *  business's override (per-business bot tokens). */
   business_id: z.string().uuid().optional(),
   /** parse_mode passed straight to Telegram. Default "Markdown". */
-  parse_mode: z.enum(["Markdown", "MarkdownV2", "HTML"]).optional().default("Markdown"),
+  parse_mode: z
+    .enum(["Markdown", "MarkdownV2", "HTML"])
+    .optional()
+    .default("Markdown"),
 });
 
 const ProposeImprovementSchema = z.object({
@@ -299,6 +327,7 @@ function getSupabaseContext(): string {
       business_id: CURRENT_BUSINESS_ID || null,
       nav_node_id: CURRENT_NAV_NODE_ID || null,
       agent_id: CURRENT_AGENT_ID || null,
+      schedule_id: CURRENT_SCHEDULE_ID || null,
       run_id: CURRENT_RUN_ID || null,
     },
     supabase: {
@@ -389,7 +418,10 @@ type BusinessTarget = {
 function parseTargets(value: unknown): BusinessTarget[] {
   if (!Array.isArray(value)) return [];
   return value
-    .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
+    .filter(
+      (item): item is Record<string, unknown> =>
+        !!item && typeof item === "object",
+    )
     .map((item) => ({
       id: typeof item.id === "string" ? item.id : undefined,
       name: typeof item.name === "string" ? item.name : undefined,
@@ -415,11 +447,13 @@ function asNumber(value: unknown): number {
 async function resolveOperatingScope(input: {
   business_id?: string;
   nav_node_id?: string | null;
-}): Promise<{ business_id: string; nav_node_id: string | null } | { error: string }> {
+}): Promise<
+  { business_id: string; nav_node_id: string | null } | { error: string }
+> {
   const navNodeId =
     input.nav_node_id === null
       ? null
-      : input.nav_node_id ?? (CURRENT_NAV_NODE_ID || null);
+      : (input.nav_node_id ?? (CURRENT_NAV_NODE_ID || null));
   let businessId = input.business_id ?? (CURRENT_BUSINESS_ID || null);
 
   if (navNodeId) {
@@ -447,7 +481,8 @@ async function resolveOperatingScope(input: {
       .is("archived_at", null)
       .maybeSingle();
     if (error) return { error: error.message };
-    if (!business) return { error: "business_id not found in current workspace." };
+    if (!business)
+      return { error: "business_id not found in current workspace." };
     return { business_id: businessId, nav_node_id: navNodeId };
   }
 
@@ -459,7 +494,10 @@ async function resolveOperatingScope(input: {
     .limit(2);
   if (error) return { error: error.message };
   if ((businesses ?? []).length === 1) {
-    return { business_id: businesses![0]!.id as string, nav_node_id: navNodeId };
+    return {
+      business_id: businesses![0]!.id as string,
+      nav_node_id: navNodeId,
+    };
   }
   return {
     error:
@@ -493,7 +531,8 @@ async function getBusinessOperatingSnapshot(args: unknown): Promise<string> {
     .eq("business_id", scope.business_id)
     .order("created_at", { ascending: false })
     .limit(parsed.data.recent_runs_limit);
-  if (scope.nav_node_id) runsQuery = runsQuery.eq("nav_node_id", scope.nav_node_id);
+  if (scope.nav_node_id)
+    runsQuery = runsQuery.eq("nav_node_id", scope.nav_node_id);
 
   let schedulesQuery = supabaseAio
     .from("schedules")
@@ -516,7 +555,8 @@ async function getBusinessOperatingSnapshot(args: unknown): Promise<string> {
     .is("resolved_at", null)
     .order("created_at", { ascending: false })
     .limit(20);
-  if (scope.nav_node_id) queueQuery = queueQuery.eq("nav_node_id", scope.nav_node_id);
+  if (scope.nav_node_id)
+    queueQuery = queueQuery.eq("nav_node_id", scope.nav_node_id);
 
   const [businessRes, kpiRes, agentsRes, schedulesRes, runsRes, queueRes] =
     await Promise.all([
@@ -546,10 +586,16 @@ async function getBusinessOperatingSnapshot(args: unknown): Promise<string> {
     ]);
 
   if (businessRes.error) {
-    return JSON.stringify({ error: "db_error", message: businessRes.error.message });
+    return JSON.stringify({
+      error: "db_error",
+      message: businessRes.error.message,
+    });
   }
   if (!businessRes.data) {
-    return JSON.stringify({ error: "not_found", message: "business not found." });
+    return JSON.stringify({
+      error: "not_found",
+      message: "business not found.",
+    });
   }
   for (const res of [kpiRes, agentsRes, schedulesRes, runsRes, queueRes]) {
     if (res.error) {
@@ -557,15 +603,21 @@ async function getBusinessOperatingSnapshot(args: unknown): Promise<string> {
     }
   }
 
-  const targets = parseTargets((businessRes.data as Record<string, unknown>).targets);
-  const activeTargets = targets.filter((target) => (target.status ?? "open") === "open");
+  const targets = parseTargets(
+    (businessRes.data as Record<string, unknown>).targets,
+  );
+  const activeTargets = targets.filter(
+    (target) => (target.status ?? "open") === "open",
+  );
   const doneTargets = targets.filter((target) => target.status === "done");
-  const kpis = ((kpiRes.data ?? []) as Array<Record<string, unknown>>).map((row) => ({
-    period: row.period,
-    usage_eur: asNumber(row.usage_eur),
-    revenue_eur: asNumber(row.revenue_eur),
-    runs_count: asNumber(row.runs_count),
-  }));
+  const kpis = ((kpiRes.data ?? []) as Array<Record<string, unknown>>).map(
+    (row) => ({
+      period: row.period,
+      usage_eur: asNumber(row.usage_eur),
+      revenue_eur: asNumber(row.revenue_eur),
+      runs_count: asNumber(row.runs_count),
+    }),
+  );
   const kpiByPeriod = new Map(kpis.map((row) => [String(row.period), row]));
   const k30 = kpiByPeriod.get("30D");
   const k7 = kpiByPeriod.get("7D");
@@ -616,9 +668,7 @@ async function getBusinessOperatingSnapshot(args: unknown): Promise<string> {
   });
 }
 
-async function listAgents(
-  args: unknown,
-): Promise<string> {
+async function listAgents(args: unknown): Promise<string> {
   const parsed = ListAgentsSchema.safeParse(args);
   if (!parsed.success) {
     return JSON.stringify({
@@ -630,7 +680,9 @@ async function listAgents(
 
   let query = supabaseAio
     .from("agents")
-    .select("id, name, kind, provider, model, business_id, nav_node_id, created_at")
+    .select(
+      "id, name, kind, provider, model, business_id, nav_node_id, created_at",
+    )
     .eq("workspace_id", WORKSPACE_ID);
 
   if (scope === "global") {
@@ -703,7 +755,12 @@ async function withBusinessAndPath(nodes: NavNodeLookupRow[]) {
     .from("businesses")
     .select("id, name, slug")
     .eq("workspace_id", WORKSPACE_ID)
-    .in("id", businessIds.length > 0 ? businessIds : ["00000000-0000-0000-0000-000000000000"]);
+    .in(
+      "id",
+      businessIds.length > 0
+        ? businessIds
+        : ["00000000-0000-0000-0000-000000000000"],
+    );
 
   const businessById = new Map(
     (businesses ?? []).map((b) => [
@@ -774,7 +831,9 @@ async function resolveBusinessTopic(
       .some((value) => norm(String(value)).includes(businessNeedle)),
   );
   if (businessMatches.length === 0) {
-    return { error: `Business '${businessRef}' not found in current workspace.` };
+    return {
+      error: `Business '${businessRef}' not found in current workspace.`,
+    };
   }
   if (businessMatches.length > 1) {
     return {
@@ -797,7 +856,9 @@ async function resolveBusinessTopic(
     .order("sort_order", { ascending: true });
   if (nodeError) return { error: nodeError.message };
 
-  const decorated = await withBusinessAndPath((nodes ?? []) as NavNodeLookupRow[]);
+  const decorated = await withBusinessAndPath(
+    (nodes ?? []) as NavNodeLookupRow[],
+  );
   const topicMatches = decorated.filter((node) =>
     [node.id, node.name, node.slug, node.sub, node.path]
       .filter(Boolean)
@@ -894,7 +955,7 @@ async function listRuns(args: unknown): Promise<string> {
   const navNodeId =
     parsed.data.nav_node_id === null
       ? undefined
-      : parsed.data.nav_node_id ?? (CURRENT_NAV_NODE_ID || undefined);
+      : (parsed.data.nav_node_id ?? (CURRENT_NAV_NODE_ID || undefined));
 
   let query = supabaseAio
     .from("runs")
@@ -929,7 +990,7 @@ async function listReviewLearnings(args: unknown): Promise<string> {
   const navNodeId =
     parsed.data.nav_node_id === null
       ? null
-      : parsed.data.nav_node_id ?? (CURRENT_NAV_NODE_ID || null);
+      : (parsed.data.nav_node_id ?? (CURRENT_NAV_NODE_ID || null));
 
   const { data, error } = await supabaseAio
     .from("agent_review_lessons")
@@ -939,17 +1000,26 @@ async function listReviewLearnings(args: unknown): Promise<string> {
     .eq("workspace_id", WORKSPACE_ID)
     .order("created_at", { ascending: false })
     .limit(Math.max(parsed.data.limit * 4, parsed.data.limit));
-  if (error) return JSON.stringify({ error: "db_error", message: error.message });
+  if (error)
+    return JSON.stringify({ error: "db_error", message: error.message });
 
   const rows = ((data ?? []) as Array<Record<string, unknown>>)
-    .filter((row) =>
-      !businessId || row.business_id == null || row.business_id === businessId,
+    .filter(
+      (row) =>
+        !businessId ||
+        row.business_id == null ||
+        row.business_id === businessId,
     )
-    .filter((row) =>
-      !navNodeId || row.nav_node_id == null || row.nav_node_id === navNodeId,
+    .filter(
+      (row) =>
+        !navNodeId || row.nav_node_id == null || row.nav_node_id === navNodeId,
     )
-    .filter((row) => !parsed.data.agent_id || row.agent_id === parsed.data.agent_id)
-    .filter((row) => !parsed.data.outcome || row.outcome === parsed.data.outcome)
+    .filter(
+      (row) => !parsed.data.agent_id || row.agent_id === parsed.data.agent_id,
+    )
+    .filter(
+      (row) => !parsed.data.outcome || row.outcome === parsed.data.outcome,
+    )
     .slice(0, parsed.data.limit);
   return JSON.stringify({ lessons: rows });
 }
@@ -1052,7 +1122,9 @@ async function requestHumanReview(args: unknown): Promise<string> {
 async function resolveReviewScope(input: {
   business_id?: string;
   nav_node_id?: string | null;
-}): Promise<{ business_id: string; nav_node_id: string | null } | { error: string }> {
+}): Promise<
+  { business_id: string; nav_node_id: string | null } | { error: string }
+> {
   let navNodeId = input.nav_node_id ?? (CURRENT_NAV_NODE_ID || null);
   let businessId = input.business_id ?? (CURRENT_BUSINESS_ID || null);
 
@@ -1081,7 +1153,8 @@ async function resolveReviewScope(input: {
       .is("archived_at", null)
       .maybeSingle();
     if (error) return { error: error.message };
-    if (!business) return { error: "business_id not found in current workspace." };
+    if (!business)
+      return { error: "business_id not found in current workspace." };
     return { business_id: businessId, nav_node_id: navNodeId };
   }
 
@@ -1093,7 +1166,10 @@ async function resolveReviewScope(input: {
     .limit(2);
   if (error) return { error: error.message };
   if ((businesses ?? []).length === 1) {
-    return { business_id: businesses![0]!.id as string, nav_node_id: navNodeId };
+    return {
+      business_id: businesses![0]!.id as string,
+      nav_node_id: navNodeId,
+    };
   }
   return {
     error:
@@ -1104,7 +1180,9 @@ async function resolveReviewScope(input: {
 async function resolveScheduleScope(input: {
   business_id?: string;
   nav_node_id?: string | null;
-}): Promise<{ business_id: string | null; nav_node_id: string | null } | { error: string }> {
+}): Promise<
+  { business_id: string | null; nav_node_id: string | null } | { error: string }
+> {
   const navNodeId = input.nav_node_id ?? (CURRENT_NAV_NODE_ID || null);
   let businessId = input.business_id ?? (CURRENT_BUSINESS_ID || null);
 
@@ -1141,13 +1219,17 @@ async function resolveScheduleScope(input: {
 async function listSchedules(args: unknown): Promise<string> {
   const parsed = ListSchedulesSchema.safeParse(args);
   if (!parsed.success) {
-    return JSON.stringify({ error: "validation_failed", details: parsed.error.flatten() });
+    return JSON.stringify({
+      error: "validation_failed",
+      details: parsed.error.flatten(),
+    });
   }
   const scope = await resolveScheduleScope({
     business_id: parsed.data.business_id,
     nav_node_id: parsed.data.nav_node_id,
   });
-  if ("error" in scope) return JSON.stringify({ error: "scope_error", message: scope.error });
+  if ("error" in scope)
+    return JSON.stringify({ error: "scope_error", message: scope.error });
 
   let query = supabaseAio
     .from("schedules_safe")
@@ -1158,29 +1240,345 @@ async function listSchedules(args: unknown): Promise<string> {
     .order("created_at", { ascending: false })
     .limit(parsed.data.limit);
   if (scope.nav_node_id) query = query.eq("nav_node_id", scope.nav_node_id);
-  else if (scope.business_id) query = query.eq("business_id", scope.business_id);
-  if (parsed.data.enabled !== undefined) query = query.eq("enabled", parsed.data.enabled);
+  else if (scope.business_id)
+    query = query.eq("business_id", scope.business_id);
+  if (parsed.data.enabled !== undefined)
+    query = query.eq("enabled", parsed.data.enabled);
   if (parsed.data.kind) query = query.eq("kind", parsed.data.kind);
 
   const { data, error } = await query;
-  if (error) return JSON.stringify({ error: "db_error", message: error.message });
+  if (error)
+    return JSON.stringify({ error: "db_error", message: error.message });
   return JSON.stringify({ schedules: data ?? [], scope });
+}
+
+type ScheduleMemorySource = {
+  id: string;
+  title?: string | null;
+  kind?: string | null;
+  cron_expr?: string | null;
+};
+
+type ScheduleMemoryFiles = {
+  dir: string;
+  statusFile: string;
+  resourcesFile: string;
+  metaFile: string;
+};
+
+function scheduleMemoryRoot(): string {
+  const configured = process.env.AIO_SCHEDULE_MEMORY_DIR?.trim();
+  if (configured) return configured;
+  return process.env.NODE_ENV === "production"
+    ? PRODUCTION_SCHEDULE_MEMORY_ROOT
+    : LOCAL_SCHEDULE_MEMORY_ROOT;
+}
+
+function scheduleMemoryDir(scheduleId: string): string {
+  return path.join(scheduleMemoryRoot(), scheduleId);
+}
+
+function scheduleMemoryFiles(scheduleId: string): ScheduleMemoryFiles {
+  const dir = scheduleMemoryDir(scheduleId);
+  return {
+    dir,
+    statusFile: path.join(dir, "status.md"),
+    resourcesFile: path.join(dir, "resources.md"),
+    metaFile: path.join(dir, "meta.json"),
+  };
+}
+
+async function ensureScheduleMemoryFilesMcp(
+  schedule: ScheduleMemorySource,
+): Promise<ScheduleMemoryFiles> {
+  const files = scheduleMemoryFiles(schedule.id);
+  await mkdir(files.dir, { recursive: true });
+  if (!(await fileExists(files.statusFile))) {
+    await writeTextFile(
+      files.statusFile,
+      [
+        "# Last 3 run statuses",
+        "",
+        `Schedule: ${schedule.title || schedule.kind || schedule.id}`,
+        "",
+        "- Nog geen eerdere runstatus.",
+        "",
+        `<!-- ${STATUS_MARKER}`,
+        "[]",
+        "-->",
+        "",
+      ].join("\n"),
+    );
+  }
+  if (!(await fileExists(files.resourcesFile))) {
+    await writeTextFile(
+      files.resourcesFile,
+      [
+        "# Persistent resources / contracts",
+        "",
+        "No persistent resources recorded yet.",
+        "",
+        "## Supabase tables",
+        "- Add stable table names here when this schedule owns or reuses persistent data.",
+        "",
+        "## Dashboards / tabs / files",
+        "- Add stable dashboard slugs, custom tab ids, file paths, sheets, APIs, or other durable resources here.",
+        "",
+        "## Rules",
+        "- Reuse listed resources before creating new Supabase tables, dashboards, or files.",
+        "- Prefer updating stable resources in-place over creating a new one each run.",
+        "",
+      ].join("\n"),
+    );
+  }
+  await writeTextFile(
+    files.metaFile,
+    `${JSON.stringify(
+      {
+        version: 1,
+        workspace_id: WORKSPACE_ID,
+        schedule: {
+          id: schedule.id,
+          title: schedule.title ?? null,
+          kind: schedule.kind ?? null,
+          cron_expr: schedule.cron_expr ?? null,
+        },
+        files,
+        limits: {
+          last_runs: MAX_STATUS_ENTRIES,
+          resource_prompt_chars: MAX_RESOURCE_PROMPT_CHARS,
+        },
+        updated_at: new Date().toISOString(),
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  return files;
+}
+
+async function deleteScheduleMemoryFilesMcp(scheduleId: string): Promise<void> {
+  await rm(scheduleMemoryDir(scheduleId), { recursive: true, force: true });
+}
+
+async function resolveScheduleMemorySourceMcp(
+  scheduleId?: string,
+): Promise<{ schedule: ScheduleMemorySource } | { error: string }> {
+  let resolvedId = scheduleId || CURRENT_SCHEDULE_ID || "";
+  if (!resolvedId && CURRENT_RUN_ID) {
+    const { data, error } = await supabaseAio
+      .from("runs")
+      .select("schedule_id")
+      .eq("workspace_id", WORKSPACE_ID)
+      .eq("id", CURRENT_RUN_ID)
+      .maybeSingle();
+    if (error) return { error: error.message };
+    resolvedId = (data?.schedule_id as string | null | undefined) ?? "";
+  }
+  if (!resolvedId) {
+    return {
+      error:
+        "schedule_id is required unless this MCP call runs inside a scheduled run.",
+    };
+  }
+
+  const { data, error } = await supabaseAio
+    .from("schedules")
+    .select("id, title, kind, cron_expr")
+    .eq("workspace_id", WORKSPACE_ID)
+    .eq("id", resolvedId)
+    .maybeSingle();
+  if (error) return { error: error.message };
+  if (!data) return { error: "schedule_id not found in current workspace." };
+  return {
+    schedule: {
+      id: data.id as string,
+      title: (data.title as string | null) ?? null,
+      kind: (data.kind as string | null) ?? null,
+      cron_expr: (data.cron_expr as string | null) ?? null,
+    },
+  };
+}
+
+async function getScheduleMemoryMcp(args: unknown): Promise<string> {
+  const parsed = GetScheduleMemorySchema.safeParse(args);
+  if (!parsed.success) {
+    return JSON.stringify({
+      error: "validation_failed",
+      details: parsed.error.flatten(),
+    });
+  }
+  const resolved = await resolveScheduleMemorySourceMcp(
+    parsed.data.schedule_id,
+  );
+  if ("error" in resolved)
+    return JSON.stringify({
+      error: "schedule_memory_error",
+      message: resolved.error,
+    });
+  const files = await ensureScheduleMemoryFilesMcp(resolved.schedule);
+  const statusText = await readTextFile(files.statusFile);
+  const resourcesText = await readTextFile(files.resourcesFile);
+  return JSON.stringify({
+    ok: true,
+    version: 1,
+    schedule: resolved.schedule,
+    files,
+    last_runs: readStatusEntriesFromText(statusText),
+    resources: compactScheduleResources(
+      resourcesText,
+      parsed.data.include_full_resources,
+    ),
+    rules: [
+      "Reuse resources.md before creating new Supabase tables, dashboards, tabs, files, sheets, or APIs.",
+      "Keep status context to the last 3 run summaries.",
+      "Use remember_schedule_resource or final-output Resource note: ... when you choose/create a durable resource.",
+    ],
+  });
+}
+
+async function rememberScheduleResourceMcp(args: unknown): Promise<string> {
+  const parsed = RememberScheduleResourceSchema.safeParse(args);
+  if (!parsed.success) {
+    return JSON.stringify({
+      error: "validation_failed",
+      details: parsed.error.flatten(),
+    });
+  }
+  const notes = [
+    ...(parsed.data.note ? [parsed.data.note] : []),
+    ...(parsed.data.notes ?? []),
+  ]
+    .map((note) => normalizeText(note).slice(0, 260))
+    .filter(Boolean);
+  if (notes.length === 0) return JSON.stringify({ error: "notes_required" });
+
+  const resolved = await resolveScheduleMemorySourceMcp(
+    parsed.data.schedule_id,
+  );
+  if ("error" in resolved)
+    return JSON.stringify({
+      error: "schedule_memory_error",
+      message: resolved.error,
+    });
+  const files = await ensureScheduleMemoryFilesMcp(resolved.schedule);
+  const current = await readTextFile(files.resourcesFile);
+  const lower = current.toLowerCase();
+  const unique = notes.filter(
+    (note, idx, arr) =>
+      arr.indexOf(note) === idx && !lower.includes(note.toLowerCase()),
+  );
+  if (unique.length === 0) {
+    return JSON.stringify({
+      ok: true,
+      added: 0,
+      resources_file: files.resourcesFile,
+    });
+  }
+  const stamp = new Date().toISOString();
+  const source = CURRENT_RUN_ID
+    ? `mcp run:${CURRENT_RUN_ID.slice(0, 8)}`
+    : "mcp";
+  const base = current
+    .replace("No persistent resources recorded yet.\n\n", "")
+    .trimEnd();
+  await writeTextFile(
+    files.resourcesFile,
+    `${base}\n${unique.map((note) => `- ${stamp} | ${source} | ${note}`).join("\n")}\n`,
+  );
+  await ensureScheduleMemoryFilesMcp(resolved.schedule);
+  return JSON.stringify({
+    ok: true,
+    added: unique.length,
+    resources_file: files.resourcesFile,
+  });
+}
+
+function readStatusEntriesFromText(text: string): unknown[] {
+  const match = text.match(
+    new RegExp(`<!-- ${STATUS_MARKER}\\n([\\s\\S]*?)\\n-->`),
+  );
+  if (!match?.[1]) return [];
+  try {
+    const parsed = JSON.parse(match[1]) as unknown[];
+    return Array.isArray(parsed) ? parsed.slice(0, MAX_STATUS_ENTRIES) : [];
+  } catch {
+    return [];
+  }
+}
+
+function compactScheduleResources(
+  text: string,
+  includeFullResources: boolean,
+): { text: string; line_count: number; truncated: boolean } {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#"))
+    .filter((line) => line !== "No persistent resources recorded yet.");
+  const cleaned = lines.join("\n");
+  if (includeFullResources || cleaned.length <= MAX_RESOURCE_PROMPT_CHARS) {
+    return { text: cleaned, line_count: lines.length, truncated: false };
+  }
+  const compact = [
+    ...lines.slice(0, 8),
+    "- ... resources.md truncated; call get_schedule_memory with include_full_resources=true if needed.",
+    ...lines.slice(-8),
+  ].join("\n");
+  return {
+    text:
+      compact.length <= MAX_RESOURCE_PROMPT_CHARS
+        ? compact
+        : `${compact.slice(0, MAX_RESOURCE_PROMPT_CHARS - 3)}...`,
+    line_count: lines.length,
+    truncated: true,
+  };
+}
+
+async function readTextFile(file: string): Promise<string> {
+  return await readFile(file, "utf8").catch(() => "");
+}
+
+async function writeTextFile(file: string, text: string): Promise<void> {
+  const tmp = `${file}.${process.pid}.${Date.now()}.${Math.random()
+    .toString(36)
+    .slice(2)}.tmp`;
+  await writeFile(tmp, text, "utf8");
+  await rename(tmp, file);
+}
+
+async function fileExists(file: string): Promise<boolean> {
+  try {
+    await readFile(file, "utf8");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function normalizeText(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
 }
 
 async function createCronScheduleMcp(args: unknown): Promise<string> {
   const parsed = CreateCronScheduleSchema.safeParse(args);
   if (!parsed.success) {
-    return JSON.stringify({ error: "validation_failed", details: parsed.error.flatten() });
+    return JSON.stringify({
+      error: "validation_failed",
+      details: parsed.error.flatten(),
+    });
   }
   const scope = await resolveScheduleScope({
     business_id: parsed.data.business_id,
     nav_node_id: parsed.data.nav_node_id,
   });
-  if ("error" in scope) return JSON.stringify({ error: "scope_error", message: scope.error });
+  if ("error" in scope)
+    return JSON.stringify({ error: "scope_error", message: scope.error });
   if (!scope.business_id) {
     return JSON.stringify({
       error: "business_required",
-      message: "business_id is required unless the MCP session is already scoped to a business/topic.",
+      message:
+        "business_id is required unless the MCP session is already scoped to a business/topic.",
     });
   }
 
@@ -1190,8 +1588,13 @@ async function createCronScheduleMcp(args: unknown): Promise<string> {
     .eq("workspace_id", WORKSPACE_ID)
     .eq("id", parsed.data.agent_id)
     .maybeSingle();
-  if (agentErr) return JSON.stringify({ error: "db_error", message: agentErr.message });
-  if (!agent) return JSON.stringify({ error: "not_found", message: "agent_id not found." });
+  if (agentErr)
+    return JSON.stringify({ error: "db_error", message: agentErr.message });
+  if (!agent)
+    return JSON.stringify({
+      error: "not_found",
+      message: "agent_id not found.",
+    });
 
   const useRoutine =
     (agent.provider as string) === "claude" &&
@@ -1238,16 +1641,34 @@ async function createCronScheduleMcp(args: unknown): Promise<string> {
     .select("id, provider_routine_id")
     .single();
   if (error || !data) {
-    if (provider_routine_id) await deleteRoutine(provider_routine_id).catch(() => {});
-    return JSON.stringify({ error: "db_error", message: error?.message ?? "insert failed" });
+    if (provider_routine_id)
+      await deleteRoutine(provider_routine_id).catch(() => {});
+    return JSON.stringify({
+      error: "db_error",
+      message: error?.message ?? "insert failed",
+    });
   }
-  return JSON.stringify({ ok: true, schedule_id: data.id, routine_id: data.provider_routine_id ?? null });
+  const memoryFiles = await ensureScheduleMemoryFilesMcp({
+    id: data.id as string,
+    title: parsed.data.title ?? null,
+    kind: "cron",
+    cron_expr: parsed.data.cron_expr,
+  }).catch(() => null);
+  return JSON.stringify({
+    ok: true,
+    schedule_id: data.id,
+    routine_id: data.provider_routine_id ?? null,
+    schedule_memory: memoryFiles,
+  });
 }
 
 async function updateScheduleMcp(args: unknown): Promise<string> {
   const parsed = UpdateScheduleSchema.safeParse(args);
   if (!parsed.success) {
-    return JSON.stringify({ error: "validation_failed", details: parsed.error.flatten() });
+    return JSON.stringify({
+      error: "validation_failed",
+      details: parsed.error.flatten(),
+    });
   }
   const patch: Record<string, unknown> = {};
   const p = parsed.data.patch;
@@ -1267,28 +1688,54 @@ async function updateScheduleMcp(args: unknown): Promise<string> {
     .update(patch)
     .eq("workspace_id", WORKSPACE_ID)
     .eq("id", parsed.data.schedule_id);
-  if (error) return JSON.stringify({ error: "db_error", message: error.message });
+  if (error)
+    return JSON.stringify({ error: "db_error", message: error.message });
+  const { data: updated } = await supabaseAio
+    .from("schedules")
+    .select("id, title, kind, cron_expr")
+    .eq("workspace_id", WORKSPACE_ID)
+    .eq("id", parsed.data.schedule_id)
+    .maybeSingle();
+  if (updated) {
+    await ensureScheduleMemoryFilesMcp({
+      id: updated.id as string,
+      title: (updated.title as string | null) ?? null,
+      kind: (updated.kind as string | null) ?? null,
+      cron_expr: (updated.cron_expr as string | null) ?? null,
+    }).catch(() => null);
+  }
   return JSON.stringify({ ok: true, schedule_id: parsed.data.schedule_id });
 }
 
 async function toggleScheduleMcp(args: unknown): Promise<string> {
   const parsed = ToggleScheduleSchema.safeParse(args);
   if (!parsed.success) {
-    return JSON.stringify({ error: "validation_failed", details: parsed.error.flatten() });
+    return JSON.stringify({
+      error: "validation_failed",
+      details: parsed.error.flatten(),
+    });
   }
   const { error } = await supabaseAio
     .from("schedules")
     .update({ enabled: parsed.data.enabled })
     .eq("workspace_id", WORKSPACE_ID)
     .eq("id", parsed.data.schedule_id);
-  if (error) return JSON.stringify({ error: "db_error", message: error.message });
-  return JSON.stringify({ ok: true, schedule_id: parsed.data.schedule_id, enabled: parsed.data.enabled });
+  if (error)
+    return JSON.stringify({ error: "db_error", message: error.message });
+  return JSON.stringify({
+    ok: true,
+    schedule_id: parsed.data.schedule_id,
+    enabled: parsed.data.enabled,
+  });
 }
 
 async function deleteScheduleMcp(args: unknown): Promise<string> {
   const parsed = DeleteScheduleSchema.safeParse(args);
   if (!parsed.success) {
-    return JSON.stringify({ error: "validation_failed", details: parsed.error.flatten() });
+    return JSON.stringify({
+      error: "validation_failed",
+      details: parsed.error.flatten(),
+    });
   }
   const { data: existing } = await supabaseAio
     .from("schedules")
@@ -1303,25 +1750,41 @@ async function deleteScheduleMcp(args: unknown): Promise<string> {
     .delete()
     .eq("workspace_id", WORKSPACE_ID)
     .eq("id", parsed.data.schedule_id);
-  if (error) return JSON.stringify({ error: "db_error", message: error.message });
+  if (error)
+    return JSON.stringify({ error: "db_error", message: error.message });
+  await deleteScheduleMemoryFilesMcp(parsed.data.schedule_id).catch(() => {});
   return JSON.stringify({ ok: true, schedule_id: parsed.data.schedule_id });
 }
 
 async function runScheduleNowMcp(args: unknown): Promise<string> {
   const parsed = RunScheduleNowSchema.safeParse(args);
   if (!parsed.success) {
-    return JSON.stringify({ error: "validation_failed", details: parsed.error.flatten() });
+    return JSON.stringify({
+      error: "validation_failed",
+      details: parsed.error.flatten(),
+    });
   }
   const { data: sched, error } = await supabaseAio
     .from("schedules")
-    .select("id, workspace_id, agent_id, business_id, nav_node_id, instructions, enabled")
+    .select(
+      "id, workspace_id, agent_id, business_id, nav_node_id, instructions, enabled",
+    )
     .eq("workspace_id", WORKSPACE_ID)
     .eq("id", parsed.data.schedule_id)
     .maybeSingle();
-  if (error) return JSON.stringify({ error: "db_error", message: error.message });
-  if (!sched) return JSON.stringify({ error: "not_found", message: "schedule_id not found." });
+  if (error)
+    return JSON.stringify({ error: "db_error", message: error.message });
+  if (!sched)
+    return JSON.stringify({
+      error: "not_found",
+      message: "schedule_id not found.",
+    });
   if (sched.enabled === false) {
-    return JSON.stringify({ error: "disabled", message: "Schedule is disabled. Enable it first or pass toggle_schedule enabled=true." });
+    return JSON.stringify({
+      error: "disabled",
+      message:
+        "Schedule is disabled. Enable it first or pass toggle_schedule enabled=true.",
+    });
   }
   const prompt =
     parsed.data.prompt?.trim() ||
@@ -1342,7 +1805,10 @@ async function runScheduleNowMcp(args: unknown): Promise<string> {
     .select("id")
     .single();
   if (runErr || !run) {
-    return JSON.stringify({ error: "db_error", message: runErr?.message ?? "run insert failed" });
+    return JSON.stringify({
+      error: "db_error",
+      message: runErr?.message ?? "run insert failed",
+    });
   }
   return JSON.stringify({
     ok: true,
@@ -1355,7 +1821,8 @@ async function runScheduleNowMcp(args: unknown): Promise<string> {
 function randomSlug(len = 16): string {
   const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
   let s = "";
-  for (let i = 0; i < len; i++) s += chars[Math.floor(Math.random() * chars.length)];
+  for (let i = 0; i < len; i++)
+    s += chars[Math.floor(Math.random() * chars.length)];
   return s;
 }
 
@@ -1391,8 +1858,12 @@ async function dashboardSlugBase(input: {
   ]);
 
   const parts = [
-    slugPart((workspace?.slug as string | null) ?? (workspace?.name as string | null)),
-    slugPart((business?.slug as string | null) ?? (business?.name as string | null)),
+    slugPart(
+      (workspace?.slug as string | null) ?? (workspace?.name as string | null),
+    ),
+    slugPart(
+      (business?.slug as string | null) ?? (business?.name as string | null),
+    ),
   ];
 
   if (input.nav_node_id) {
@@ -1403,14 +1874,18 @@ async function dashboardSlugBase(input: {
   }
 
   parts.push(slugPart(input.label));
-  return parts.filter(Boolean).join("-").slice(0, 110) || `dashboard-${randomSlug(6)}`;
+  return (
+    parts.filter(Boolean).join("-").slice(0, 110) ||
+    `dashboard-${randomSlug(6)}`
+  );
 }
 
 async function uniqueDashboardSlug(
   base: string,
   existingId?: string,
 ): Promise<string> {
-  const cleanBase = slugPart(base).slice(0, 110) || `dashboard-${randomSlug(6)}`;
+  const cleanBase =
+    slugPart(base).slice(0, 110) || `dashboard-${randomSlug(6)}`;
   for (let attempt = 0; attempt < 8; attempt++) {
     const slug = attempt === 0 ? cleanBase : `${cleanBase}-${randomSlug(4)}`;
     const { data, error } = await supabaseAio
@@ -1427,12 +1902,20 @@ async function uniqueDashboardSlug(
 async function publishDashboard(args: unknown): Promise<string> {
   const parsed = PublishDashboardSchema.safeParse(args);
   if (!parsed.success) {
-    return JSON.stringify({ error: "validation_failed", details: parsed.error.flatten() });
+    return JSON.stringify({
+      error: "validation_failed",
+      details: parsed.error.flatten(),
+    });
   }
   const { business_id, label } = parsed.data;
   const html_content = aioDashboardShell(parsed.data.html_content);
-  const navNodeId = parsed.data.nav_node_id ?? (CURRENT_NAV_NODE_ID || undefined);
-  const slugBase = await dashboardSlugBase({ business_id, nav_node_id: navNodeId, label });
+  const navNodeId =
+    parsed.data.nav_node_id ?? (CURRENT_NAV_NODE_ID || undefined);
+  const slugBase = await dashboardSlugBase({
+    business_id,
+    nav_node_id: navNodeId,
+    label,
+  });
 
   // Check if a dashboard with this label already exists for the business
   // so we can keep the same slug (stable URL on re-publish).
@@ -1454,7 +1937,8 @@ async function publishDashboard(args: unknown): Promise<string> {
       .from("agent_dashboards")
       .update({ html_content, slug, updated_at: new Date().toISOString() })
       .eq("id", existing.id);
-    if (error) return JSON.stringify({ error: "db_error", message: error.message });
+    if (error)
+      return JSON.stringify({ error: "db_error", message: error.message });
   } else {
     slug = await uniqueDashboardSlug(slugBase);
     const { error } = await supabaseAio.from("agent_dashboards").insert({
@@ -1464,7 +1948,8 @@ async function publishDashboard(args: unknown): Promise<string> {
       html_content,
       slug,
     });
-    if (error) return JSON.stringify({ error: "db_error", message: error.message });
+    if (error)
+      return JSON.stringify({ error: "db_error", message: error.message });
   }
 
   const url = normalizeCustomTabUrl(`${APP_ORIGIN}/d/${slug}`);
@@ -1498,7 +1983,11 @@ async function publishDashboard(args: unknown): Promise<string> {
   // Upsert the custom_tabs row so the dashboard appears as a nav tab.
   const tabResult = await upsertCustomTabInner(business_id, label, url, 0);
   if (tabResult.error) {
-    return JSON.stringify({ error: "tab_upsert_failed", message: tabResult.error, url });
+    return JSON.stringify({
+      error: "tab_upsert_failed",
+      message: tabResult.error,
+      url,
+    });
   }
 
   return JSON.stringify({ ok: true, url, tab_id: tabResult.tab_id, slug });
@@ -1556,7 +2045,11 @@ async function publishTopicDashboard(input: {
 
   const topicPath = `/${workspace.slug}/business/${biz.slug}/n/${chain.slugs.join("/")}`;
   const topicUrl = `${APP_ORIGIN}${topicPath}`;
-  const content = dashboardContentForTopic(input.label, input.html_content, input.public_url);
+  const content = dashboardContentForTopic(
+    input.label,
+    input.html_content,
+    input.public_url,
+  );
 
   const { error: dashboardError } = await supabaseAio
     .from("module_dashboards")
@@ -1666,7 +2159,11 @@ async function upsertCustomTabInner(
   if (existing) {
     const { error } = await supabaseAio
       .from("custom_tabs")
-      .update({ url: normalizedUrl, sort_order, nav_node_id: nav_node_id ?? null })
+      .update({
+        url: normalizedUrl,
+        sort_order,
+        nav_node_id: nav_node_id ?? null,
+      })
       .eq("id", existing.id);
     if (error) return { error: error.message };
     return { tab_id: existing.id as string };
@@ -1691,7 +2188,10 @@ async function upsertCustomTabInner(
 async function upsertCustomTab(args: unknown): Promise<string> {
   const parsed = UpsertCustomTabSchema.safeParse(args);
   if (!parsed.success) {
-    return JSON.stringify({ error: "validation_failed", details: parsed.error.flatten() });
+    return JSON.stringify({
+      error: "validation_failed",
+      details: parsed.error.flatten(),
+    });
   }
   const { business_id, nav_node_id, label, url, sort_order } = parsed.data;
   const result = await upsertCustomTabInner(
@@ -1701,14 +2201,18 @@ async function upsertCustomTab(args: unknown): Promise<string> {
     sort_order,
     nav_node_id,
   );
-  if (result.error) return JSON.stringify({ error: "db_error", message: result.error });
+  if (result.error)
+    return JSON.stringify({ error: "db_error", message: result.error });
   return JSON.stringify({ ok: true, tab_id: result.tab_id });
 }
 
 async function listCustomTabs(args: unknown): Promise<string> {
   const parsed = ListCustomTabsSchema.safeParse(args);
   if (!parsed.success) {
-    return JSON.stringify({ error: "validation_failed", details: parsed.error.flatten() });
+    return JSON.stringify({
+      error: "validation_failed",
+      details: parsed.error.flatten(),
+    });
   }
   const { business_id, nav_node_id } = parsed.data;
   if (!business_id && !nav_node_id) {
@@ -1723,9 +2227,11 @@ async function listCustomTabs(args: unknown): Promise<string> {
     .eq("workspace_id", WORKSPACE_ID)
     .order("sort_order", { ascending: true });
   if (nav_node_id) query = query.eq("nav_node_id", nav_node_id);
-  else if (business_id) query = query.eq("business_id", business_id).is("nav_node_id", null);
+  else if (business_id)
+    query = query.eq("business_id", business_id).is("nav_node_id", null);
   const { data, error } = await query;
-  if (error) return JSON.stringify({ error: "db_error", message: error.message });
+  if (error)
+    return JSON.stringify({ error: "db_error", message: error.message });
   return JSON.stringify({ tabs: data ?? [] });
 }
 
@@ -1748,7 +2254,11 @@ async function sendTelegramMessage(args: unknown): Promise<string> {
 
   // 1. Pick the telegram target row. Prefer named, otherwise first
   //    enabled workspace-scope target.
-  type TgTarget = { chat_id: string; topic_id: number | null; enabled: boolean };
+  type TgTarget = {
+    chat_id: string;
+    topic_id: number | null;
+    enabled: boolean;
+  };
   let target: TgTarget | null = null;
   if (target_name) {
     const { data, error } = await supabaseAio
@@ -1800,7 +2310,10 @@ async function sendTelegramMessage(args: unknown): Promise<string> {
     },
   );
   if (tokenErr) {
-    return JSON.stringify({ error: "token_lookup_failed", message: tokenErr.message });
+    return JSON.stringify({
+      error: "token_lookup_failed",
+      message: tokenErr.message,
+    });
   }
   const token = tokenData as string | null;
   if (!token) {
@@ -1822,14 +2335,21 @@ async function sendTelegramMessage(args: unknown): Promise<string> {
     body.message_thread_id = target.topic_id;
   }
   try {
-    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    const res = await fetch(
+      `https://api.telegram.org/bot${token}/sendMessage`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      },
+    );
     if (!res.ok) {
       const text = await res.text().catch(() => res.statusText);
-      return JSON.stringify({ error: "telegram_api", status: res.status, message: text });
+      return JSON.stringify({
+        error: "telegram_api",
+        status: res.status,
+        message: text,
+      });
     }
     return JSON.stringify({ ok: true, chat_id: target.chat_id });
   } catch (err) {
@@ -1901,7 +2421,10 @@ async function proposeImprovement(args: unknown): Promise<string> {
     ({ data: existing, error: existingError } = await selectExisting());
   }
   if (existingError) {
-    return JSON.stringify({ error: "db_error", message: existingError.message });
+    return JSON.stringify({
+      error: "db_error",
+      message: existingError.message,
+    });
   }
   if (existing) {
     return JSON.stringify({
@@ -1961,14 +2484,12 @@ async function ensureImprovementsTable(): Promise<string | null> {
 }
 
 function isMissingImprovementsTableError(
-  error:
-    | {
-        code?: string;
-        message?: string;
-        details?: string | null;
-        hint?: string | null;
-      }
-    | null,
+  error: {
+    code?: string;
+    message?: string;
+    details?: string | null;
+    hint?: string | null;
+  } | null,
 ): boolean {
   if (!error) return false;
   const text = `${error.code ?? ""} ${error.message ?? ""} ${
@@ -2009,6 +2530,52 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       inputSchema: {
         type: "object",
         properties: {},
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "get_schedule_memory",
+      description:
+        "Read compact per-schedule memory: last 3 run summaries plus stable resources/contracts from resources.md. Omit schedule_id inside a scheduled run; pass schedule_id to inspect another schedule.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          schedule_id: {
+            type: "string",
+            format: "uuid",
+            description:
+              "Optional schedule UUID. Omit when called from a scheduled run.",
+          },
+          include_full_resources: {
+            type: "boolean",
+            default: false,
+            description:
+              "Return full resources.md content. Keep false unless compact output is insufficient.",
+          },
+        },
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "remember_schedule_resource",
+      description:
+        "Append durable schedule resource notes to resources.md. Use for stable Supabase table names, dashboard slugs, custom tab ids, file paths, sheets, APIs, or other resources that future runs should reuse.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          schedule_id: {
+            type: "string",
+            format: "uuid",
+            description:
+              "Optional schedule UUID. Omit when called from a scheduled run.",
+          },
+          note: { type: "string", minLength: 3, maxLength: 260 },
+          notes: {
+            type: "array",
+            maxItems: 8,
+            items: { type: "string", minLength: 3, maxLength: 260 },
+          },
+        },
         additionalProperties: false,
       },
     },
@@ -2099,30 +2666,33 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           business_id: {
             type: "string",
             format: "uuid",
-            description: "UUID of the business to filter by (when scope=business).",
+            description:
+              "UUID of the business to filter by (when scope=business).",
           },
         },
         additionalProperties: false,
       },
     },
     ...(ALLOW_READ_SECRET
-      ? [{
-      name: "read_secret",
-      description:
-        "Read a workspace secret by its uppercase name. Returns plaintext and should only be enabled for trusted agents.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          name: {
-            type: "string",
-            minLength: 1,
-            description: "Exact name of the secret as configured.",
+      ? [
+          {
+            name: "read_secret",
+            description:
+              "Read a workspace secret by its uppercase name. Returns plaintext and should only be enabled for trusted agents.",
+            inputSchema: {
+              type: "object",
+              properties: {
+                name: {
+                  type: "string",
+                  minLength: 1,
+                  description: "Exact name of the secret as configured.",
+                },
+              },
+              required: ["name"],
+              additionalProperties: false,
+            },
           },
-        },
-        required: ["name"],
-        additionalProperties: false,
-      },
-    }]
+        ]
       : []),
     {
       name: "send_telegram_message",
@@ -2173,7 +2743,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           business_id: {
             type: "string",
             format: "uuid",
-            description: "UUID van de business waarvoor het dashboard gemaakt wordt.",
+            description:
+              "UUID van de business waarvoor het dashboard gemaakt wordt.",
           },
           nav_node_id: {
             type: "string",
@@ -2184,12 +2755,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           label: {
             type: "string",
             maxLength: 80,
-            description: "Tab-label dat in de nav verschijnt, bijv. 'YouTube stats' of 'Weekoverzicht'.",
+            description:
+              "Tab-label dat in de nav verschijnt, bijv. 'YouTube stats' of 'Weekoverzicht'.",
           },
           html_content: {
             type: "string",
             description:
-              "HTML-fragment heeft voorkeur: <main class=\"aio-dashboard\">...</main> met optioneel scoped <style>. " +
+              'HTML-fragment heeft voorkeur: <main class="aio-dashboard">...</main> met optioneel scoped <style>. ' +
               "Een volledige HTML-pagina mag ook, maar de inhoud wordt alsnog in AIO-dashboard styling gewrapt. " +
               "Geen externe iframes. Gebruik AIO CSS variables en body[data-theme] voor light/dark compatibility.",
           },
@@ -2223,7 +2795,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           html_content: {
             type: "string",
             description:
-              "HTML-fragment heeft voorkeur: <main class=\"aio-dashboard\">...</main> met optioneel scoped <style>. Mag inline CSS en vanilla JS bevatten. Gebruik AIO CSS variables en body[data-theme] voor light/dark compatibility.",
+              'HTML-fragment heeft voorkeur: <main class="aio-dashboard">...</main> met optioneel scoped <style>. Mag inline CSS en vanilla JS bevatten. Gebruik AIO CSS variables en body[data-theme] voor light/dark compatibility.',
           },
         },
         required: ["business", "topic", "label", "html_content"],
@@ -2272,7 +2844,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "list_custom_tabs",
-      description: "Geeft de bestaande custom (iframe) tabs van een business terug.",
+      description:
+        "Geeft de bestaande custom (iframe) tabs van een business terug.",
       inputSchema: {
         type: "object",
         properties: {
@@ -2427,10 +3000,17 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           agent_id: { type: "string", format: "uuid" },
           business_id: { type: "string", format: "uuid" },
           nav_node_id: { type: "string", format: "uuid" },
-          cron_expr: { type: "string", description: "5-field cron expression, e.g. */15 * * * * or 0 9 * * 1-5." },
+          cron_expr: {
+            type: "string",
+            description:
+              "5-field cron expression, e.g. */15 * * * * or 0 9 * * 1-5.",
+          },
           title: { type: "string", maxLength: 120 },
           description: { type: "string", maxLength: 500 },
-          instructions: { type: "string", description: "Prompt/instructions used when the cron fires." },
+          instructions: {
+            type: "string",
+            description: "Prompt/instructions used when the cron fires.",
+          },
           timezone: { type: "string", default: "Europe/Amsterdam" },
           enabled: { type: "boolean", default: true },
         },
@@ -2468,7 +3048,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "toggle_schedule",
-      description: "Start/stop a schedule by setting enabled=true or enabled=false.",
+      description:
+        "Start/stop a schedule by setting enabled=true or enabled=false.",
       inputSchema: {
         type: "object",
         properties: {
@@ -2498,7 +3079,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         type: "object",
         properties: {
           schedule_id: { type: "string", format: "uuid" },
-          prompt: { type: "string", description: "Optional override prompt for this one run." },
+          prompt: {
+            type: "string",
+            description: "Optional override prompt for this one run.",
+          },
         },
         required: ["schedule_id"],
         additionalProperties: false,
@@ -2548,6 +3132,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       break;
     case "get_supabase_context":
       result = getSupabaseContext();
+      break;
+    case "get_schedule_memory":
+      result = await getScheduleMemoryMcp(args);
+      break;
+    case "remember_schedule_resource":
+      result = await rememberScheduleResourceMcp(args);
       break;
     case "get_business_operating_snapshot":
       result = await getBusinessOperatingSnapshot(args);

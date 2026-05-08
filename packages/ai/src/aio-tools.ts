@@ -46,6 +46,55 @@ export const AIO_TOOLS: Record<string, AioToolSpec> = {
       "Return the local AIO Control Supabase/Postgres context: REST URL, aio_control schema, current workspace/business/topic scope, and safe direct-access rules. Does not return secrets.",
     parameters: { type: "object", properties: {}, additionalProperties: false },
   },
+  get_schedule_memory: {
+    name: "get_schedule_memory",
+    category: "read",
+    description:
+      "Read compact per-schedule memory for a cron/schedule run: last 3 run summaries, persistent resources/contracts, and file paths. Omit schedule_id inside a scheduled run; pass schedule_id when inspecting another schedule.",
+    parameters: {
+      type: "object",
+      properties: {
+        schedule_id: {
+          type: "string",
+          description:
+            "Optional schedule UUID. Omit when called from a scheduled run.",
+        },
+        include_full_resources: {
+          type: "boolean",
+          description:
+            "Default false. True returns the full resources.md text; keep false unless needed.",
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+  remember_schedule_resource: {
+    name: "remember_schedule_resource",
+    category: "meta",
+    description:
+      "Record a stable resource/contract for the current schedule memory, such as a Supabase table, dashboard slug, custom tab id, file path, sheet, API, or external resource. Omit schedule_id inside a scheduled run.",
+    parameters: {
+      type: "object",
+      properties: {
+        schedule_id: {
+          type: "string",
+          description:
+            "Optional schedule UUID. Omit when called from a scheduled run.",
+        },
+        note: {
+          type: "string",
+          description:
+            "One durable resource note, e.g. 'Supabase table outreach_leads is the stable lead store for this schedule.'",
+        },
+        notes: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional list of durable resource notes.",
+        },
+      },
+      additionalProperties: false,
+    },
+  },
   list_agents: {
     name: "list_agents",
     category: "read",
@@ -81,7 +130,8 @@ export const AIO_TOOLS: Record<string, AioToolSpec> = {
         },
         search: {
           type: "string",
-          description: "Optional search over topic name, slug, sub, path, and business name.",
+          description:
+            "Optional search over topic name, slug, sub, path, and business name.",
         },
       },
       additionalProperties: false,
@@ -95,8 +145,14 @@ export const AIO_TOOLS: Record<string, AioToolSpec> = {
     parameters: {
       type: "object",
       properties: {
-        business: { type: "string", description: "Business name, slug, sub, or UUID." },
-        topic: { type: "string", description: "Topic/nav-node name, slug, path, or UUID." },
+        business: {
+          type: "string",
+          description: "Business name, slug, sub, or UUID.",
+        },
+        topic: {
+          type: "string",
+          description: "Topic/nav-node name, slug, path, or UUID.",
+        },
       },
       required: ["business", "topic"],
       additionalProperties: false,
@@ -276,8 +332,7 @@ export const AIO_TOOLS: Record<string, AioToolSpec> = {
   update_agent: {
     name: "update_agent",
     category: "write",
-    description:
-      "Patch an existing agent. Only the supplied fields change.",
+    description: "Patch an existing agent. Only the supplied fields change.",
     parameters: {
       type: "object",
       properties: {
@@ -501,6 +556,7 @@ export function defaultToolsForKind(kind: string): string[] {
       // Router agents need to introspect siblings.
       return [
         "get_supabase_context",
+        "get_schedule_memory",
         "list_agents",
         "list_businesses",
         "list_review_learnings",
@@ -512,7 +568,9 @@ export function defaultToolsForKind(kind: string): string[] {
       // edge-case clarifications.
       return [
         "get_supabase_context",
+        "get_schedule_memory",
         "list_review_learnings",
+        "remember_schedule_resource",
         "ask_followup",
         "request_human_review",
       ];

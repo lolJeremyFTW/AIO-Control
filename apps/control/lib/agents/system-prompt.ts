@@ -21,16 +21,23 @@ import { getSpendSnapshot } from "../dispatch/spend-limit";
 
 // Static catalogue of known MCP servers and the tools they expose.
 // Updated when new servers are added to packages/ai/src/mcp/host.ts.
-const MCP_TOOL_CATALOGUE: Record<string, { description: string; tools: string[] }> = {
+const MCP_TOOL_CATALOGUE: Record<
+  string,
+  { description: string; tools: string[] }
+> = {
   bash: {
-    description: "bash shell op de VPS — commando's uitvoeren, scripts draaien, bestanden lezen/schrijven",
+    description:
+      "bash shell op de VPS — commando's uitvoeren, scripts draaien, bestanden lezen/schrijven",
     tools: ["execute_code", "cli_tool", "bash"],
   },
   aio: {
-    description: "AIO Control platform — agents, businesses, runs, Telegram notificaties, dashboards/tabs aanmaken",
+    description:
+      "AIO Control platform — agents, businesses, runs, Telegram notificaties, dashboards/tabs aanmaken",
     tools: [
       "list_businesses",
       "get_supabase_context",
+      "get_schedule_memory",
+      "remember_schedule_resource",
       "get_business_operating_snapshot",
       "list_nav_nodes",
       "resolve_topic",
@@ -53,20 +60,37 @@ const MCP_TOOL_CATALOGUE: Record<string, { description: string; tools: string[] 
     ],
   },
   fetch: {
-    description: "HTTP fetch — willekeurige URLs ophalen, HTML wordt automatisch gestript naar plain text",
+    description:
+      "HTTP fetch — willekeurige URLs ophalen, HTML wordt automatisch gestript naar plain text",
     tools: ["fetch"],
   },
   playwright: {
-    description: "Chromium browser automation — navigeren, klikken, forms invullen, screenshots",
-    tools: ["browser_navigate", "browser_click", "browser_type", "browser_fill", "browser_screenshot", "browser_evaluate"],
+    description:
+      "Chromium browser automation — navigeren, klikken, forms invullen, screenshots",
+    tools: [
+      "browser_navigate",
+      "browser_click",
+      "browser_type",
+      "browser_fill",
+      "browser_screenshot",
+      "browser_evaluate",
+    ],
   },
   minimax: {
     description: "MiniMax web search + afbeelding begrijpen",
     tools: ["web_search", "understand_image"],
   },
   filesystem: {
-    description: "bestandssysteem — lezen, schrijven, directory listing (sandbox: /home/jeremy)",
-    tools: ["read_file", "write_file", "list_directory", "create_directory", "move_file", "search_files"],
+    description:
+      "bestandssysteem — lezen, schrijven, directory listing (sandbox: /home/jeremy)",
+    tools: [
+      "read_file",
+      "write_file",
+      "list_directory",
+      "create_directory",
+      "move_file",
+      "search_files",
+    ],
   },
   firecrawl: {
     description: "web scraping + crawling — gestructureerde data extractie",
@@ -77,14 +101,22 @@ const MCP_TOOL_CATALOGUE: Record<string, { description: string; tools: string[] 
     tools: ["brave_web_search", "brave_local_search"],
   },
   memory: {
-    description: "kennisgraaf opslag — entiteiten, relaties, observaties opslaan en teruglezen",
-    tools: ["create_entities", "add_observations", "search_nodes", "open_nodes", "create_relations"],
+    description:
+      "kennisgraaf opslag — entiteiten, relaties, observaties opslaan en teruglezen",
+    tools: [
+      "create_entities",
+      "add_observations",
+      "search_nodes",
+      "open_nodes",
+      "create_relations",
+    ],
   },
 };
 
 const AIO_READ_ONLY_TOOLS = new Set([
   "list_businesses",
   "get_supabase_context",
+  "get_schedule_memory",
   "get_business_operating_snapshot",
   "list_nav_nodes",
   "resolve_topic",
@@ -140,12 +172,15 @@ export async function buildAgentSystemPrompt(
     .maybeSingle();
   const allowedSkillIds = ((agentSelfRow?.allowed_skills as string[] | null) ??
     []) as string[];
-  const agentConfig = (agentSelfRow?.config as Record<string, unknown> | null) ?? {};
-  const configuredMcpServersRaw = (agentConfig.mcpServers as string[] | null) ?? [];
+  const agentConfig =
+    (agentSelfRow?.config as Record<string, unknown> | null) ?? {};
+  const configuredMcpServersRaw =
+    (agentConfig.mcpServers as string[] | null) ?? [];
   const mcpPermissions =
-    (agentConfig.mcpPermissions as
-      | { aio?: "off" | "ro" | "rw"; filesystem?: "off" | "ro" | "rw" }
-      | null) ?? {};
+    (agentConfig.mcpPermissions as {
+      aio?: "off" | "ro" | "rw";
+      filesystem?: "off" | "ro" | "rw";
+    } | null) ?? {};
   const usesNativeMcpHost =
     agent.provider === "claude" ||
     agent.provider === "minimax" ||
@@ -169,57 +204,56 @@ export async function buildAgentSystemPrompt(
     skillsRes,
     navNodeRes,
     reviewLessonsRes,
-  ] =
-    await Promise.all([
-      agent.business_id
-        ? admin
-            .from("businesses")
-            .select("name, sub, description, mission, targets")
-            .eq("id", agent.business_id)
-            .maybeSingle()
-        : Promise.resolve({ data: null }),
-      admin
-        .from("workspaces")
-        .select("name, default_system_prompt")
-        .eq("id", agent.workspace_id)
-        .maybeSingle(),
-      admin
-        .from("integrations")
-        .select("provider, name, status, business_id")
-        .eq("workspace_id", agent.workspace_id)
-        .eq("status", "connected"),
-      admin
-        .from("agents")
-        .select("id, name, kind, provider, business_id")
-        .eq("workspace_id", agent.workspace_id)
-        .is("archived_at", null)
-        .neq("id", agent.id),
-      agent.business_id
-        ? getSpendSnapshot(agent.business_id)
-        : Promise.resolve(null),
-      allowedSkillIds.length > 0
-        ? admin
-            .from("skills")
-            .select("id, name, description, body")
-            .in("id", allowedSkillIds)
-            .is("archived_at", null)
-        : Promise.resolve({ data: [] }),
-      agent.nav_node_id
-        ? admin
-            .from("nav_nodes")
-            .select("id, name, slug, sub")
-            .eq("id", agent.nav_node_id)
-            .maybeSingle()
-        : Promise.resolve({ data: null }),
-      admin
-        .from("agent_review_lessons")
-        .select(
-          "business_id, nav_node_id, lesson_type, outcome, confidence, title, body, created_at",
-        )
-        .eq("workspace_id", agent.workspace_id)
-        .order("created_at", { ascending: false })
-        .limit(25),
-    ]);
+  ] = await Promise.all([
+    agent.business_id
+      ? admin
+          .from("businesses")
+          .select("name, sub, description, mission, targets")
+          .eq("id", agent.business_id)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+    admin
+      .from("workspaces")
+      .select("name, default_system_prompt")
+      .eq("id", agent.workspace_id)
+      .maybeSingle(),
+    admin
+      .from("integrations")
+      .select("provider, name, status, business_id")
+      .eq("workspace_id", agent.workspace_id)
+      .eq("status", "connected"),
+    admin
+      .from("agents")
+      .select("id, name, kind, provider, business_id")
+      .eq("workspace_id", agent.workspace_id)
+      .is("archived_at", null)
+      .neq("id", agent.id),
+    agent.business_id
+      ? getSpendSnapshot(agent.business_id)
+      : Promise.resolve(null),
+    allowedSkillIds.length > 0
+      ? admin
+          .from("skills")
+          .select("id, name, description, body")
+          .in("id", allowedSkillIds)
+          .is("archived_at", null)
+      : Promise.resolve({ data: [] }),
+    agent.nav_node_id
+      ? admin
+          .from("nav_nodes")
+          .select("id, name, slug, sub")
+          .eq("id", agent.nav_node_id)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+    admin
+      .from("agent_review_lessons")
+      .select(
+        "business_id, nav_node_id, lesson_type, outcome, confidence, title, body, created_at",
+      )
+      .eq("workspace_id", agent.workspace_id)
+      .order("created_at", { ascending: false })
+      .limit(25),
+  ]);
 
   type ReviewLessonRow = {
     business_id: string | null;
@@ -231,16 +265,20 @@ export async function buildAgentSystemPrompt(
     body: string;
     created_at: string;
   };
-  const relevantReviewLessons = ((reviewLessonsRes.data ?? []) as ReviewLessonRow[])
-    .filter((lesson) =>
-      !agent.business_id ||
-      lesson.business_id == null ||
-      lesson.business_id === agent.business_id,
+  const relevantReviewLessons = (
+    (reviewLessonsRes.data ?? []) as ReviewLessonRow[]
+  )
+    .filter(
+      (lesson) =>
+        !agent.business_id ||
+        lesson.business_id == null ||
+        lesson.business_id === agent.business_id,
     )
-    .filter((lesson) =>
-      !agent.nav_node_id ||
-      lesson.nav_node_id == null ||
-      lesson.nav_node_id === agent.nav_node_id,
+    .filter(
+      (lesson) =>
+        !agent.nav_node_id ||
+        lesson.nav_node_id == null ||
+        lesson.nav_node_id === agent.nav_node_id,
     )
     .slice(0, 8);
 
@@ -265,12 +303,12 @@ export async function buildAgentSystemPrompt(
   lines.push("## Hoe je werkt");
   lines.push(
     "- **Act in-turn.** Als de gebruiker een actie vraagt, voer 'm uit " +
-      "in dezelfde turn. Niet bevestigen-en-wachten, niet \"zal ik...?\" " +
+      'in dezelfde turn. Niet bevestigen-en-wachten, niet "zal ik...?" ' +
       "vragen voor wat al duidelijk is.",
   );
   lines.push(
     "- **Continue until done or blocked.** Stop niet halverwege een " +
-      "taak om \"is dit goed?\" te vragen — werk door tot 't af is, of " +
+      'taak om "is dit goed?" te vragen — werk door tot \'t af is, of ' +
       "tot je daadwerkelijk geblokkeerd bent door iets concreets.",
   );
   lines.push(
@@ -329,9 +367,9 @@ export async function buildAgentSystemPrompt(
   lines.push("");
   lines.push("## Wat je nooit doet");
   lines.push(
-    "- **Geen disclaimers** zoals \"ik heb geen toegang tot je " +
-      "data\", \"dit is een template, vul je eigen cijfers in\", of " +
-      "\"ik weet niet welke runs er zijn\". Fout — de data zit in dit " +
+    '- **Geen disclaimers** zoals "ik heb geen toegang tot je ' +
+      'data", "dit is een template, vul je eigen cijfers in", of ' +
+      '"ik weet niet welke runs er zijn". Fout — de data zit in dit ' +
       "systeem, je context hieronder en je tools geven je toegang.",
   );
   lines.push(
@@ -340,8 +378,8 @@ export async function buildAgentSystemPrompt(
       "in één korte directe zin aan de operator.",
   );
   lines.push(
-    "- **Geen tool-call aankondigingen** zoals \"ik ga nu de zoek-tool " +
-      "gebruiken\". Gewoon aanroepen. De UI laat de tool-call zien.",
+    '- **Geen tool-call aankondigingen** zoals "ik ga nu de zoek-tool ' +
+      'gebruiken". Gewoon aanroepen. De UI laat de tool-call zien.',
   );
   lines.push(
     "- **Geen mission re-interpretation.** Business-context, mission en " +
@@ -368,18 +406,21 @@ export async function buildAgentSystemPrompt(
     lines.push(
       "De volgende MCP-servers zijn geconfigureerd en starten bij elke run. " +
         "Gebruik de exacte tool-namen zoals hieronder — roep ze gewoon aan, " +
-        "geen aankondiging, geen \"zal ik...?\".",
+        'geen aankondiging, geen "zal ik...?".',
     );
     for (const serverId of configuredMcpServers) {
       if (serverId === "aio" && mcpPermissions.aio === "off") continue;
-      if (serverId === "filesystem" && mcpPermissions.filesystem === "off") continue;
+      if (serverId === "filesystem" && mcpPermissions.filesystem === "off")
+        continue;
       const cat = MCP_TOOL_CATALOGUE[serverId];
       if (cat) {
         const toolNames =
           serverId === "aio" && mcpPermissions.aio === "ro"
             ? cat.tools.filter((t) => AIO_READ_ONLY_TOOLS.has(t))
             : cat.tools;
-        const toolStr = toolNames.map((t) => `\`${serverId}__${t}\``).join(", ");
+        const toolStr = toolNames
+          .map((t) => `\`${serverId}__${t}\``)
+          .join(", ");
         lines.push(`- **${serverId}**: ${cat.description} → tools: ${toolStr}`);
       } else {
         lines.push(`- **${serverId}**: custom MCP server (tool-namen via API)`);
@@ -417,7 +458,7 @@ export async function buildAgentSystemPrompt(
   }
   lines.push(
     "Als je later in dezelfde chat wilt terugkomen met een korte melding " +
-      "(bijvoorbeeld \"ik ping je over 2 minuten\"), gebruik dan de " +
+      '(bijvoorbeeld "ik ping je over 2 minuten"), gebruik dan de ' +
       "ingebouwde tool `schedule_chat_ping`. Zeg dat niet alleen als tekst.",
   );
 
@@ -460,6 +501,20 @@ export async function buildAgentSystemPrompt(
   lines.push(
     "- Voor self-improvement gebruik je `aio__propose_improvement` wanneer die tool beschikbaar is. Die tool maakt/herstelt de opslag zelf en voorkomt locken op ontbrekende tabellen.",
   );
+  lines.push("");
+  lines.push("## Schedule memory");
+  lines.push(
+    "- Cron/schedule-runs hebben compact geheugen op disk: `status.md` bevat alleen de laatste 3 run-samenvattingen; `resources.md` bevat vaste Supabase-tabellen, dashboards, tabs, files, sheets, APIs en andere duurzame resources.",
+  );
+  if (hasAioMcp) {
+    lines.push(
+      "- Gebruik `aio__get_schedule_memory` als je schedule-status/resources wil inspecteren. Gebruik `aio__remember_schedule_resource` of zet `Resource note: ...` in je eindantwoord wanneer je een duurzame resource kiest of maakt.",
+    );
+  } else {
+    lines.push(
+      "- Als een AIO function-tool `get_schedule_memory`/`remember_schedule_resource` beschikbaar is, gebruik die voor schedule-memory. Als er alleen een `<schedule_memory>` blok in de input staat: hergebruik de resources daarin en maak niet elke run nieuwe tabellen, dashboards of files.",
+    );
+  }
 
   const nowDate = new Date();
   const nowFormatted = nowDate.toLocaleString("nl-NL", {
@@ -477,7 +532,7 @@ export async function buildAgentSystemPrompt(
   lines.push(`- Nu: **${nowFormatted}** (Europe/Amsterdam)`);
   lines.push(
     "- Datums refereren altijd naar dit moment, niet naar je training-" +
-      "cutoff. \"Vorige week\" = de 7 dagen vóór bovenstaande tijdstamp.",
+      'cutoff. "Vorige week" = de 7 dagen vóór bovenstaande tijdstamp.',
   );
 
   // ── Wie ben jij ────────────────────────────────────────────────────
@@ -490,7 +545,9 @@ export async function buildAgentSystemPrompt(
       (agent.model ? ` · Model: ${agent.model}` : ""),
   );
   if (!agent.business_id) {
-    lines.push(`- Scope: **workspace-global** (niet aan een business gekoppeld)`);
+    lines.push(
+      `- Scope: **workspace-global** (niet aan een business gekoppeld)`,
+    );
   }
 
   // ── Beschikbare integrations ───────────────────────────────────────
@@ -527,7 +584,9 @@ export async function buildAgentSystemPrompt(
     lines.push("");
     lines.push("## Andere agents in deze workspace");
     for (const s of sibs.slice(0, 30)) {
-      const scope = s.business_id ? `business ${s.business_id.slice(0, 8)}` : "global";
+      const scope = s.business_id
+        ? `business ${s.business_id.slice(0, 8)}`
+        : "global";
       lines.push(`- "${s.name}" (${s.provider} · ${s.kind}, ${scope})`);
     }
     if (sibs.length > 30) {
@@ -580,7 +639,9 @@ export async function buildAgentSystemPrompt(
           `/ €${(spend.daily_limit_cents / 100).toFixed(2)} daily (${pct}%)`,
       );
     } else {
-      lines.push(`- Vandaag: €${(spend.cost_24h_cents / 100).toFixed(2)} (geen daily limit)`);
+      lines.push(
+        `- Vandaag: €${(spend.cost_24h_cents / 100).toFixed(2)} (geen daily limit)`,
+      );
     }
     if (spend.monthly_limit_cents != null) {
       const pct = Math.round(
@@ -591,7 +652,9 @@ export async function buildAgentSystemPrompt(
           `/ €${(spend.monthly_limit_cents / 100).toFixed(2)} monthly (${pct}%)`,
       );
     } else {
-      lines.push(`- Deze maand: €${(spend.cost_30d_cents / 100).toFixed(2)} (geen monthly limit)`);
+      lines.push(
+        `- Deze maand: €${(spend.cost_30d_cents / 100).toFixed(2)} (geen monthly limit)`,
+      );
     }
   }
 
@@ -652,9 +715,12 @@ export async function buildAgentSystemPrompt(
     );
   }
 
-  const navNode = navNodeRes.data as
-    | { id: string; name: string; slug: string; sub?: string | null }
-    | null;
+  const navNode = navNodeRes.data as {
+    id: string;
+    name: string;
+    slug: string;
+    sub?: string | null;
+  } | null;
   if (navNode) {
     lines.push("");
     lines.push("## Actief topic");
