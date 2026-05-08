@@ -1,8 +1,10 @@
 // /[ws]/settings/channels - Slack and Discord notification targets.
 
 import { notFound, redirect } from "next/navigation";
+import { headers } from "next/headers";
 
 import { NotificationTargetsPanel } from "../../../../components/NotificationTargetsPanel";
+import { ProviderSetupKit } from "../../../../components/ProviderSetupKit";
 import { SettingsSectionCard } from "../../../../components/SettingsSectionCard";
 import {
   getCurrentUser,
@@ -25,7 +27,8 @@ export default async function ChannelsSettingsPage({ params }: Props) {
   if (!workspace) notFound();
 
   const supabase = await createSupabaseServerClient();
-  const [businesses, { data: navRows }, { data: rows }, { t }] =
+  const hdrsPromise = headers();
+  const [businesses, { data: navRows }, { data: rows }, { t }, hdrs] =
     await Promise.all([
       listBusinesses(workspace.id),
       supabase
@@ -44,7 +47,13 @@ export default async function ChannelsSettingsPage({ params }: Props) {
         .in("provider", ["slack", "discord"])
         .order("created_at", { ascending: true }),
       getDict(),
+      hdrsPromise,
     ]);
+  const host =
+    hdrs.get("x-forwarded-host") ?? hdrs.get("host") ?? "aio.tromptech.life";
+  const proto = hdrs.get("x-forwarded-proto") ?? "https";
+  const publicOrigin =
+    process.env.NEXT_PUBLIC_TRIGGER_ORIGIN ?? `${proto}://${host}`;
 
   return (
     <>
@@ -54,6 +63,10 @@ export default async function ChannelsSettingsPage({ params }: Props) {
       </div>
 
       <SettingsSectionCard title={t("settings.section.channels")}>
+        <ProviderSetupKit
+          publicOrigin={publicOrigin}
+          workspaceSlug={workspace.slug}
+        />
         <NotificationTargetsPanel
           workspaceSlug={workspace.slug}
           workspaceId={workspace.id}
