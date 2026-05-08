@@ -3735,6 +3735,8 @@ button.crumb-cta,
   font-weight: 700;
   font-size: 13px;
   cursor: pointer;
+  font-family: var(--type);
+  text-decoration: none;
 }
 
 .chatbox {

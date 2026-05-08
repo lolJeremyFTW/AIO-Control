@@ -2,6 +2,8 @@
 // When the workspace has zero businesses we show a sketchy empty-state CTA
 // instead of an empty grid.
 
+import Link from "next/link";
+
 import { PlusIcon } from "@aio/ui/icon";
 
 import {
@@ -99,9 +101,12 @@ export default async function WorkspaceDashboardPage({ params }: Props) {
         <div className="empty-state">
           <h2>{t("dashboard.queueEmpty.title")}</h2>
           <p>{t("dashboard.queueEmpty.body")}</p>
-          <button className="cta">
+          <Link
+            className="cta"
+            href={`/${workspace.slug}/business/${dashboardBusinesses[0]!.slug}/agents`}
+          >
             <PlusIcon /> {t("dashboard.queueEmpty.cta")}
-          </button>
+          </Link>
         </div>
       ) : (
         <QueueGrid items={dashboardQueue} workspaceSlug={workspace.slug} />
