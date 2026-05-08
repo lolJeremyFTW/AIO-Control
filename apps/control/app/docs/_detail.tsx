@@ -2,20 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { docPages, getDocPage } from "../_content";
-import { DocsNav } from "../_nav";
-import styles from "../docs.module.css";
+import { docPages, getDocPage } from "./_content";
+import { DocsNav } from "./_nav";
+import styles from "./docs.module.css";
 
-type Props = {
-  params: Promise<{ slug: string }>;
-};
-
-export function generateStaticParams() {
-  return docPages.map((page) => ({ slug: page.slug }));
-}
-
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { slug } = await params;
+export function generateDocMetadata(slug: string): Metadata {
   const page = getDocPage(slug);
   if (!page) {
     return {
@@ -29,8 +20,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-export default async function DocDetailPage({ params }: Props) {
-  const { slug } = await params;
+type DocDetailProps = {
+  slug: string;
+};
+
+export function DocDetail({ slug }: DocDetailProps) {
   const page = getDocPage(slug);
   if (!page) notFound();
 
