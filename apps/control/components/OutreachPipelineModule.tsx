@@ -159,6 +159,9 @@ export function OutreachPipelineModule({
   const [outreached, setOutreached] = useState(stats.moduleOutreached);
   const [info, setInfo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [collapsedStepIds, setCollapsedStepIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [pending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -359,6 +362,30 @@ export function OutreachPipelineModule({
       ...current,
       steps: current.steps.filter((_, i) => i !== index),
     }));
+  };
+
+  const duplicateStep = (index: number) => {
+    setBlueprint((current) => {
+      const source = current.steps[index];
+      if (!source) return current;
+      const copy: PipelineStep = {
+        ...source,
+        id: `${source.id}_copy_${Date.now().toString(36)}`,
+        label: `${source.label} kopie`,
+      };
+      const steps = [...current.steps];
+      steps.splice(index + 1, 0, copy);
+      return { ...current, steps };
+    });
+  };
+
+  const toggleStepCollapsed = (stepKey: string) => {
+    setCollapsedStepIds((current) => {
+      const next = new Set(current);
+      if (next.has(stepKey)) next.delete(stepKey);
+      else next.add(stepKey);
+      return next;
+    });
   };
 
   const moveStep = (index: number, direction: -1 | 1) => {
@@ -594,8 +621,11 @@ export function OutreachPipelineModule({
         </div>
 
         <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-          {blueprint.steps.map((step, index) => (
-            <div key={`${step.id}-${index}`} style={stepEditorStyle}>
+          {blueprint.steps.map((step, index) => {
+            const stepKey = `${step.id}-${index}`;
+            const collapsed = collapsedStepIds.has(stepKey);
+            return (
+            <div key={stepKey} style={stepEditorStyle}>
               <div style={stepEditorHeaderStyle}>
                 <span style={stepNumberBadgeStyle}>{String(index + 1).padStart(2, "0")}</span>
                 <input
@@ -625,12 +655,28 @@ export function OutreachPipelineModule({
                 </div>
                 <button
                   type="button"
+                  onClick={() => duplicateStep(index)}
+                  style={secondaryButtonStyle(false)}
+                >
+                  Dupliceer
+                </button>
+                <button
+                  type="button"
+                  onClick={() => toggleStepCollapsed(stepKey)}
+                  style={secondaryButtonStyle(false)}
+                >
+                  {collapsed ? "Open" : "Klap in"}
+                </button>
+                <button
+                  type="button"
                   onClick={() => removeStep(index)}
                   style={dangerButtonStyle(false)}
                 >
                   Verwijder
                 </button>
               </div>
+              {!collapsed && (
+              <>
               <div style={stepFormGridStyle}>
                 <Field label="Subagent naam">
                   <input
@@ -743,8 +789,11 @@ export function OutreachPipelineModule({
                 />
                 Geen brede context; alleen orchestrator-handoff naar deze subagent.
               </label>
+              </>
+              )}
             </div>
-          ))}
+            );
+          })}
         </div>
       </section>
 
@@ -1599,7 +1648,7 @@ const stepEditorStyle: React.CSSProperties = {
 
 const stepEditorHeaderStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "34px minmax(0, 1fr) auto auto",
+  gridTemplateColumns: "34px minmax(0, 1fr) auto auto auto auto",
   gap: 8,
   alignItems: "center",
 };
