@@ -67,11 +67,20 @@ export default async function BusinessSchedulesPage({ params }: Props) {
   ]);
   const biz = findBusiness(businesses, bizId);
   if (!biz) notFound();
-  const [schedules, runs, navNodes] = await Promise.all([
-    listSchedulesForBusiness(biz.id),
-    listRecentRunsForBusiness(biz.id, 12),
-    listFlatNavNodes(biz.id),
-  ]);
+  const [schedules, runs, navNodes, { data: pipelineConfig }] =
+    await Promise.all([
+      listSchedulesForBusiness(biz.id),
+      listRecentRunsForBusiness(biz.id, 12),
+      listFlatNavNodes(biz.id),
+      supabase
+        .from("outreach_pipeline_configs")
+        .select(
+          "id, enabled, interval_seconds, batch_size, total_outreached_count",
+        )
+        .eq("workspace_id", workspace.id)
+        .eq("business_id", biz.id)
+        .maybeSingle(),
+    ]);
   const agents = allAgents.filter(
     (a) => a.business_id === biz.id || a.business_id === null,
   );
@@ -119,6 +128,87 @@ export default async function BusinessSchedulesPage({ params }: Props) {
             navNodes={navNodes}
           />
         )}
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(0, 1fr) auto",
+          alignItems: "center",
+          gap: 16,
+          margin: "0 0 18px",
+          padding: 16,
+          border: "1.5px solid var(--app-border)",
+          borderRadius: 8,
+          background: "var(--app-card)",
+        }}
+      >
+        <div>
+          <h2
+            style={{
+              margin: "0 0 6px",
+              fontSize: 18,
+              fontWeight: 800,
+              letterSpacing: 0,
+            }}
+          >
+            Outreach pipeline
+          </h2>
+          <p className="sub" style={{ margin: 0 }}>
+            Silent loop naast cron jobs met agent-pings, QA gate en duplicate
+            checks.
+          </p>
+        </div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            flexWrap: "wrap",
+            justifyContent: "flex-end",
+          }}
+        >
+          <span
+            style={{
+              padding: "7px 10px",
+              border: "1px solid var(--app-border)",
+              borderRadius: 8,
+              fontSize: 12,
+              fontWeight: 800,
+              background: "var(--app-card-2)",
+            }}
+          >
+            {pipelineConfig?.enabled ? "Actief" : "Gepauzeerd"}
+          </span>
+          <span
+            style={{
+              padding: "7px 10px",
+              border: "1px solid var(--app-border)",
+              borderRadius: 8,
+              fontSize: 12,
+              fontWeight: 800,
+              background: "var(--app-card-2)",
+            }}
+          >
+            {pipelineConfig?.total_outreached_count ?? 0} outreached
+          </span>
+          <Link
+            href={`/${workspace.slug}/business/${biz.slug}/outreach-pipeline`}
+            style={{
+              padding: "9px 14px",
+              border: "1.5px solid var(--app-fg)",
+              borderRadius: 8,
+              background: "var(--app-fg)",
+              color: "var(--app-bg)",
+              fontWeight: 800,
+              fontSize: 13,
+              textDecoration: "none",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {pipelineConfig ? "Open pipeline" : "Pipeline aanmaken"}
+          </Link>
+        </div>
       </div>
 
       <SchedulesPanel

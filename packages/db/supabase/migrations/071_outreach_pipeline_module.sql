@@ -100,6 +100,9 @@ create index if not exists idx_outreach_pipeline_events_business_time
 create index if not exists idx_outreach_pipeline_events_run_time
   on aio_control.outreach_pipeline_events(run_id, created_at asc);
 
+grant usage, select on sequence aio_control.outreach_pipeline_events_id_seq
+  to authenticated, service_role;
+
 alter table aio_control.outreach_pipeline_configs enable row level security;
 alter table aio_control.outreach_pipeline_runs enable row level security;
 alter table aio_control.outreach_pipeline_events enable row level security;
