@@ -479,7 +479,7 @@ export class McpHost {
     };
     // -----------------------------------------------------------------------
 
-    let stderrChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
     transport.stderr?.on("data", (chunk: Buffer) => {
       // Stderr fires once the child starts — another PID capture opportunity
       // for servers that write startup messages (filesystem, memory, etc.).

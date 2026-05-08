@@ -289,7 +289,7 @@ Use AIO Control dashboard styling only:
 `.trim();
 
 function aioDashboardShell(html: string): string {
-  const themeBoot = `<script>(function(){try{var t=localStorage.getItem('aio-theme')||(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');document.body.setAttribute('data-theme',t);document.documentElement.style.colorScheme=t;}catch(e){}})();<\/script>`;
+  const themeBoot = `<script>(function(){try{var t=localStorage.getItem('aio-theme')||(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');document.body.setAttribute('data-theme',t);document.documentElement.style.colorScheme=t;}catch(e){}})();</script>`;
   const style = `<style>
 :root{color-scheme:dark;--tt-green:#39b255;--tt-green-soft:#6fd189;--rose:#e6526b;--amber:#ffb800;--app-bg:#15171a;--app-fg:#f0eee5;--app-fg-2:#b9b6a8;--app-fg-3:rgba(255,255,255,.55);--app-border:rgba(255,255,255,.1);--app-border-2:rgba(255,255,255,.06);--app-card:#1a1d1f;--app-card-2:rgba(255,255,255,.04);--type:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 body[data-theme="light"]{color-scheme:light;--app-bg:#f6f4ee;--app-fg:#1a1c1a;--app-fg-2:#3b3d3a;--app-fg-3:#6a6c66;--app-border:#b6b3a6;--app-border-2:#dcd7c8;--app-card:#fff;--app-card-2:#f1eee3}
@@ -1125,7 +1125,7 @@ async function resolveReviewScope(input: {
 }): Promise<
   { business_id: string; nav_node_id: string | null } | { error: string }
 > {
-  let navNodeId = input.nav_node_id ?? (CURRENT_NAV_NODE_ID || null);
+  const navNodeId = input.nav_node_id ?? (CURRENT_NAV_NODE_ID || null);
   let businessId = input.business_id ?? (CURRENT_BUSINESS_ID || null);
 
   if (navNodeId) {

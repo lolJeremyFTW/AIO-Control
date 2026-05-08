@@ -788,6 +788,7 @@ type ToolCall = {
   function: { name: string; arguments: string };
 };
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function* streamMinimaxWithTools(
   opts: StreamChatOptions,
   serverIds: string[],
