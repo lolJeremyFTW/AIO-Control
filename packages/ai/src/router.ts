@@ -175,9 +175,7 @@ function withDefaultAioMcp(opts: StreamChatOptions): StreamChatOptions {
   if (
     opts.provider !== "claude" &&
     opts.provider !== "minimax" &&
-    opts.provider !== "openai_codex" &&
-    opts.provider !== "openrouter" &&
-    opts.provider !== "ollama"
+    opts.provider !== "openai_codex"
   ) {
     return opts;
   }

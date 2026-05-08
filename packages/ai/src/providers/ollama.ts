@@ -92,10 +92,11 @@ export async function* streamOllama(
   }
 
   if (!response.ok || !response.body) {
+    const raw = await response.text().catch(() => response.statusText);
     yield {
       type: "error",
       code: `ollama_${response.status}`,
-      message: await response.text().catch(() => response.statusText),
+      message: friendlyOllamaError(raw),
     };
     return;
   }
@@ -323,10 +324,11 @@ async function* streamOllamaTurn(args: {
   }
 
   if (!response.ok || !response.body) {
+    const raw = await response.text().catch(() => response.statusText);
     yield {
       kind: "error",
       code: `ollama_${response.status}`,
-      message: await response.text().catch(() => response.statusText),
+      message: friendlyOllamaError(raw),
     };
     return;
   }
@@ -395,4 +397,14 @@ function buildMcpEnv(opts: StreamChatOptions): Record<string, string> {
 
 function getHopsMax(config: { maxHops?: number }): number {
   return config.maxHops && config.maxHops > 0 ? config.maxHops : ENV_HOPS_MAX;
+}
+
+function friendlyOllamaError(raw: string): string {
+  if (/does not support tools/i.test(raw)) {
+    return (
+      "Dit Ollama-model ondersteunt geen tool/MCP calls. Verwijder MCP servers " +
+      "voor deze agent of kies een Ollama model met tool support."
+    );
+  }
+  return raw;
 }
