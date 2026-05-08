@@ -448,7 +448,20 @@ export default async function NavNodePage({ params, searchParams }: Props) {
       .eq("nav_node_id", current.id)
       .maybeSingle();
 
-    if (!tab) notFound();
+    if (!tab) {
+      const { data: fallbackTab } = await supabase
+        .from("custom_tabs")
+        .select("id")
+        .eq("business_id", biz.id)
+        .eq("nav_node_id", current.id)
+        .order("sort_order", { ascending: true })
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (fallbackTab?.id) redirect(`${topicBaseHref}/tab/${fallbackTab.id}`);
+      redirect(topicBaseHref);
+    }
     const tabUrl = normalizeDashboardUrl(tab.url as string);
 
     return (
