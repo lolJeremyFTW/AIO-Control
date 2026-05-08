@@ -149,8 +149,15 @@ export function TalkModule({ agents, workspaceSlug, defaultAgentId }: Props) {
     // The hook transitions back to idle automatically after this returns.
   }, []); // stable — reads agentId/workspaceSlug via refs
 
-  const { state, isRecording, error: recorderError, volume, start, stop, reset } =
-    useRecorder({ onComplete: handleComplete, silenceMs: 2000 });
+  const {
+    state,
+    isRecording,
+    error: recorderError,
+    volume,
+    start,
+    stop,
+    reset,
+  } = useRecorder({ onComplete: handleComplete, silenceMs: 2000 });
 
   const isProcessing = state === "processing";
   const isRequesting = state === "requesting";
@@ -170,7 +177,10 @@ export function TalkModule({ agents, workspaceSlug, defaultAgentId }: Props) {
         setOpen(false);
       }
     };
-    const t = setTimeout(() => document.addEventListener("mousedown", onDoc), 0);
+    const t = setTimeout(
+      () => document.addEventListener("mousedown", onDoc),
+      0,
+    );
     return () => {
       clearTimeout(t);
       document.removeEventListener("mousedown", onDoc);
@@ -181,6 +191,23 @@ export function TalkModule({ agents, workspaceSlug, defaultAgentId }: Props) {
   useEffect(() => {
     if (isRecording || isRequesting) setUiError(null);
   }, [isRecording, isRequesting]);
+
+  // Permission-denied and device errors should be visible, but they
+  // should not leave the header in a permanent red "closed" state.
+  // Browser-level mic denial can only be fixed by the user, so after a
+  // short acknowledgement window we restore the idle mic affordance.
+  useEffect(() => {
+    if (!uiError && !recorderError) return;
+    const id = window.setTimeout(() => {
+      setUiError(null);
+      if (state === "error") {
+        reset();
+      }
+    }, 3500);
+    return () => {
+      window.clearTimeout(id);
+    };
+  }, [recorderError, reset, state, uiError]);
 
   // Revoke blob URL on unmount.
   useEffect(() => {
