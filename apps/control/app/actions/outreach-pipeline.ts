@@ -267,6 +267,14 @@ function sanitizeSingleBlueprint(value: unknown, index: number): {
       context_policy: cleanText(obj.context_policy, "handoff_only").slice(0, 40),
       needs: cleanText(obj.needs, step.task).slice(0, 220),
       qa_rule: cleanText(obj.qa_rule, "Orchestrator controleert output.").slice(0, 220),
+      positive_prompt: cleanText(
+        obj.positive_prompt,
+        "Doe precies wat de orchestrator vraagt en lever compact bewijs.",
+      ).slice(0, 500),
+      negative_prompt: cleanText(
+        obj.negative_prompt,
+        "Geen aannames, geen brede context ophalen, geen externe actie uitvoeren.",
+      ).slice(0, 500),
     };
   });
   return {

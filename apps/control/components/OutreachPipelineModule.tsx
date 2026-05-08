@@ -21,6 +21,8 @@ type PipelineStep = {
   context_policy: "handoff_only" | "none";
   needs: string;
   qa_rule: string;
+  positive_prompt: string;
+  negative_prompt: string;
 };
 
 type PipelineBlueprint = {
@@ -307,16 +309,25 @@ export function OutreachPipelineModule({
   };
 
   const deletePipeline = () => {
+    deletePipelineById(activePipelineId);
+  };
+
+  const deletePipelineById = (pipelineId: string) => {
     const saved = syncActivePipeline(pipelines, activePipelineId, blueprint);
     if (saved.length <= 1) return;
     const remaining = saved.filter(
-      (pipeline) => pipeline.pipeline_id !== activePipelineId,
+      (pipeline) => pipeline.pipeline_id !== pipelineId,
     );
-    const next = remaining[0];
+    const next =
+      pipelineId === activePipelineId
+        ? remaining[0]
+        : saved.find((pipeline) => pipeline.pipeline_id === activePipelineId) ??
+          remaining[0];
     if (!next) return;
     setPipelines(remaining);
     setActivePipelineId(next.pipeline_id);
     setBlueprint(next);
+    setInfo("Pipeline verwijderd. Klik Opslaan om dit permanent te bewaren.");
   };
 
   const addStep = () => {
@@ -336,6 +347,8 @@ export function OutreachPipelineModule({
           context_policy: "handoff_only",
           needs: "Alleen de instructie van de orchestrator.",
           qa_rule: "Orchestrator controleert bruikbaarheid en risico.",
+          positive_prompt: "Doe precies wat de orchestrator vraagt en lever compact bewijs.",
+          negative_prompt: "Geen aannames, geen brede context ophalen, geen externe actie uitvoeren.",
         },
       ],
     }));
@@ -424,14 +437,28 @@ export function OutreachPipelineModule({
           {syncActivePipeline(pipelines, activePipelineId, blueprint).map((pipeline) => {
             const active = pipeline.pipeline_id === activePipelineId;
             return (
-              <button
+              <span
                 key={pipeline.pipeline_id}
-                type="button"
-                onClick={() => switchPipeline(pipeline.pipeline_id)}
-                style={active ? activePipelineButtonStyle : pipelineButtonStyle}
+                style={active ? activePipelineChipStyle : pipelineChipStyle}
               >
-                {pipeline.pipeline_name}
-              </button>
+                <button
+                  type="button"
+                  onClick={() => switchPipeline(pipeline.pipeline_id)}
+                  style={pipelineChipNameStyle}
+                >
+                  {pipeline.pipeline_name}
+                </button>
+                {syncActivePipeline(pipelines, activePipelineId, blueprint).length > 1 && (
+                  <button
+                    type="button"
+                    title="Pipeline verwijderen"
+                    onClick={() => deletePipelineById(pipeline.pipeline_id)}
+                    style={pipelineChipDeleteStyle}
+                  >
+                    x
+                  </button>
+                )}
+              </span>
             );
           })}
         </div>
@@ -650,6 +677,24 @@ export function OutreachPipelineModule({
                   <textarea
                     value={step.qa_rule}
                     onChange={(e) => updateStep(index, { qa_rule: e.target.value })}
+                    style={textareaStyle}
+                  />
+                </Field>
+                <Field label="Positive prompt">
+                  <textarea
+                    value={step.positive_prompt}
+                    onChange={(e) =>
+                      updateStep(index, { positive_prompt: e.target.value })
+                    }
+                    style={textareaStyle}
+                  />
+                </Field>
+                <Field label="Negative prompt">
+                  <textarea
+                    value={step.negative_prompt}
+                    onChange={(e) =>
+                      updateStep(index, { negative_prompt: e.target.value })
+                    }
                     style={textareaStyle}
                   />
                 </Field>
@@ -941,6 +986,12 @@ function normalizeStep(raw: Partial<PipelineStep>): PipelineStep {
     context_policy: raw.context_policy === "none" ? "none" : "handoff_only",
     needs: raw.needs || raw.task || "Alleen de instructie van de orchestrator.",
     qa_rule: raw.qa_rule || "Orchestrator controleert output.",
+    positive_prompt:
+      raw.positive_prompt ||
+      "Doe precies wat de orchestrator vraagt en lever compact bewijs.",
+    negative_prompt:
+      raw.negative_prompt ||
+      "Geen aannames, geen brede context ophalen, geen externe actie uitvoeren.",
   };
 }
 
@@ -1007,6 +1058,8 @@ function defaultSteps(): PipelineStep[] {
     context_policy: "handoff_only",
     needs: "Alleen lead, doel, vorige output en expliciete acceptatiecriteria.",
     qa_rule: "Orchestrator valideert op volledigheid, duplicate risico en tone-of-voice.",
+    positive_prompt: "Volg de taak strikt, benoem bronnen/signalen en geef een compacte output.",
+    negative_prompt: "Geen verzonnen feiten, geen externe verzending, geen extra context buiten de handoff.",
   }));
 }
 
@@ -1109,22 +1162,45 @@ const pipelineSwitcherLabelStyle: React.CSSProperties = {
   marginRight: 4,
 };
 
-const pipelineButtonStyle: React.CSSProperties = {
+const pipelineChipStyle: React.CSSProperties = {
   border: "1px solid var(--app-border)",
   background: "var(--app-card-2)",
   color: "var(--app-fg-2)",
   borderRadius: 8,
-  padding: "7px 10px",
+  padding: "0 2px 0 10px",
   fontSize: 12,
   fontWeight: 800,
-  cursor: "pointer",
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 2,
 };
 
-const activePipelineButtonStyle: React.CSSProperties = {
-  ...pipelineButtonStyle,
+const activePipelineChipStyle: React.CSSProperties = {
+  ...pipelineChipStyle,
   border: "1.5px solid var(--tt-green)",
   background: "rgba(57,178,85,.1)",
   color: "var(--app-fg)",
+};
+
+const pipelineChipNameStyle: React.CSSProperties = {
+  border: "none",
+  background: "transparent",
+  color: "inherit",
+  font: "inherit",
+  fontWeight: 800,
+  padding: "7px 6px 7px 0",
+  cursor: "pointer",
+};
+
+const pipelineChipDeleteStyle: React.CSSProperties = {
+  border: "none",
+  background: "transparent",
+  color: "var(--rose)",
+  fontSize: 13,
+  fontWeight: 900,
+  padding: "5px 8px",
+  cursor: "pointer",
+  lineHeight: 1,
 };
 
 const stepFormGridStyle: React.CSSProperties = {
