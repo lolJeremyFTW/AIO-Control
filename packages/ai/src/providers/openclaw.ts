@@ -207,10 +207,10 @@ function buildOpenclawPrompt(
   if (systemPrompt) {
     sections.push(
       [
-        "<aio_system_context>",
+        "AIO CONTROL SYSTEM CONTEXT",
         "These are higher-priority AIO Control instructions and runtime context. They include the active business description, mission, targets, tools, locale, and operating rules.",
+        "",
         systemPrompt,
-        "</aio_system_context>",
       ].join("\n"),
     );
   }
@@ -222,18 +222,19 @@ function buildOpenclawPrompt(
     if (priorMessages.length > 0) {
       sections.push(
         [
-          "<prior_conversation>",
+          "PRIOR CONVERSATION",
+          "",
           ...priorMessages.map(
             (message) =>
               `${message.role.toUpperCase()}:\n${message.content.trim()}`,
           ),
-          "</prior_conversation>",
         ].join("\n\n"),
       );
     }
   }
 
-  sections.push(["<user_message>", userPrompt, "</user_message>"].join("\n"));
+  if (sections.length === 0) return userPrompt;
+  sections.push(["USER MESSAGE", "", userPrompt].join("\n"));
   return sections.join("\n\n");
 }
 
