@@ -595,11 +595,12 @@ async function markFailed(
   reason: string,
 ): Promise<DispatchResult> {
   const supabase = getServiceRoleSupabase();
+  const endedAt = new Date().toISOString();
   await supabase
     .from("runs")
     .update({
       status: "failed",
-      ended_at: new Date().toISOString(),
+      ended_at: endedAt,
       error_text: reason,
       // Pre-flight failures (paused business, missing agent, spend
       // limit hit) are NOT transient — never retry.
@@ -616,7 +617,6 @@ async function markFailed(
     (failedRun?.schedule_id as string | null) ?? null,
   );
   if (scheduleMemorySource) {
-    const endedAt = new Date().toISOString();
     await recordScheduleRunMemory({
       schedule: scheduleMemorySource,
       runId,
