@@ -41,8 +41,8 @@ export default async function OutreachPage({ params, searchParams }: Props) {
   // Per-status counts in one round-trip via parallel queries.
   const STATUSES = [
     "new", "pitched", "approved", "sent", "freebie_ready",
-    "pending_whatsapp", "responded", "rejected", "contactformulier_failed",
-    "handmatig",
+    "pending_whatsapp", "outreached", "responded", "rejected",
+    "contactformulier_failed", "handmatig",
   ] as const;
   const counts: Record<string, number> = {};
   await Promise.all(
@@ -136,7 +136,10 @@ export default async function OutreachPage({ params, searchParams }: Props) {
               : undefined
           }
         />
-        <SummaryCard label="Sent / WA klaar" value={(counts.sent ?? 0) + (counts.pending_whatsapp ?? 0)} />
+        <SummaryCard
+          label="Outreached"
+          value={(counts.sent ?? 0) + (counts.pending_whatsapp ?? 0) + (counts.outreached ?? 0)}
+        />
       </div>
 
       {/* Status filter tabs */}
@@ -179,6 +182,7 @@ const STATUS_LABELS: Record<string, string> = {
   sent: "Verzonden",
   freebie_ready: "Freebie klaar",
   pending_whatsapp: "WA wachtrij",
+  outreached: "Outreached",
   responded: "Gereageerd",
   rejected: "Afgewezen",
   contactformulier_failed: "Form mislukt",
@@ -192,6 +196,7 @@ const STATUS_COLORS: Record<string, string> = {
   sent: "#39b255",
   freebie_ready: "#39b255",
   pending_whatsapp: "#d4752a",
+  outreached: "#39b255",
   responded: "#7c5cbf",
   rejected: "#c44d4d",
   contactformulier_failed: "#c44d4d",

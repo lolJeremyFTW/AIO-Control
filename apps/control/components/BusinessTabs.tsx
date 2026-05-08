@@ -152,7 +152,7 @@ export function BusinessTabs({
 
   // On topic pages (/n/…) hide the business tab strip entirely —
   // TopicTabs inside the page renders its own navigation.
-  if (path.includes("/n/")) return null;
+  const isTopicPath = path.includes("/n/");
 
   const [localTopicTabs, setLocalTopicTabs] = useState<BusinessTabsTopicEntry[]>(topicTabs ?? []);
   const [showAdd, setShowAdd] = useState(false);
@@ -254,6 +254,8 @@ export function BusinessTabs({
     lastRun: labels?.lastRun ?? "Laatste run",
   };
 
+  if (isTopicPath) return null;
+
   // Built-in tabs always visible. Order matches the user's spec:
   // Overzicht, Agents, Runs, Integrations, Topics, Routines (last,
   // with count). The "Routines" tab is the old "Schedules" page.
@@ -273,6 +275,18 @@ export function BusinessTabs({
       href: `${base}/runs`,
       label: L.runs,
       match: (p) => p.startsWith(`${base}/runs`),
+    },
+    {
+      href: `${base}/outreach`,
+      label: "Outreach",
+      match: (p) =>
+        p.startsWith(`${base}/outreach`) &&
+        !p.startsWith(`${base}/outreach-pipeline`),
+    },
+    {
+      href: `${base}/outreach-pipeline`,
+      label: "Pipeline",
+      match: (p) => p.startsWith(`${base}/outreach-pipeline`),
     },
     {
       href: `${base}/schedules`,

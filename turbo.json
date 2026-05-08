@@ -8,9 +8,12 @@
       "outputs": [".next/**", "!.next/cache/**"],
       "env": [
         "BASE_PATH",
+        "NEXT_RUNTIME",
+        "NEXT_PHASE",
         "GIT_COMMIT_SHA",
         "BUILD_TIME",
         "AGENT_SECRET_KEY",
+        "AIO_CRON_SCHEDULER_ENABLED",
         "TELEGRAM_WEBHOOK_SECRET",
         "SLACK_BOT_TOKEN",
         "SLACK_SIGNING_SECRET",
@@ -23,6 +26,9 @@
         "AIO_TRANSLATION_PROVIDER",
         "AIO_TRANSLATION_MODEL",
         "AIO_TRANSLATION_OLLAMA_MODEL",
+        "OUTREACH_PUBLIC_ORIGIN",
+        "OUTREACH_PIPELINE_SCHEDULER_ENABLED",
+        "OUTREACH_PIPELINE_TICK_MS",
         "OLLAMA_BASE_URL"
       ]
     },

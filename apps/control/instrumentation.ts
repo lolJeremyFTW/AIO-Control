@@ -20,4 +20,11 @@ export async function register() {
     "./lib/dispatch/cron-scheduler"
   );
   startCronScheduler();
+
+  if (process.env.OUTREACH_PIPELINE_SCHEDULER_ENABLED !== "false") {
+    const { startOutreachPipelineScheduler } = await import(
+      "./lib/outreach/pipeline-scheduler"
+    );
+    startOutreachPipelineScheduler();
+  }
 }
