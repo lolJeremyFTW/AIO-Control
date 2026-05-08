@@ -555,7 +555,7 @@ const nl: Dict = {
     "Dag- en maandlimieten per workspace; auto-pauze als gewenst.",
   "settings.section.channels": "Kanalen",
   "settings.section.channels.desc":
-    "Slack- en Discord-doelen voor runrapporten en toekomstige commands.",
+    "Begeleide Telegram-, Slack- en Discord-setup voor runrapporten en commands.",
   "settings.section.telegram": "Telegram",
   "settings.section.telegram.desc":
     "Stuur run-rapporten naar één of meer Telegram-kanalen.",
@@ -1242,7 +1242,7 @@ const en: Partial<Dict> = {
     "Daily/monthly caps per workspace; auto-pause if you want.",
   "settings.section.channels": "Channels",
   "settings.section.channels.desc":
-    "Slack and Discord targets for run reports and future commands.",
+    "Guided Telegram, Slack, and Discord setup for run reports and commands.",
   "settings.section.telegram": "Telegram",
   "settings.section.telegram.desc":
     "Send run reports to one or more Telegram channels.",
@@ -1775,7 +1775,7 @@ const de: Partial<Dict> = {
     "Tages-/Monatslimits pro Workspace; Auto-Pause optional.",
   "settings.section.channels": "Kanaele",
   "settings.section.channels.desc":
-    "Slack- und Discord-Ziele fuer Run-Berichte und zukuenftige Commands.",
+    "Gefuehrte Telegram-, Slack- und Discord-Einrichtung fuer Run-Berichte und Commands.",
   "settings.section.telegram": "Telegram",
   "settings.section.telegram.desc":
     "Sende Run-Berichte an einen oder mehrere Telegram-Kanäle.",

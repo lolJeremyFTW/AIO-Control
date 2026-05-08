@@ -11,6 +11,7 @@
         "GIT_COMMIT_SHA",
         "BUILD_TIME",
         "AGENT_SECRET_KEY",
+        "TELEGRAM_WEBHOOK_SECRET",
         "SLACK_BOT_TOKEN",
         "SLACK_SIGNING_SECRET",
         "DISCORD_BOT_TOKEN",
