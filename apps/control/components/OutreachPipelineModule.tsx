@@ -559,7 +559,7 @@ export function OutreachPipelineModule({
           )}
         </div>
 
-        <PipelineGraph
+        <PipelineGraphCanvas
           blueprint={blueprint}
           orchestratorName={orchestrator?.name ?? "Main agent"}
           latestByStage={latestByStage}
@@ -811,6 +811,7 @@ export function OutreachPipelineModule({
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function PipelineGraph({
   blueprint,
   orchestratorName,
@@ -873,6 +874,111 @@ function PipelineGraph({
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+function PipelineGraphCanvas({
+  blueprint,
+  orchestratorName,
+  latestByStage,
+  running,
+}: {
+  blueprint: PipelineBlueprint;
+  orchestratorName: string;
+  latestByStage: Map<string, EventRow>;
+  running: boolean;
+}) {
+  return (
+    <div style={graphWrapStyle}>
+      <div style={graphCanvasStyle}>
+        <div style={orchestratorStyle}>
+          <div style={graphNodeHeaderStyle}>
+            <span style={nodeStatusStyle("qa")}>ORCHESTRATOR + QA</span>
+            <span style={graphSubStyle}>
+              {blueprint.learning_enabled ? "learning on" : "learning off"}
+            </span>
+          </div>
+          <strong style={{ fontSize: 15 }}>{orchestratorName}</strong>
+          <span style={graphSubStyle}>
+            splitst context, geeft handoffs, valideert output en schrijft correctieregels
+          </span>
+        </div>
+
+        <div aria-hidden style={orchestratorBusStyle}>
+          <span style={busLineStyle(running)} />
+          <span style={busLabelStyle}>isolated handoffs</span>
+        </div>
+
+        <div style={graphNodesStyle}>
+          {blueprint.steps.map((step, index) => {
+            const event = latestByStage.get(step.id);
+            const fallbackEvent = latestByStage.get(
+              OUTREACH_PIPELINE_STAGES[index]?.key ?? "",
+            );
+            const latest = event ?? fallbackEvent;
+            const status = latest?.event_type ?? "skip";
+            const active =
+              latest &&
+              Date.now() - new Date(latest.created_at).getTime() < 9000 &&
+              latest.event_type !== "skip";
+            return (
+              <div key={`${step.id}-${index}`} style={graphStageWrapStyle}>
+                {index > 0 && <span aria-hidden style={stageArrowStyle}>--&gt;</span>}
+                <div style={agentNodeStyle(status, !!active)}>
+                  <div style={graphNodeHeaderStyle}>
+                    <span style={nodeIndexStyle}>{String(index + 1).padStart(2, "0")}</span>
+                    <span style={nodeStatusStyle(status)}>{status}</span>
+                  </div>
+                  <strong style={{ fontSize: 13 }}>{step.label}</strong>
+                  <span style={{ color: "var(--app-fg)", fontSize: 12, fontWeight: 800 }}>
+                    {step.agent}
+                  </span>
+                  <div style={providerRailStyle}>
+                    <span>{step.provider}</span>
+                    <span>{step.model || "default model"}</span>
+                  </div>
+                  <div style={miniBlockStyle}>
+                    <span style={miniBlockLabelStyle}>needs</span>
+                    <span>{truncate(step.needs, 96)}</span>
+                  </div>
+                  <div style={promptBadgesStyle}>
+                    <span style={step.positive_prompt ? positiveBadgeStyle : mutedBadgeStyle}>
+                      + prompt
+                    </span>
+                    <span style={step.negative_prompt ? negativeBadgeStyle : mutedBadgeStyle}>
+                      - prompt
+                    </span>
+                    <span style={qaBadgeStyle}>QA</span>
+                  </div>
+                  <div style={handoffStyle}>
+                    <span style={miniBlockLabelStyle}>handoff</span>
+                    <span>{truncate(step.handoff, 110)}</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={feedbackRowStyle}>
+          <div style={feedbackCardStyle}>
+            <strong>QA feedback loop</strong>
+            <span>
+              Orchestrator ontvangt alle outputs terug, toetst tegen de QA-regels
+              en laat alleen de gefaalde stap opnieuw lopen.
+            </span>
+          </div>
+          <div style={feedbackCardStyle}>
+            <strong>Self-learning rules</strong>
+            <span>
+              {blueprint.correction_rules.length} actieve regel
+              {blueprint.correction_rules.length === 1 ? "" : "s"} voor correcties,
+              retries en guardrails.
+            </span>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -1081,6 +1187,12 @@ function timeAgo(iso: string): string {
   return `${Math.floor(h / 24)}d`;
 }
 
+function truncate(value: string, max: number): string {
+  const text = value.trim();
+  if (text.length <= max) return text;
+  return `${text.slice(0, Math.max(0, max - 3))}...`;
+}
+
 const panelStyle: React.CSSProperties = {
   border: "1.5px solid var(--app-border)",
   background: "var(--app-card)",
@@ -1255,12 +1367,19 @@ const graphWrapStyle: React.CSSProperties = {
   border: "1px solid var(--app-border-2)",
   background: "var(--app-card-2)",
   borderRadius: 8,
-  padding: 14,
   overflowX: "auto",
 };
 
+const graphCanvasStyle: React.CSSProperties = {
+  minWidth: 980,
+  padding: 16,
+  display: "flex",
+  flexDirection: "column",
+  gap: 12,
+};
+
 const orchestratorStyle: React.CSSProperties = {
-  width: "min(420px, 100%)",
+  width: 460,
   margin: "0 auto",
   border: "1.5px solid var(--tt-green)",
   background: "rgba(57,178,85,.08)",
@@ -1269,7 +1388,6 @@ const orchestratorStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
   gap: 5,
-  textAlign: "center",
 };
 
 const graphSubStyle: React.CSSProperties = {
@@ -1277,11 +1395,165 @@ const graphSubStyle: React.CSSProperties = {
   fontSize: 11.5,
 };
 
+const graphNodeHeaderStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 8,
+};
+
+const orchestratorBusStyle: React.CSSProperties = {
+  position: "relative",
+  height: 34,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+};
+
+function busLineStyle(running: boolean): React.CSSProperties {
+  return {
+    position: "absolute",
+    left: 34,
+    right: 34,
+    top: 16,
+    borderTop: "2px dashed var(--app-border)",
+    animation: running ? "pipelineFlow 1.3s linear infinite" : "none",
+  };
+}
+
+const busLabelStyle: React.CSSProperties = {
+  position: "relative",
+  background: "var(--app-card-2)",
+  border: "1px solid var(--app-border)",
+  borderRadius: 999,
+  padding: "4px 10px",
+  color: "var(--app-fg-3)",
+  fontSize: 10.5,
+  fontWeight: 900,
+  letterSpacing: ".08em",
+  textTransform: "uppercase",
+};
+
 const graphNodesStyle: React.CSSProperties = {
-  minWidth: 860,
   display: "grid",
-  gridTemplateColumns: "repeat(4, minmax(190px, 1fr))",
+  gridAutoFlow: "column",
+  gridAutoColumns: "minmax(230px, 260px)",
+  gap: 18,
+  alignItems: "stretch",
+  overflowX: "auto",
+  padding: "4px 2px 10px",
+};
+
+const graphStageWrapStyle: React.CSSProperties = {
+  position: "relative",
+  minWidth: 0,
+};
+
+const stageArrowStyle: React.CSSProperties = {
+  position: "absolute",
+  left: -17,
+  top: 92,
+  color: "var(--tt-green)",
+  fontSize: 13,
+  fontWeight: 900,
+};
+
+const providerRailStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 8,
+  border: "1px solid var(--app-border-2)",
+  background: "var(--app-card-2)",
+  borderRadius: 7,
+  padding: "5px 7px",
+  color: "var(--app-fg-3)",
+  fontSize: 10.5,
+  fontWeight: 800,
+};
+
+const miniBlockStyle: React.CSSProperties = {
+  border: "1px solid var(--app-border-2)",
+  borderRadius: 7,
+  padding: "6px 7px",
+  color: "var(--app-fg-2)",
+  fontSize: 11,
+  lineHeight: 1.35,
+  display: "flex",
+  flexDirection: "column",
+  gap: 3,
+};
+
+const miniBlockLabelStyle: React.CSSProperties = {
+  color: "var(--app-fg-3)",
+  fontSize: 9.5,
+  fontWeight: 900,
+  letterSpacing: ".08em",
+  textTransform: "uppercase",
+};
+
+const promptBadgesStyle: React.CSSProperties = {
+  display: "flex",
+  gap: 5,
+  flexWrap: "wrap",
+};
+
+const positiveBadgeStyle: React.CSSProperties = {
+  border: "1px solid rgba(57,178,85,.35)",
+  background: "rgba(57,178,85,.08)",
+  color: "#2f9347",
+  borderRadius: 999,
+  padding: "2px 7px",
+  fontSize: 10,
+  fontWeight: 900,
+};
+
+const negativeBadgeStyle: React.CSSProperties = {
+  border: "1px solid rgba(196,77,77,.35)",
+  background: "rgba(196,77,77,.08)",
+  color: "var(--rose)",
+  borderRadius: 999,
+  padding: "2px 7px",
+  fontSize: 10,
+  fontWeight: 900,
+};
+
+const mutedBadgeStyle: React.CSSProperties = {
+  border: "1px solid var(--app-border-2)",
+  background: "var(--app-card-2)",
+  color: "var(--app-fg-3)",
+  borderRadius: 999,
+  padding: "2px 7px",
+  fontSize: 10,
+  fontWeight: 900,
+};
+
+const qaBadgeStyle: React.CSSProperties = {
+  border: "1px solid rgba(124,92,191,.35)",
+  background: "rgba(124,92,191,.08)",
+  color: "#7c5cbf",
+  borderRadius: 999,
+  padding: "2px 7px",
+  fontSize: 10,
+  fontWeight: 900,
+};
+
+const feedbackRowStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
   gap: 10,
+};
+
+const feedbackCardStyle: React.CSSProperties = {
+  border: "1px solid var(--app-border-2)",
+  background: "var(--app-card)",
+  borderRadius: 8,
+  padding: 10,
+  display: "flex",
+  flexDirection: "column",
+  gap: 4,
+  color: "var(--app-fg-2)",
+  fontSize: 11.5,
+  lineHeight: 1.4,
 };
 
 const stepEditorStyle: React.CSSProperties = {
@@ -1358,7 +1630,7 @@ function agentNodeStyle(
           : "var(--app-card)",
     borderRadius: 8,
     padding: 12,
-    minHeight: 150,
+    minHeight: 280,
     display: "flex",
     flexDirection: "column",
     gap: 6,
@@ -1382,6 +1654,9 @@ const handoffStyle: React.CSSProperties = {
   fontSize: 10.5,
   lineHeight: 1.35,
   marginTop: "auto",
+  display: "flex",
+  flexDirection: "column",
+  gap: 3,
 };
 
 function nodeStatusStyle(status: EventRow["event_type"] | "skip" | "qa"): React.CSSProperties {
