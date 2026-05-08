@@ -10,7 +10,10 @@ Production:
 
 - Subdomain build: `https://aio.tromptech.life`
 - Path build: `https://tromptech.life/aio`
+- Public docs: `https://aio.tromptech.life/docs`
 - Repository: `https://github.com/lolJeremyFTW/AIO-Control`
+
+![AIO Control dashboard showing agent runs, review queue, and Telegram, Slack, Discord outputs](apps/control/public/readme/aio-control-dashboard.png)
 
 ## Contents
 
@@ -108,21 +111,76 @@ Provider IDs in the code include `claude`, `claude_cli`, `openai_codex`, `opencl
 
 ```mermaid
 flowchart LR
-  Browser["Browser UI"] --> Next["Next.js 16 App Router"]
-  Next --> Supabase["Self-hosted Supabase Auth / Postgres / Realtime"]
-  Next --> Router["AIO provider router"]
-  Router --> Claude["Anthropic Claude API"]
-  Router --> ClaudeCLI["Claude Code CLI"]
-  Router --> Codex["OpenAI Codex"]
-  Router --> OpenClaw["OpenClaw CLI"]
-  Router --> Hermes["Hermes Agent CLI"]
-  Router --> OpenRouter["OpenRouter"]
-  Router --> MiniMax["MiniMax"]
-  Router --> Ollama["Ollama"]
-  Router --> MCP["MCP host"]
-  MCP --> Tools["AIO / filesystem / bash / fetch / browser / search / memory / images"]
-  Next --> Scheduler["Cron and webhook dispatcher"]
-  Scheduler --> Runs["Runs, queue, notifications, cost"]
+  Operator["Operator in browser"] --> UI["AIO Control dashboard<br/>chat, runs, queue, cost, settings"]
+
+  subgraph App["Next.js control plane"]
+    UI --> Next["Next.js 16 App Router"]
+    Next --> Scheduler["Cron, webhook, manual dispatcher"]
+    Next --> Review["Human review queue"]
+    Next --> Costs["Run history, tokens, cost, dashboards"]
+  end
+
+  subgraph Data["Self-hosted Supabase"]
+    Auth["Auth and workspace membership"]
+    DB["Postgres schema: businesses, agents, runs, schedules, keys"]
+    Realtime["Realtime events"]
+  end
+
+  Next --> Auth
+  Next --> DB
+  Next --> Realtime
+
+  subgraph Runtime["Provider router"]
+    Router["AG-UI event stream"]
+    Claude["Anthropic Claude API"]
+    ClaudeCLI["Claude Code CLI"]
+    Codex["OpenAI Codex"]
+    OpenClaw["OpenClaw CLI"]
+    Hermes["Hermes Agent CLI"]
+    OpenRouter["OpenRouter"]
+    MiniMax["MiniMax"]
+    Ollama["Ollama"]
+  end
+
+  Scheduler --> Router
+  UI --> Router
+  Router --> Claude
+  Router --> ClaudeCLI
+  Router --> Codex
+  Router --> OpenClaw
+  Router --> Hermes
+  Router --> OpenRouter
+  Router --> MiniMax
+  Router --> Ollama
+
+  subgraph Tools["MCP tools"]
+    MCP["MCP host"]
+    AIO["AIO platform tools"]
+    BrowserTools["Playwright / fetch / search"]
+    LocalTools["filesystem / bash / memory / images"]
+  end
+
+  Router --> MCP
+  MCP --> AIO
+  MCP --> BrowserTools
+  MCP --> LocalTools
+
+  subgraph Outputs["Outputs and approvals"]
+    Telegram["Telegram<br/>topics, bot commands, reports"]
+    Slack["Slack<br/>slash commands, approvals"]
+    Discord["Discord<br/>interactions, alerts"]
+    Email["SMTP email and Web Push"]
+    Dashboards["Custom dashboards and share links"]
+  end
+
+  Review --> Telegram
+  Review --> Slack
+  Review --> Discord
+  Costs --> Dashboards
+  Router --> Email
+  Router --> Telegram
+  Router --> Slack
+  Router --> Discord
 ```
 
 Main stack:
