@@ -30,6 +30,7 @@ const MCP_TOOL_CATALOGUE: Record<string, { description: string; tools: string[] 
     description: "AIO Control platform — agents, businesses, runs, Telegram notificaties, dashboards/tabs aanmaken",
     tools: [
       "list_businesses",
+      "get_supabase_context",
       "get_business_operating_snapshot",
       "list_nav_nodes",
       "resolve_topic",
@@ -83,6 +84,7 @@ const MCP_TOOL_CATALOGUE: Record<string, { description: string; tools: string[] 
 
 const AIO_READ_ONLY_TOOLS = new Set([
   "list_businesses",
+  "get_supabase_context",
   "get_business_operating_snapshot",
   "list_nav_nodes",
   "resolve_topic",
@@ -125,6 +127,7 @@ type AgentLike = {
  */
 export async function buildAgentSystemPrompt(
   agent: AgentLike,
+  options?: { includeDefaultAioMcp?: boolean },
 ): Promise<string> {
   const admin = getServiceRoleSupabase();
 
@@ -138,11 +141,23 @@ export async function buildAgentSystemPrompt(
   const allowedSkillIds = ((agentSelfRow?.allowed_skills as string[] | null) ??
     []) as string[];
   const agentConfig = (agentSelfRow?.config as Record<string, unknown> | null) ?? {};
-  const configuredMcpServers = (agentConfig.mcpServers as string[] | null) ?? [];
+  const configuredMcpServersRaw = (agentConfig.mcpServers as string[] | null) ?? [];
   const mcpPermissions =
     (agentConfig.mcpPermissions as
       | { aio?: "off" | "ro" | "rw"; filesystem?: "off" | "ro" | "rw" }
       | null) ?? {};
+  const usesNativeMcpHost =
+    agent.provider === "claude" ||
+    agent.provider === "minimax" ||
+    agent.provider === "openai_codex";
+  const includeDefaultAioMcp = options?.includeDefaultAioMcp ?? true;
+  const configuredMcpServers =
+    !includeDefaultAioMcp ||
+    !usesNativeMcpHost ||
+    mcpPermissions.aio === "off" ||
+    configuredMcpServersRaw.includes("aio")
+      ? configuredMcpServersRaw
+      : ["aio", ...configuredMcpServersRaw];
 
   // Fan out the lookups in parallel — single round-trip total.
   const [
@@ -342,7 +357,12 @@ export async function buildAgentSystemPrompt(
   lines.push("## Tooling — wat je kunt aanroepen");
 
   const usesLocalRuntimeTools =
-    agent.provider === "openclaw" || agent.provider === "hermes";
+    agent.provider === "openclaw" ||
+    agent.provider === "hermes" ||
+    agent.provider === "claude_cli";
+  const hasAioMcp =
+    configuredMcpServers.includes("aio") && mcpPermissions.aio !== "off";
+  const hasBashMcp = configuredMcpServers.includes("bash");
 
   if (configuredMcpServers.length > 0) {
     lines.push(
@@ -406,6 +426,41 @@ export async function buildAgentSystemPrompt(
   // wall-clock reference. Without this models default to their training
   // cutoff date and write things like "as of my last update" — which
   // is wrong inside a live system. Stamp it once per run; cheap.
+  lines.push("");
+  lines.push("## Lokale Supabase / Postgres");
+  lines.push(
+    "- AIO Control draait op de lokale Supabase/Postgres. Domeintabellen staan in schema `aio_control`; ze staan dus niet automatisch in `public`.",
+  );
+  lines.push(
+    `- Scope voor deze run: workspace_id=\`${agent.workspace_id}\`` +
+      (agent.business_id ? `, business_id=\`${agent.business_id}\`` : "") +
+      (agent.nav_node_id ? `, nav_node_id=\`${agent.nav_node_id}\`` : ""),
+  );
+  if (hasAioMcp) {
+    lines.push(
+      "- Gebruik `aio__get_supabase_context` als je directe database/REST context nodig hebt. AIO MCP tools gebruiken al service-role Supabase onder de juiste workspace-scope.",
+    );
+  } else if (usesLocalRuntimeTools) {
+    lines.push(
+      "- Je lokale runtime krijgt `SUPABASE_URL`, `DATABASE_URL` wanneer beschikbaar, `AIO_SUPABASE_SCHEMA=aio_control`, `AIO_SUPABASE_REST_URL` en `AIO_SUPABASE_PSQL_COMMAND` in de env.",
+    );
+  } else {
+    lines.push(
+      "- Als een AIO function-tool `get_supabase_context` beschikbaar is, gebruik die voor databasecontext. Zonder tool: werk via de beschikbare AIO read/write tools en verzin geen schema.",
+    );
+  }
+  if (hasBashMcp || usesLocalRuntimeTools) {
+    lines.push(
+      "- Voor directe SQL-inspectie via shell op de VPS: `docker exec -i supabase-db psql -U postgres -d postgres`. Houd queries scoped op workspace/business/topic en standaard read-only.",
+    );
+  }
+  lines.push(
+    "- Directe Supabase REST naar AIO-tabellen vereist headers `Accept-Profile: aio_control` en bij writes `Content-Profile: aio_control`; zonder die headers kan `/rest/v1/<table>` 404 geven terwijl de tabel wel bestaat.",
+  );
+  lines.push(
+    "- Voor self-improvement gebruik je `aio__propose_improvement` wanneer die tool beschikbaar is. Die tool maakt/herstelt de opslag zelf en voorkomt locken op ontbrekende tabellen.",
+  );
+
   const nowDate = new Date();
   const nowFormatted = nowDate.toLocaleString("nl-NL", {
     timeZone: "Europe/Amsterdam",

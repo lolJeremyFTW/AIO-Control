@@ -4,10 +4,22 @@ import { withCliBinPath } from "./cli-bin";
 export function scopedSubprocessEnv(
   opts: StreamChatOptions,
 ): NodeJS.ProcessEnv {
+  const supabaseUrl =
+    process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     ...(opts.tenant?.mcpToolKeys ?? {}),
+    AIO_SUPABASE_SCHEMA: process.env.AIO_SUPABASE_SCHEMA ?? "aio_control",
+    AIO_SUPABASE_PSQL_COMMAND:
+      process.env.AIO_SUPABASE_PSQL_COMMAND ??
+      "docker exec -i supabase-db psql -U postgres -d postgres",
   };
+  if (supabaseUrl) {
+    const trimmed = supabaseUrl.replace(/\/+$/, "");
+    env.SUPABASE_URL = supabaseUrl;
+    env.AIO_SUPABASE_URL = supabaseUrl;
+    env.AIO_SUPABASE_REST_URL = `${trimmed}/rest/v1`;
+  }
 
   if (opts.tenant?.workspaceId) {
     env.AIO_WORKSPACE_ID = opts.tenant.workspaceId;

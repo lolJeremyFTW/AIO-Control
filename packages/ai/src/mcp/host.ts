@@ -56,6 +56,7 @@ const WRITE_TOOL_PATTERNS = [
 
 const AIO_READ_TOOL_NAMES = new Set([
   "list_businesses",
+  "get_supabase_context",
   "get_business_operating_snapshot",
   "list_nav_nodes",
   "resolve_topic",
@@ -93,6 +94,27 @@ const TROMPTECH_PC_HOST =
 const PLAYWRIGHT_BROWSER_EXECUTABLE_PATH =
   process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ??
   "/home/jeremy/.cache/ms-playwright/chromium-1217/chrome-linux64/chrome";
+
+function localSupabaseEnv(): Record<string, string> {
+  const supabaseUrl =
+    process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const env: Record<string, string> = {
+    AIO_SUPABASE_SCHEMA: process.env.AIO_SUPABASE_SCHEMA ?? "aio_control",
+    AIO_SUPABASE_PSQL_COMMAND:
+      process.env.AIO_SUPABASE_PSQL_COMMAND ??
+      "docker exec -i supabase-db psql -U postgres -d postgres",
+  };
+  if (supabaseUrl) {
+    const trimmed = supabaseUrl.replace(/\/+$/, "");
+    env.SUPABASE_URL = supabaseUrl;
+    env.AIO_SUPABASE_URL = supabaseUrl;
+    env.AIO_SUPABASE_REST_URL = `${trimmed}/rest/v1`;
+  }
+  if (process.env.DATABASE_URL) {
+    env.DATABASE_URL = process.env.DATABASE_URL;
+  }
+  return env;
+}
 
 function firecrawlEnv(apiUrl: string): Record<string, string> {
   return {
@@ -162,7 +184,7 @@ const SERVER_REGISTRY: Record<string, ServerSpec> = {
     command: `${NPM_GLOBAL_BIN}/tsx`,
     args: [`${AIO_SRC}/aio-server.ts`],
     env: () => ({
-      SUPABASE_URL: process.env.SUPABASE_URL ?? "",
+      ...localSupabaseEnv(),
       SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
       AIO_WORKSPACE_ID: process.env.AIO_WORKSPACE_ID ?? "default",
       AIO_BUSINESS_ID: process.env.AIO_BUSINESS_ID ?? "",
@@ -409,6 +431,7 @@ export class McpHost {
     }
     const fullEnv = {
       ...cleanProcessEnv,
+      ...localSupabaseEnv(),
       ...(spec.env?.() ?? {}),
       ...envOverrides,
     };

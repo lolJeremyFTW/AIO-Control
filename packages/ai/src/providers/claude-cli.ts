@@ -15,7 +15,8 @@ import { randomUUID } from "node:crypto";
 
 import type { AGUIEvent } from "../ag-ui";
 import type { StreamChatOptions } from "../router";
-import { resolveCliBin, withCliBinPath } from "./cli-bin";
+import { resolveCliBin } from "./cli-bin";
+import { scopedSubprocessEnv } from "./scoped-env";
 import { runtimeSpawn } from "./subprocess";
 
 export async function* streamClaudeCli(
@@ -67,7 +68,7 @@ export async function* streamClaudeCli(
   const binary = resolveCliBin("claude", "CLAUDE_BIN");
   const child = runtimeSpawn(binary, args, {
     stdio: ["pipe", "pipe", "pipe"],
-    env: withCliBinPath(process.env),
+    env: scopedSubprocessEnv(opts),
   });
   child.stdin.write(prompt);
   child.stdin.end();

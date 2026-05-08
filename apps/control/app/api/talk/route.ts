@@ -301,15 +301,18 @@ export async function POST(req: Request) {
     .map((t) => ({ name: t.name, description: t.description, parameters: t.parameters }));
 
   // Build system prompt — same preamble as chat for full business context.
-  const preamble = await buildAgentSystemPrompt({
-    id: agent.id,
-    workspace_id,
-    business_id: agent.business_id,
-    name: agent.name,
-    kind: agent.kind,
-    provider: agent.provider,
-    model: agent.model,
-  });
+  const preamble = await buildAgentSystemPrompt(
+    {
+      id: agent.id,
+      workspace_id,
+      business_id: agent.business_id,
+      name: agent.name,
+      kind: agent.kind,
+      provider: agent.provider,
+      model: agent.model,
+    },
+    { includeDefaultAioMcp: false },
+  );
   const talkNote = [
     "You are AIO Control, TrompTech's solo-operator agent command center. You help Jeremy operate, automate, inspect, and coordinate his AIO system using available tools and context.",
     "Je wordt aangesproken via spraakinvoer. Geef korte, gesproken antwoorden - maximaal 2-3 zinnen. Geen markdown formatting.",

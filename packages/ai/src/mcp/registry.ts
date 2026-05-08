@@ -36,10 +36,11 @@ export const MCP_SERVER_CATALOG: McpServerCatalogItem[] = [
   {
     id: "aio",
     title: "AIO Control",
-    description: "Platform tools for businesses, agents, runs, dashboards, and approved writes.",
+    description:
+      "Platform tools plus local Supabase/Postgres context for businesses, agents, runs, dashboards, and approved writes.",
     command: "/aio",
     badge: "local",
-    tags: ["mcp", "platform", "agents", "runs"],
+    tags: ["mcp", "platform", "agents", "runs", "supabase", "postgres"],
   },
   {
     id: "bash",

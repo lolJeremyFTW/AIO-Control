@@ -26,6 +26,11 @@ const CURRENT_BUSINESS_ID = process.env.AIO_BUSINESS_ID ?? "";
 const CURRENT_NAV_NODE_ID = process.env.AIO_NAV_NODE_ID ?? "";
 const CURRENT_AGENT_ID = process.env.AIO_AGENT_ID ?? "";
 const CURRENT_RUN_ID = process.env.AIO_RUN_ID ?? "";
+const DATABASE_URL = process.env.DATABASE_URL ?? "";
+const SUPABASE_SCHEMA = process.env.AIO_SUPABASE_SCHEMA ?? "aio_control";
+const SUPABASE_PSQL_COMMAND =
+  process.env.AIO_SUPABASE_PSQL_COMMAND ??
+  "docker exec -i supabase-db psql -U postgres -d postgres";
 const ALLOW_READ_SECRET = process.env.AIO_MCP_ALLOW_READ_SECRET === "true";
 const AGENT_SECRET_KEY = process.env.AGENT_SECRET_KEY ?? "";
 const CANONICAL_DASHBOARD_ORIGIN = "https://aio.tromptech.life";
@@ -51,7 +56,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 // AIO Control domain tables/RPCs live in the aio_control schema. The
 // default `public` client is still used for legacy workspace_secrets.
 const supabaseAio = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-  db: { schema: "aio_control" },
+  db: { schema: SUPABASE_SCHEMA },
 });
 
 // ── Input schemas (Zod) ────────────────────────────────────────────────────
@@ -272,6 +277,55 @@ body[data-theme="light"]{color-scheme:light;--app-bg:#f6f4ee;--app-fg:#1a1c1a;--
 }
 
 // ── Tool implementations ─────────────────────────────────────────────────────
+
+function redactedDatabaseUrl(value: string): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (url.password) url.password = "***";
+    return url.toString();
+  } catch {
+    return "(set, redacted)";
+  }
+}
+
+function getSupabaseContext(): string {
+  const supabaseUrl = SUPABASE_URL!;
+  const restUrl = supabaseUrl.replace(/\/+$/, "") + "/rest/v1";
+  return JSON.stringify({
+    ok: true,
+    scope: {
+      workspace_id: WORKSPACE_ID,
+      business_id: CURRENT_BUSINESS_ID || null,
+      nav_node_id: CURRENT_NAV_NODE_ID || null,
+      agent_id: CURRENT_AGENT_ID || null,
+      run_id: CURRENT_RUN_ID || null,
+    },
+    supabase: {
+      kind: "local_aio_control_supabase",
+      url: supabaseUrl,
+      rest_url: restUrl,
+      schema: SUPABASE_SCHEMA,
+      service_role_client_available: true,
+      service_role_key_returned: false,
+      postgres: {
+        database_url_env: DATABASE_URL ? "DATABASE_URL is set" : null,
+        database_url_redacted: redactedDatabaseUrl(DATABASE_URL),
+        psql_command: SUPABASE_PSQL_COMMAND,
+      },
+      rest_headers_for_aio_control_schema: {
+        "Accept-Profile": SUPABASE_SCHEMA,
+        "Content-Profile": SUPABASE_SCHEMA,
+      },
+    },
+    rules: [
+      "Use the AIO MCP tools for normal platform reads/writes; they already use the service-role Supabase client scoped to this workspace.",
+      `Most domain tables live in schema '${SUPABASE_SCHEMA}'. Direct REST calls to /rest/v1/<table> without Accept-Profile/Content-Profile can 404 even when the table exists.`,
+      "For improvements, call aio__propose_improvement instead of direct REST inserts; it self-provisions storage and retries schema-cache misses.",
+      "For direct SQL inspection through bash, prefer read-only SELECT queries scoped by workspace_id/business_id/nav_node_id. Do not print secrets.",
+    ],
+  });
+}
 
 async function listBusinesses(): Promise<string> {
   const { data, error } = await supabaseAio
@@ -1949,6 +2003,16 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "get_supabase_context",
+      description:
+        "Return the local AIO Control Supabase/Postgres context: REST URL, aio_control schema, current workspace/business/topic scope, and safe direct-access rules. Use before direct Supabase REST or bash/psql work. Does not return secrets.",
+      inputSchema: {
+        type: "object",
+        properties: {},
+        additionalProperties: false,
+      },
+    },
+    {
       name: "get_business_operating_snapshot",
       description:
         "Get the closed-loop operating snapshot for a business/topic: business context, active targets, KPI periods, agents, schedules, recent runs, and open review queue. Use this at the start of business/topic main-loop runs.",
@@ -2481,6 +2545,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   switch (name) {
     case "list_businesses":
       result = await listBusinesses();
+      break;
+    case "get_supabase_context":
+      result = getSupabaseContext();
       break;
     case "get_business_operating_snapshot":
       result = await getBusinessOperatingSnapshot(args);

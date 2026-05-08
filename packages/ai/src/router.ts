@@ -158,9 +158,32 @@ export interface StreamChatOptions {
   }>;
 }
 
+function withDefaultAioMcp(opts: StreamChatOptions): StreamChatOptions {
+  if (!opts.tenant?.workspaceId) return opts;
+  if (opts.config.mcpPermissions?.aio === "off") return opts;
+  if ((opts.tools ?? []).length > 0) return opts;
+  if (
+    opts.provider !== "claude" &&
+    opts.provider !== "minimax" &&
+    opts.provider !== "openai_codex"
+  ) {
+    return opts;
+  }
+
+  const existing = opts.config.mcpServers ?? [];
+  if (existing.includes("aio")) return opts;
+
+  return {
+    ...opts,
+    config: { ...opts.config, mcpServers: ["aio", ...existing] },
+  };
+}
+
 export async function* streamChat(
   opts: StreamChatOptions,
 ): AsyncIterable<AGUIEvent> {
+  opts = withDefaultAioMcp(opts);
+
   // Run smart-routing rules before dispatching. If a rule promotes us to a
   // different provider+model we replay this function once with the picked
   // values; we wrap with a simple guard so a misconfigured rule that points

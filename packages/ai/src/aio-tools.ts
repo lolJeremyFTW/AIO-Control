@@ -39,6 +39,13 @@ export const AIO_TOOLS: Record<string, AioToolSpec> = {
       "List all businesses in the current workspace. Use this when the user asks 'what businesses do I have?' or before any action that operates on a specific business.",
     parameters: { type: "object", properties: {}, additionalProperties: false },
   },
+  get_supabase_context: {
+    name: "get_supabase_context",
+    category: "read",
+    description:
+      "Return the local AIO Control Supabase/Postgres context: REST URL, aio_control schema, current workspace/business/topic scope, and safe direct-access rules. Does not return secrets.",
+    parameters: { type: "object", properties: {}, additionalProperties: false },
+  },
   list_agents: {
     name: "list_agents",
     category: "read",
@@ -493,6 +500,7 @@ export function defaultToolsForKind(kind: string): string[] {
     case "router":
       // Router agents need to introspect siblings.
       return [
+        "get_supabase_context",
         "list_agents",
         "list_businesses",
         "list_review_learnings",
@@ -502,6 +510,11 @@ export function defaultToolsForKind(kind: string): string[] {
     default:
       // Worker/reviewer/generator: minimal — only ask_followup for
       // edge-case clarifications.
-      return ["list_review_learnings", "ask_followup", "request_human_review"];
+      return [
+        "get_supabase_context",
+        "list_review_learnings",
+        "ask_followup",
+        "request_human_review",
+      ];
   }
 }

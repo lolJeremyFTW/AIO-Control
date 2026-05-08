@@ -156,16 +156,19 @@ export async function POST(
   // tools / siblings / budget / business / workspace-rules) and
   // prepend it to whatever system prompt the user wrote. One source
   // of truth across chat + cron + webhook + manual triggers.
-  const preamble = await buildAgentSystemPrompt({
-    id: agent.id,
-    workspace_id: agent.workspace_id,
-    business_id: agent.business_id,
-    nav_node_id: agent.nav_node_id,
-    name: agent.name,
-    kind: agent.kind,
-    provider: agent.provider,
-    model: agent.model,
-  });
+  const preamble = await buildAgentSystemPrompt(
+    {
+      id: agent.id,
+      workspace_id: agent.workspace_id,
+      business_id: agent.business_id,
+      nav_node_id: agent.nav_node_id,
+      name: agent.name,
+      kind: agent.kind,
+      provider: agent.provider,
+      model: agent.model,
+    },
+    { includeDefaultAioMcp: false },
+  );
   config.systemPrompt = prependPreamble(preamble, config.systemPrompt);
   if (responseLocale) {
     config.systemPrompt =

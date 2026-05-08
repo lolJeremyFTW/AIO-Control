@@ -47,6 +47,64 @@ export type AioToolResult =
         | { type: "chat_ping_scheduled"; delayMinutes: number; message: string };
     };
 
+function redactedDatabaseUrl(value: string | undefined): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (url.password) url.password = "***";
+    return url.toString();
+  } catch {
+    return "(set, redacted)";
+  }
+}
+
+function envVar(name: string): string | undefined {
+  return process.env[name];
+}
+
+function getSupabaseContextForTool(ctx: AioToolContext): Record<string, unknown> {
+  const supabaseUrl =
+    envVar("SUPABASE_URL") ?? envVar("NEXT_PUBLIC_SUPABASE_URL") ?? null;
+  const schema = envVar("AIO_SUPABASE_SCHEMA") ?? "aio_control";
+  const restUrl = supabaseUrl ? `${supabaseUrl.replace(/\/+$/, "")}/rest/v1` : null;
+  const databaseUrl = envVar("DATABASE_URL");
+  return {
+    ok: true,
+    scope: {
+      workspace_id: ctx.workspaceId,
+      business_id: ctx.defaultBusinessId,
+      nav_node_id: ctx.defaultNavNodeId ?? null,
+      agent_id: ctx.agentId ?? null,
+      run_id: ctx.runId ?? null,
+    },
+    supabase: {
+      kind: "local_aio_control_supabase",
+      url: supabaseUrl,
+      rest_url: restUrl,
+      schema,
+      service_role_client_available: true,
+      service_role_key_returned: false,
+      postgres: {
+        database_url_env: databaseUrl ? "DATABASE_URL is set" : null,
+        database_url_redacted: redactedDatabaseUrl(databaseUrl),
+        psql_command:
+          envVar("AIO_SUPABASE_PSQL_COMMAND") ??
+          "docker exec -i supabase-db psql -U postgres -d postgres",
+      },
+      rest_headers_for_aio_control_schema: {
+        "Accept-Profile": schema,
+        "Content-Profile": schema,
+      },
+    },
+    rules: [
+      "Use AIO Control tools for normal platform reads/writes; they already use service-role Supabase scoped to this workspace.",
+      `Most domain tables live in schema '${schema}'. Direct REST calls without Accept-Profile/Content-Profile can 404 even when the table exists.`,
+      "For improvements, use propose_improvement/aio__propose_improvement instead of direct REST inserts when available.",
+      "For direct SQL inspection, keep queries scoped by workspace_id/business_id/nav_node_id and read-only unless a safe write is explicitly required.",
+    ],
+  };
+}
+
 export async function executeAioTool(
   name: string,
   args: unknown,
@@ -69,6 +127,10 @@ export async function executeAioTool(
           .order("created_at", { ascending: true });
         if (error) return { kind: "error", error: error.message };
         return { kind: "ok", data: data ?? [] };
+      }
+
+      case "get_supabase_context": {
+        return { kind: "ok", data: getSupabaseContextForTool(ctx) };
       }
 
       case "list_agents": {
@@ -476,7 +538,7 @@ async function resolveHumanReviewScope(
 ): Promise<{ businessId: string; navNodeId: string | null } | { error: string }> {
   const admin = getServiceRoleSupabase();
   let businessId = input.businessId ?? null;
-  let navNodeId = input.navNodeId ?? null;
+  const navNodeId = input.navNodeId ?? null;
 
   if (navNodeId) {
     const { data: node, error } = await admin
