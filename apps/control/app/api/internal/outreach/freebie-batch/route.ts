@@ -101,7 +101,9 @@ export async function POST(req: Request) {
   }
 
   const origin =
-    process.env.NEXT_PUBLIC_TRIGGER_ORIGIN ?? "https://aio.tromptech.life";
+    process.env.OUTREACH_PUBLIC_ORIGIN ??
+    process.env.NEXT_PUBLIC_APP_ORIGIN ??
+    "https://aio.tromptech.life";
   const processed: Array<{
     id: string;
     legacy_id: number | null;

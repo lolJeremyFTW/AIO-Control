@@ -136,7 +136,9 @@ export async function POST(req: Request) {
   }
 
   const origin =
-    process.env.NEXT_PUBLIC_TRIGGER_ORIGIN ?? "https://aio.tromptech.life";
+    process.env.OUTREACH_PUBLIC_ORIGIN ??
+    process.env.NEXT_PUBLIC_APP_ORIGIN ??
+    "https://aio.tromptech.life";
 
   return NextResponse.json({
     ok: true,
