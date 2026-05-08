@@ -68,6 +68,11 @@ build_and_stage() {
   # exists, failing with "File '...validator.ts' not found." Running
   # typegen explicitly first removes the race.
   ( cd "$APP" && BASE_PATH="$base_path" pnpm exec next typegen )
+  # Next 16.2 can leave a zero-byte .next/turbopack sentinel after typegen.
+  # If it is still present when `next build --turbopack` starts, the build
+  # treats it as an active build lock and exits with "Another next build
+  # process is already running."
+  rm -f "$APP/.next/turbopack"
   # Next 16/Turbopack intermittently removes .next/static/<buildId> just
   # before writing temp manifest files. Keep the deterministic build-id
   # directory present while the build runs.
