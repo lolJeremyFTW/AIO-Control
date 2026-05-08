@@ -127,11 +127,16 @@ echo "▸ Restarting services"
 sudo systemctl restart aio-control
 sudo systemctl restart aio-control-root
 
+health_code() {
+  local url="$1"
+  curl -fsS -o /dev/null -w "%{http_code}" "$url" 2>/dev/null || printf "000"
+}
+
 echo "▸ Waiting for both health endpoints"
 ok=0
 for i in {1..15}; do
-  s1=$(curl -fsS -o /dev/null -w "%{http_code}" "http://127.0.0.1:3010/aio/api/health" || echo 000)
-  s2=$(curl -fsS -o /dev/null -w "%{http_code}" "http://127.0.0.1:3012/api/health" || echo 000)
+  s1=$(health_code "http://127.0.0.1:3010/aio/api/health")
+  s2=$(health_code "http://127.0.0.1:3012/api/health")
   if [[ "$s1" == "200" && "$s2" == "200" ]]; then
     ok=1; break
   fi
