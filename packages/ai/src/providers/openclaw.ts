@@ -29,12 +29,15 @@ export async function* streamOpenclaw(
 ): AsyncIterable<AGUIEvent> {
   const messageId = randomUUID();
   // Use the LAST user message as the new turn — earlier turns are
-  // remembered by OpenClaw via --session-id. When the session is
-  // brand-new we also flatten the conversation into the prompt so the
-  // first call has context too.
-  const lastUser = [...opts.messages].reverse().find((m) => m.role === "user");
-  const prompt = lastUser?.content ?? "";
-  if (!prompt) {
+  // remembered by OpenClaw via --session-id. AIO's system/business
+  // context is carried in opts.config.systemPrompt, so fold it into
+  // the CLI prompt explicitly; OpenClaw has no separate system-prompt
+  // flag for this subprocess mode.
+  const lastUserIndex = findLastUserIndex(opts.messages);
+  const lastUser =
+    lastUserIndex >= 0 ? opts.messages[lastUserIndex] : undefined;
+  const userPrompt = lastUser?.content ?? "";
+  if (!userPrompt) {
     yield {
       type: "error",
       code: "empty_prompt",
@@ -42,6 +45,7 @@ export async function* streamOpenclaw(
     };
     return;
   }
+  const prompt = buildOpenclawPrompt(opts, userPrompt, lastUserIndex);
 
   yield { type: "message_start", message_id: messageId, role: "assistant" };
 
@@ -145,8 +149,8 @@ export async function* streamOpenclaw(
 
   if (exitCode !== 0) {
     const raw =
-      (stderr.split("\n").slice(-5).join("\n").trim() ||
-        stdout.slice(-500)) ||
+      stderr.split("\n").slice(-5).join("\n").trim() ||
+      stdout.slice(-500) ||
       `OpenClaw exited with ${exitCode}`;
     yield {
       type: "error",
@@ -184,6 +188,53 @@ export async function* streamOpenclaw(
       cost_cents: 0,
     },
   };
+}
+
+function findLastUserIndex(messages: StreamChatOptions["messages"]): number {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i]?.role === "user") return i;
+  }
+  return -1;
+}
+
+function buildOpenclawPrompt(
+  opts: StreamChatOptions,
+  userPrompt: string,
+  lastUserIndex: number,
+): string {
+  const sections: string[] = [];
+  const systemPrompt = opts.config.systemPrompt?.trim();
+  if (systemPrompt) {
+    sections.push(
+      [
+        "<aio_system_context>",
+        "These are higher-priority AIO Control instructions and runtime context. They include the active business description, mission, targets, tools, locale, and operating rules.",
+        systemPrompt,
+        "</aio_system_context>",
+      ].join("\n"),
+    );
+  }
+
+  if (!opts.sessionId && lastUserIndex > 0) {
+    const priorMessages = opts.messages
+      .slice(Math.max(0, lastUserIndex - 8), lastUserIndex)
+      .filter((message) => message.content.trim());
+    if (priorMessages.length > 0) {
+      sections.push(
+        [
+          "<prior_conversation>",
+          ...priorMessages.map(
+            (message) =>
+              `${message.role.toUpperCase()}:\n${message.content.trim()}`,
+          ),
+          "</prior_conversation>",
+        ].join("\n\n"),
+      );
+    }
+  }
+
+  sections.push(["<user_message>", userPrompt, "</user_message>"].join("\n"));
+  return sections.join("\n\n");
 }
 
 type ExtractedReply = {
@@ -262,7 +313,9 @@ function readEnvelope(
     | Record<string, unknown>
     | undefined;
   const inputTokens =
-    typeof usage?.["input"] === "number" ? (usage["input"] as number) : undefined;
+    typeof usage?.["input"] === "number"
+      ? (usage["input"] as number)
+      : undefined;
   const outputTokens =
     typeof usage?.["output"] === "number"
       ? (usage["output"] as number)

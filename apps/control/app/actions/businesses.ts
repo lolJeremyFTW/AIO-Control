@@ -6,7 +6,7 @@
 
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { copyFile, mkdir } from "node:fs/promises";
+import { copyFile, mkdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -53,6 +53,18 @@ export type ActionResult<T> =
 type BinaryRunResult =
   | { ok: true; stdout: string; stderr: string; latencyMs: number }
   | { ok: false; error: string };
+
+type BusinessOpenClawContext = {
+  id: string;
+  workspace_id: string;
+  slug: string;
+  name: string;
+  sub: string | null;
+  description: string | null;
+  mission: string | null;
+  targets: unknown[] | null;
+  openclaw_agent_name: string | null;
+};
 
 async function runBinary(
   binary: string,
@@ -121,13 +133,7 @@ async function runBinary(
 async function requireBusinessAdmin(businessId: string): Promise<
   ActionResult<{
     supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>;
-    business: {
-      id: string;
-      workspace_id: string;
-      slug: string;
-      name: string;
-      openclaw_agent_name: string | null;
-    };
+    business: BusinessOpenClawContext;
   }>
 > {
   const supabase = await createSupabaseServerClient();
@@ -138,7 +144,9 @@ async function requireBusinessAdmin(businessId: string): Promise<
 
   const { data: business, error: bizError } = await supabase
     .from("businesses")
-    .select("id, workspace_id, slug, name, openclaw_agent_name")
+    .select(
+      "id, workspace_id, slug, name, sub, description, mission, targets, openclaw_agent_name",
+    )
     .eq("id", businessId)
     .maybeSingle();
   if (bizError || !business) {
@@ -164,13 +172,7 @@ async function requireBusinessAdmin(businessId: string): Promise<
     ok: true,
     data: {
       supabase,
-      business: business as {
-        id: string;
-        workspace_id: string;
-        slug: string;
-        name: string;
-        openclaw_agent_name: string | null;
-      },
+      business: business as BusinessOpenClawContext,
     },
   };
 }
@@ -350,6 +352,12 @@ export async function updateBusiness(input: {
     .eq("id", input.id);
   if (error) return { ok: false, error: error.message };
 
+  if (patchTouchesOpenClawContext(patch)) {
+    await refreshBusinessOpenClawContext(input.id).catch((err) => {
+      console.error("refreshBusinessOpenClawContext failed", err);
+    });
+  }
+
   // If the rename happened AND there's a bound Telegram topic, push
   // the new name to Telegram so the topic title stays in sync.
   if (input.patch.name !== undefined) {
@@ -418,6 +426,12 @@ export async function verifyBusinessOpenClawAgent(input: {
       error: `OpenClaw-agent "${name}" niet gevonden op deze server. Klik eerst Create on VPS.`,
     };
   }
+
+  await writeBusinessOpenClawContextFile(auth.data.business, name).catch(
+    (err) => {
+      console.error("writeBusinessOpenClawContextFile failed", err);
+    },
+  );
 
   const initializedAt = new Date().toISOString();
   const { error } = await auth.data.supabase
@@ -493,6 +507,16 @@ export async function createBusinessOpenClawAgent(input: {
     .maybeSingle();
   const sourceName = (ws?.openclaw_agent_name as string | null) ?? "aio-admin";
   const mirroredFrom = await mirrorOpenclawAgentFiles(sourceName, name);
+  try {
+    await writeBusinessOpenClawContextFile(auth.data.business, name);
+  } catch (err) {
+    return {
+      ok: false,
+      error:
+        `OpenClaw-agent "${name}" is aangemaakt, maar AIO kon BUSINESS_CONTEXT.md niet schrijven: ` +
+        (err instanceof Error ? err.message : "onbekende fout"),
+    };
+  }
 
   const { error } = await auth.data.supabase
     .from("businesses")
@@ -570,6 +594,133 @@ async function mirrorOpenclawAgentFiles(
     return sourceName;
   }
 
+  return null;
+}
+
+function patchTouchesOpenClawContext(patch: Record<string, unknown>): boolean {
+  return ["name", "slug", "sub", "description", "mission", "targets"].some(
+    (key) => key in patch,
+  );
+}
+
+async function refreshBusinessOpenClawContext(
+  businessId: string,
+): Promise<void> {
+  const admin = getServiceRoleSupabase();
+  const { data: business } = await admin
+    .from("businesses")
+    .select(
+      "id, workspace_id, slug, name, sub, description, mission, targets, openclaw_agent_name",
+    )
+    .eq("id", businessId)
+    .maybeSingle();
+  const agentName =
+    typeof business?.openclaw_agent_name === "string"
+      ? business.openclaw_agent_name.trim()
+      : "";
+  if (!business || !agentName) return;
+
+  await writeBusinessOpenClawContextFile(
+    business as BusinessOpenClawContext,
+    agentName,
+    { ensureDir: false },
+  );
+}
+
+async function writeBusinessOpenClawContextFile(
+  business: BusinessOpenClawContext,
+  targetName: string,
+  opts: { ensureDir?: boolean } = {},
+): Promise<boolean> {
+  const agentsRoot = join(homedir(), ".openclaw", "agents");
+  const targetDir = join(agentsRoot, targetName, "agent");
+  if (opts.ensureDir === false) {
+    if (!existsSync(targetDir)) return false;
+  } else {
+    await mkdir(targetDir, { recursive: true });
+  }
+
+  await writeFile(
+    join(targetDir, "BUSINESS_CONTEXT.md"),
+    renderBusinessOpenClawContext(business, targetName),
+    "utf8",
+  );
+  return true;
+}
+
+function renderBusinessOpenClawContext(
+  business: BusinessOpenClawContext,
+  agentName: string,
+): string {
+  const lines: string[] = [
+    "# AIO Business Context",
+    "",
+    "Managed by AIO Control. Treat this as the default business briefing before the first chat or run.",
+    "",
+    "## Runtime agent",
+    `- OpenClaw agent: ${agentName}`,
+    `- Business: ${business.name}`,
+    `- Slug: ${business.slug}`,
+    `- Business ID: ${business.id}`,
+  ];
+
+  if (business.sub?.trim()) lines.push(`- Short label: ${business.sub.trim()}`);
+  if (business.description?.trim()) {
+    lines.push("", "## Description", business.description.trim());
+  }
+  if (business.mission?.trim()) {
+    lines.push("", "## Mission / operating rules", business.mission.trim());
+  }
+
+  const targets = Array.isArray(business.targets) ? business.targets : [];
+  const activeTargets = targets.filter((target) => {
+    const status = readTargetField(target, "status") ?? "open";
+    return status !== "done" && status !== "abandoned";
+  });
+  lines.push("", "## Active targets");
+  if (activeTargets.length === 0) {
+    lines.push("- No active targets set in AIO yet.");
+  } else {
+    activeTargets.forEach((target, index) => {
+      lines.push(formatBusinessTarget(target, index));
+    });
+  }
+
+  lines.push(
+    "",
+    "## How to use this",
+    "- Keep the business description, mission, and active targets in mind from the first reply.",
+    "- If AIO passes a system prompt in the current run, that prompt is the freshest source of truth.",
+    "- When a request is vague, choose the action that best advances the active targets without inventing facts.",
+  );
+
+  return `${lines.join("\n")}\n`;
+}
+
+function formatBusinessTarget(target: unknown, index: number): string {
+  const name = readTargetField(target, "name") ?? `Target ${index + 1}`;
+  const goal = readTargetField(target, "target");
+  const current = readTargetField(target, "current");
+  const deadline = readTargetField(target, "deadline");
+  const parts = [`- ${name}`];
+  if (goal) parts.push(`-> ${goal}`);
+  if (current) parts.push(`(current: ${current})`);
+  if (deadline) parts.push(`by ${deadline}`);
+  return parts.join(" ");
+}
+
+function readTargetField(target: unknown, key: string): string | null {
+  if (!target || typeof target !== "object" || Array.isArray(target)) {
+    return null;
+  }
+  const value = (target as Record<string, unknown>)[key];
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed || null;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
   return null;
 }
 
