@@ -36,6 +36,16 @@ export function McpServersField({
   // Split built-in vs custom servers
   const builtinIds = BUILTIN_SERVERS.map((s) => s.id);
   const customServers = value.filter((id) => !builtinIds.includes(id));
+  const enabledBuiltinCount = builtinIds.filter((id) =>
+    value.includes(id),
+  ).length;
+  const allBuiltinsEnabled = enabledBuiltinCount === builtinIds.length;
+
+  const enableAllBuiltins = () => {
+    for (const id of builtinIds) {
+      if (!value.includes(id)) onToggle(id);
+    }
+  };
 
   return (
     <div
@@ -61,6 +71,33 @@ export function McpServersField({
       >
         MCP servers — welke tools mag deze agent aanroepen?
       </div>
+
+      <button
+        type="button"
+        onClick={enableAllBuiltins}
+        disabled={allBuiltinsEnabled}
+        style={{
+          alignSelf: "flex-start",
+          border: "1.5px solid var(--tt-green)",
+          background: allBuiltinsEnabled
+            ? "rgba(57,178,85,0.08)"
+            : "var(--tt-green)",
+          color: allBuiltinsEnabled ? "var(--tt-green)" : "#fff",
+          borderRadius: 8,
+          padding: "5px 10px",
+          fontSize: 11.5,
+          fontWeight: 800,
+          cursor: allBuiltinsEnabled ? "default" : "pointer",
+          opacity: allBuiltinsEnabled ? 0.72 : 1,
+        }}
+        title={
+          allBuiltinsEnabled
+            ? "Alle ingebouwde MCP servers staan al aan"
+            : "Zet alle ingebouwde MCP servers aan"
+        }
+      >
+        {allBuiltinsEnabled ? "Alle MCPs aan" : "Enable all MCPs"}
+      </button>
 
       {BUILTIN_SERVERS.map((opt) => {
         const checked = value.includes(opt.id);
