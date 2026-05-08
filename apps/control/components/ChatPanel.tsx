@@ -99,9 +99,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
   );
   const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
-  const [agentId, setAgentId] = useState<string | null>(
-    agents[0]?.id ?? null,
-  );
+  const [agentId, setAgentId] = useState<string | null>(agents[0]?.id ?? null);
   const [messages, setMessages] = useState<UIMessage[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -120,21 +118,24 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
   const autoLoadedThreadRef = useRef(false);
   const storageKey = `aio-chat:${workspaceSlug ?? "workspace"}`;
 
-  const rowsToMessages = useCallback((messageRows: MessageRow[]): UIMessage[] => {
-    return messageRows.map((r) => {
-      const text = r.content?.text ?? "";
-      return {
-        id: r.id,
-        role:
-          r.role === "system"
-            ? "assistant"
-            : (r.role as "user" | "assistant"),
-        text,
-        originalText: r.content?.original_text ?? text,
-        createdAt: r.created_at ? new Date(r.created_at) : new Date(),
-      };
-    });
-  }, []);
+  const rowsToMessages = useCallback(
+    (messageRows: MessageRow[]): UIMessage[] => {
+      return messageRows.map((r) => {
+        const text = r.content?.text ?? "";
+        return {
+          id: r.id,
+          role:
+            r.role === "system"
+              ? "assistant"
+              : (r.role as "user" | "assistant"),
+          text,
+          originalText: r.content?.original_text ?? text,
+          createdAt: r.created_at ? new Date(r.created_at) : new Date(),
+        };
+      });
+    },
+    [],
+  );
 
   useEffect(() => {
     setMounted(true);
@@ -256,12 +257,14 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
       const nextThreadId =
         activeThreadId && rows.some((row) => row.id === activeThreadId)
           ? activeThreadId
-          : rows[0]?.id ?? null;
+          : (rows[0]?.id ?? null);
 
       if (
         nextThreadId &&
         (restoredThreadRef.current ||
-          (!activeThreadId && messages.length === 0 && !autoLoadedThreadRef.current))
+          (!activeThreadId &&
+            messages.length === 0 &&
+            !autoLoadedThreadRef.current))
       ) {
         restoredThreadRef.current = false;
         autoLoadedThreadRef.current = true;
@@ -278,16 +281,19 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
   }, [activeThreadId, agentId, locale, messages.length, open, rowsToMessages]);
 
   // Switch threads → load history.
-  const switchThread = useCallback(async (threadId: string | null) => {
-    setShowSidebar(false);
-    setActiveThreadId(threadId);
-    if (!threadId) {
-      setMessages([]);
-      return;
-    }
-    const rows = await listMessages(threadId, locale);
-    setMessages(rowsToMessages(rows));
-  }, [locale, rowsToMessages]);
+  const switchThread = useCallback(
+    async (threadId: string | null) => {
+      setShowSidebar(false);
+      setActiveThreadId(threadId);
+      if (!threadId) {
+        setMessages([]);
+        return;
+      }
+      const rows = await listMessages(threadId, locale);
+      setMessages(rowsToMessages(rows));
+    },
+    [locale, rowsToMessages],
+  );
 
   useEffect(() => {
     if (!mounted || !agentId || !activeThreadId) return;
@@ -334,9 +340,9 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
 
     const channel = supabase
       .channel(`chat_messages:agent:${agentId}`)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       .on(
-        "postgres_changes" as any,
+        "postgres_changes",
         {
           event: "INSERT",
           schema: "aio_control",
@@ -362,7 +368,9 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
                   role: "assistant",
                   text: row.content?.text ?? "",
                   originalText: row.content?.text ?? "",
-                  createdAt: row.created_at ? new Date(row.created_at) : new Date(),
+                  createdAt: row.created_at
+                    ? new Date(row.created_at)
+                    : new Date(),
                 },
               ];
             });
@@ -390,7 +398,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
         if (target.closest(".chatbox")) return;
 
         // Find the sidebar element (the thread list container)
-        const sidebar = panelRef.current?.querySelector('[data-sidebar]');
+        const sidebar = panelRef.current?.querySelector("[data-sidebar]");
         const clickedInsidePanel = panelRef.current?.contains(target);
         const clickedInsideSidebar = sidebar?.contains(target);
 
@@ -406,7 +414,8 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
         }
       };
       document.addEventListener("mousedown", handleClickOutside);
-      return () => document.removeEventListener("mousedown", handleClickOutside);
+      return () =>
+        document.removeEventListener("mousedown", handleClickOutside);
     }, 0);
     return () => clearTimeout(timeoutId);
   }, [open, showSidebar]);
@@ -419,7 +428,8 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
       : commands
           .filter((item) => {
             if (slashQuery === "commands") return true;
-            const haystack = `${item.command} ${item.title} ${item.description} ${item.kind}`.toLowerCase();
+            const haystack =
+              `${item.command} ${item.title} ${item.description} ${item.kind}`.toLowerCase();
             return haystack.includes(slashQuery);
           })
           .slice(0, 8);
@@ -428,309 +438,320 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
     setCommandIndex(0);
   }, [slashQuery]);
 
-  const applyCommand = useCallback(
-    (item: CommandItem) => {
-      setOpen(true);
-      setInput((current) =>
-        current.replace(/(?:^|\s)\/([^\s]*)$/, (match) => {
-          const prefix = match.startsWith(" ") ? " " : "";
-          return `${prefix}${item.command} `;
-        }),
-      );
-      window.setTimeout(() => inputRef.current?.focus(), 0);
-    },
-    [],
-  );
+  const applyCommand = useCallback((item: CommandItem) => {
+    setOpen(true);
+    setInput((current) =>
+      current.replace(/(?:^|\s)\/([^\s]*)$/, (match) => {
+        const prefix = match.startsWith(" ") ? " " : "";
+        return `${prefix}${item.command} `;
+      }),
+    );
+    window.setTimeout(() => inputRef.current?.focus(), 0);
+  }, []);
 
   const send = useCallback(
-    async (
-      opts?: {
-        /** When set, skip the normal user-text turn and instead
-         *  POST an approve_tool request that resumes a paused
-         *  write-tool flow on the server. */
-        approveTool?: { tool_call_id: string; decision: "approve" | "cancel" };
-      },
-    ) => {
-    const isApproval = !!opts?.approveTool;
-    const text = isApproval ? "" : input.trim();
-    if (!isApproval && (!text || sending)) return;
-    if (!agentId || sending) return;
-    setSending(true);
-    if (!isApproval) setInput("");
+    async (opts?: {
+      /** When set, skip the normal user-text turn and instead
+       *  POST an approve_tool request that resumes a paused
+       *  write-tool flow on the server. */
+      approveTool?: { tool_call_id: string; decision: "approve" | "cancel" };
+    }) => {
+      const isApproval = !!opts?.approveTool;
+      const text = isApproval ? "" : input.trim();
+      if (!isApproval && (!text || sending)) return;
+      if (!agentId || sending) return;
+      setSending(true);
+      if (!isApproval) setInput("");
 
-    const userId = crypto.randomUUID();
-    const assistantId = crypto.randomUUID();
-    const history: ChatMessage[] = messages
-      .filter((m) => m.role !== "error")
-      .map((m) => ({
-        role: m.role === "assistant" ? "assistant" : "user",
-        content: m.originalText ?? m.text,
-      }));
-    if (!isApproval) history.push({ role: "user", content: text });
-    const inputTokenEstimate = estimateTokens(history.map((m) => m.content).join("\n"));
+      const userId = crypto.randomUUID();
+      const assistantId = crypto.randomUUID();
+      const history: ChatMessage[] = messages
+        .filter((m) => m.role !== "error")
+        .map((m) => ({
+          role: m.role === "assistant" ? "assistant" : "user",
+          content: m.originalText ?? m.text,
+        }));
+      if (!isApproval) history.push({ role: "user", content: text });
+      const inputTokenEstimate = estimateTokens(
+        history.map((m) => m.content).join("\n"),
+      );
 
-    setMessages((m) => {
-      // For approval requests we don't add a user bubble; we just
-      // append a fresh assistant placeholder for the continuation.
-      const next = isApproval
-        ? [...m, { id: assistantId, role: "assistant" as const, text: "", pending: true, createdAt: new Date() }]
-        : [
-            ...m,
-            { id: userId, role: "user" as const, text, createdAt: new Date() },
-            {
-              id: assistantId,
-              role: "assistant" as const,
-              text: "",
-              pending: true,
-              usage: {
-                inputTokens: inputTokenEstimate,
-                outputTokens: 0,
-                estimatedInput: true,
-                estimatedOutput: true,
+      setMessages((m) => {
+        // For approval requests we don't add a user bubble; we just
+        // append a fresh assistant placeholder for the continuation.
+        const next = isApproval
+          ? [
+              ...m,
+              {
+                id: assistantId,
+                role: "assistant" as const,
+                text: "",
+                pending: true,
+                createdAt: new Date(),
               },
-              createdAt: new Date(),
-            },
-          ];
-      // Mark the original confirm bubble as decided so its buttons
-      // disable + the card swaps to a status pill.
-      if (isApproval) {
-        return next.map((mm) =>
-          mm.confirm?.tool_call_id === opts!.approveTool!.tool_call_id
-            ? {
-                ...mm,
-                confirm: {
-                  ...mm.confirm,
-                  decided: opts!.approveTool!.decision,
+            ]
+          : [
+              ...m,
+              {
+                id: userId,
+                role: "user" as const,
+                text,
+                createdAt: new Date(),
+              },
+              {
+                id: assistantId,
+                role: "assistant" as const,
+                text: "",
+                pending: true,
+                usage: {
+                  inputTokens: inputTokenEstimate,
+                  outputTokens: 0,
+                  estimatedInput: true,
+                  estimatedOutput: true,
                 },
-              }
-            : mm,
-        );
-      }
-      return next;
-    });
-
-    try {
-      const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-      abortControllerRef.current = new AbortController();
-      const res = await fetch(`${base}/api/chat/${agentId}`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          messages: history,
-          thread_id: activeThreadId,
-          locale,
-          approve_tool: opts?.approveTool,
-        }),
-        signal: abortControllerRef.current.signal,
-      });
-      // Capture the server-issued thread id so subsequent turns reuse it.
-      const newThreadId = res.headers.get("x-aio-thread-id");
-      if (newThreadId && newThreadId !== activeThreadId) {
-        setActiveThreadId(newThreadId);
-      }
-      if (!res.ok || !res.body) {
-        const err = (await res.text().catch(() => "")) || res.statusText;
-        setMessages((m) =>
-          m.map((mm) =>
-            mm.id === assistantId
-              ? { ...mm, role: "error", text: err, pending: false }
+                createdAt: new Date(),
+              },
+            ];
+        // Mark the original confirm bubble as decided so its buttons
+        // disable + the card swaps to a status pill.
+        if (isApproval) {
+          return next.map((mm) =>
+            mm.confirm?.tool_call_id === opts!.approveTool!.tool_call_id
+              ? {
+                  ...mm,
+                  confirm: {
+                    ...mm.confirm,
+                    decided: opts!.approveTool!.decision,
+                  },
+                }
               : mm,
-          ),
-        );
-        return;
-      }
-      const decoder = new TextDecoder();
-      let buf = "";
-      let aborted = false;
-      const reader = res.body.getReader();
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        let done: boolean;
-        let value: Uint8Array | undefined;
-        try {
-          ({ done, value } = await reader.read());
-          if (done) break;
-        } catch (err) {
-          if ((err as Error).name === "AbortError") {
-            aborted = true;
-            setMessages((m) =>
-              m.map((mm) =>
-                mm.id === assistantId ? { ...mm, pending: false } : mm,
-              ),
-            );
-            break;
-          }
-          throw err;
+          );
         }
-        buf += decoder.decode(value, { stream: true });
-        let idx: number;
-        while ((idx = buf.indexOf("\n\n")) !== -1) {
-          const block = buf.slice(0, idx);
-          buf = buf.slice(idx + 2);
-          for (const line of block.split("\n")) {
-            if (!line.startsWith("data:")) continue;
-            try {
-              const event = JSON.parse(line.slice(5).trim()) as AGUIEvent;
-              if (event.type === "token") {
-                setMessages((m) =>
-                  m.map((mm) =>
-                    mm.id === assistantId
-                      ? {
-                          ...mm,
-                          text: mm.text + event.delta,
-                          usage: {
-                            ...mm.usage,
-                            outputTokens: estimateTokens(mm.text + event.delta),
-                            estimatedOutput: true,
-                          },
-                        }
-                      : mm,
-                  ),
-                );
-              }
-              if (event.type === "error") {
-                setMessages((m) =>
-                  m.map((mm) =>
-                    mm.id === assistantId
-                      ? {
-                          ...mm,
-                          role: "error",
-                          text: event.message,
-                          pending: false,
-                        }
-                      : mm,
-                  ),
-                );
-              }
-              if (event.type === "message_end") {
-                setMessages((m) =>
-                  m.map((mm) =>
-                    mm.id === assistantId
-                      ? {
-                          ...mm,
-                          pending: false,
-                          usage: {
-                            inputTokens: event.usage.input_tokens,
-                            outputTokens: event.usage.output_tokens,
-                            costCents: event.usage.cost_cents,
-                            estimatedInput: false,
-                            estimatedOutput: false,
-                          },
-                        }
-                      : mm,
-                  ),
-                );
-              }
-              if (event.type === "cost_update") {
-                setMessages((m) =>
-                  m.map((mm) =>
-                    mm.id === assistantId
-                      ? {
-                          ...mm,
-                          usage: {
-                            inputTokens: event.input_tokens,
-                            outputTokens: event.output_tokens,
-                            costCents: event.cost_cents,
-                            estimatedInput: false,
-                            estimatedOutput: false,
-                          },
-                        }
-                      : mm,
-                  ),
-                );
-              }
-              if (event.type === "tool_call_start") {
-                const argsPreview = (() => {
-                  try {
-                    const s = JSON.stringify(event.args);
-                    return s.length > 80 ? s.slice(0, 77) + "…" : s;
-                  } catch {
-                    return "";
-                  }
-                })();
-                setMessages((m) =>
-                  m.map((mm) =>
-                    mm.id === assistantId
-                      ? {
-                          ...mm,
-                          toolCalls: [
-                            ...(mm.toolCalls ?? []),
-                            {
-                              id: event.tool_call_id,
-                              name: event.name,
-                              argsPreview,
+        return next;
+      });
+
+      try {
+        const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+        abortControllerRef.current = new AbortController();
+        const res = await fetch(`${base}/api/chat/${agentId}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            messages: history,
+            thread_id: activeThreadId,
+            locale,
+            approve_tool: opts?.approveTool,
+          }),
+          signal: abortControllerRef.current.signal,
+        });
+        // Capture the server-issued thread id so subsequent turns reuse it.
+        const newThreadId = res.headers.get("x-aio-thread-id");
+        if (newThreadId && newThreadId !== activeThreadId) {
+          setActiveThreadId(newThreadId);
+        }
+        if (!res.ok || !res.body) {
+          const err = (await res.text().catch(() => "")) || res.statusText;
+          setMessages((m) =>
+            m.map((mm) =>
+              mm.id === assistantId
+                ? { ...mm, role: "error", text: err, pending: false }
+                : mm,
+            ),
+          );
+          return;
+        }
+        const decoder = new TextDecoder();
+        let buf = "";
+        const reader = res.body.getReader();
+
+        while (true) {
+          let done: boolean;
+          let value: Uint8Array | undefined;
+          try {
+            ({ done, value } = await reader.read());
+            if (done) break;
+          } catch (err) {
+            if ((err as Error).name === "AbortError") {
+              setMessages((m) =>
+                m.map((mm) =>
+                  mm.id === assistantId ? { ...mm, pending: false } : mm,
+                ),
+              );
+              break;
+            }
+            throw err;
+          }
+          buf += decoder.decode(value, { stream: true });
+          let idx: number;
+          while ((idx = buf.indexOf("\n\n")) !== -1) {
+            const block = buf.slice(0, idx);
+            buf = buf.slice(idx + 2);
+            for (const line of block.split("\n")) {
+              if (!line.startsWith("data:")) continue;
+              try {
+                const event = JSON.parse(line.slice(5).trim()) as AGUIEvent;
+                if (event.type === "token") {
+                  setMessages((m) =>
+                    m.map((mm) =>
+                      mm.id === assistantId
+                        ? {
+                            ...mm,
+                            text: mm.text + event.delta,
+                            usage: {
+                              ...mm.usage,
+                              outputTokens: estimateTokens(
+                                mm.text + event.delta,
+                              ),
+                              estimatedOutput: true,
                             },
-                          ],
-                        }
-                      : mm,
-                  ),
-                );
+                          }
+                        : mm,
+                    ),
+                  );
+                }
+                if (event.type === "error") {
+                  setMessages((m) =>
+                    m.map((mm) =>
+                      mm.id === assistantId
+                        ? {
+                            ...mm,
+                            role: "error",
+                            text: event.message,
+                            pending: false,
+                          }
+                        : mm,
+                    ),
+                  );
+                }
+                if (event.type === "message_end") {
+                  setMessages((m) =>
+                    m.map((mm) =>
+                      mm.id === assistantId
+                        ? {
+                            ...mm,
+                            pending: false,
+                            usage: {
+                              inputTokens: event.usage.input_tokens,
+                              outputTokens: event.usage.output_tokens,
+                              costCents: event.usage.cost_cents,
+                              estimatedInput: false,
+                              estimatedOutput: false,
+                            },
+                          }
+                        : mm,
+                    ),
+                  );
+                }
+                if (event.type === "cost_update") {
+                  setMessages((m) =>
+                    m.map((mm) =>
+                      mm.id === assistantId
+                        ? {
+                            ...mm,
+                            usage: {
+                              inputTokens: event.input_tokens,
+                              outputTokens: event.output_tokens,
+                              costCents: event.cost_cents,
+                              estimatedInput: false,
+                              estimatedOutput: false,
+                            },
+                          }
+                        : mm,
+                    ),
+                  );
+                }
+                if (event.type === "tool_call_start") {
+                  const argsPreview = (() => {
+                    try {
+                      const s = JSON.stringify(event.args);
+                      return s.length > 80 ? s.slice(0, 77) + "…" : s;
+                    } catch {
+                      return "";
+                    }
+                  })();
+                  setMessages((m) =>
+                    m.map((mm) =>
+                      mm.id === assistantId
+                        ? {
+                            ...mm,
+                            toolCalls: [
+                              ...(mm.toolCalls ?? []),
+                              {
+                                id: event.tool_call_id,
+                                name: event.name,
+                                argsPreview,
+                              },
+                            ],
+                          }
+                        : mm,
+                    ),
+                  );
+                }
+                if (event.type === "ask_followup") {
+                  setMessages((m) =>
+                    m.map((mm) =>
+                      mm.id === assistantId
+                        ? {
+                            ...mm,
+                            pending: false,
+                            askFollowup: {
+                              question: event.question,
+                              options: event.options,
+                            },
+                          }
+                        : mm,
+                    ),
+                  );
+                }
+                if (event.type === "confirm_required") {
+                  setMessages((m) =>
+                    m.map((mm) =>
+                      mm.id === assistantId
+                        ? {
+                            ...mm,
+                            pending: false,
+                            confirm: {
+                              kind: event.kind,
+                              summary: event.summary,
+                              tool_call_id: event.tool_call_id,
+                            },
+                          }
+                        : mm,
+                    ),
+                  );
+                }
+                if (event.type === "open_ui_at") {
+                  setMessages((m) =>
+                    m.map((mm) =>
+                      mm.id === assistantId
+                        ? {
+                            ...mm,
+                            navHint: { path: event.path, label: event.label },
+                          }
+                        : mm,
+                    ),
+                  );
+                }
+                // todo_set + plan_proposed render in future commits;
+                // ignored for now so they don't crash the parser.
+              } catch {
+                /* ignore malformed event */
               }
-              if (event.type === "ask_followup") {
-                setMessages((m) =>
-                  m.map((mm) =>
-                    mm.id === assistantId
-                      ? {
-                          ...mm,
-                          pending: false,
-                          askFollowup: {
-                            question: event.question,
-                            options: event.options,
-                          },
-                        }
-                      : mm,
-                  ),
-                );
-              }
-              if (event.type === "confirm_required") {
-                setMessages((m) =>
-                  m.map((mm) =>
-                    mm.id === assistantId
-                      ? {
-                          ...mm,
-                          pending: false,
-                          confirm: {
-                            kind: event.kind,
-                            summary: event.summary,
-                            tool_call_id: event.tool_call_id,
-                          },
-                        }
-                      : mm,
-                  ),
-                );
-              }
-              if (event.type === "open_ui_at") {
-                setMessages((m) =>
-                  m.map((mm) =>
-                    mm.id === assistantId
-                      ? {
-                          ...mm,
-                          navHint: { path: event.path, label: event.label },
-                        }
-                      : mm,
-                  ),
-                );
-              }
-              // todo_set + plan_proposed render in future commits;
-              // ignored for now so they don't crash the parser.
-            } catch {
-              /* ignore malformed event */
             }
           }
         }
+      } finally {
+        setSending(false);
+        setMessages((m) =>
+          m.map((mm) =>
+            mm.id === assistantId ? { ...mm, pending: false } : mm,
+          ),
+        );
+        // Refresh sidebar so the new/bumped thread floats to the top.
+        if (agentId) {
+          void listThreads(agentId, locale).then(setThreads);
+        }
       }
-    } finally {
-      setSending(false);
-      setMessages((m) =>
-        m.map((mm) =>
-          mm.id === assistantId ? { ...mm, pending: false } : mm,
-        ),
-      );
-      // Refresh sidebar so the new/bumped thread floats to the top.
-      if (agentId) {
-        void listThreads(agentId, locale).then(setThreads);
-      }
-    }
     },
     [agentId, input, locale, messages, sending, activeThreadId],
   );
@@ -746,9 +767,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
         style={chatboxDockStyle}
         onClick={() => {
           if (firstBusinessId && workspaceSlug) {
-            router.push(
-              `/${workspaceSlug}/business/${firstBusinessId}/agents`,
-            );
+            router.push(`/${workspaceSlug}/business/${firstBusinessId}/agents`);
           } else if (workspaceSlug) {
             router.push(`/${workspaceSlug}/marketplace`);
           }
@@ -820,7 +839,9 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
             <button
               type="button"
               onClick={() => setShowSidebar((v) => !v)}
-              title={showSidebar ? t("chat.threads.hide") : t("chat.threads.show")}
+              title={
+                showSidebar ? t("chat.threads.hide") : t("chat.threads.show")
+              }
               style={{
                 background: "transparent",
                 border: "1.5px solid var(--app-border)",
@@ -961,7 +982,13 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
                 </button>
               </div>
               {threads.length === 0 ? (
-                <p style={{ fontSize: 11, color: "var(--app-fg-3)", padding: 10 }}>
+                <p
+                  style={{
+                    fontSize: 11,
+                    color: "var(--app-fg-3)",
+                    padding: 10,
+                  }}
+                >
                   {t("chat.threads.empty")}
                 </p>
               ) : (
@@ -1068,7 +1095,8 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
                 <div
                   style={{
                     display: "flex",
-                    justifyContent: m.role === "user" ? "flex-end" : "flex-start",
+                    justifyContent:
+                      m.role === "user" ? "flex-end" : "flex-start",
                     alignItems: "flex-end",
                     gap: 6,
                     width: "100%",
@@ -1094,11 +1122,9 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
                           : "1px solid var(--app-border-2)",
                       borderRadius: 12,
                       padding: "8px 11px",
-                      maxWidth:
-                        m.role === "user"
-                          ? "82%"
-                          : "calc(100% - 46px)",
-                      whiteSpace: m.role === "assistant" ? "normal" : "pre-wrap",
+                      maxWidth: m.role === "user" ? "82%" : "calc(100% - 46px)",
+                      whiteSpace:
+                        m.role === "assistant" ? "normal" : "pre-wrap",
                       lineHeight: 1.42,
                       overflowWrap: "anywhere",
                     }}
@@ -1118,7 +1144,10 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
                       fontFamily: "var(--mono, monospace)",
                     }}
                   >
-                    {m.createdAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    {m.createdAt.toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
                   </span>
                 </div>
 
@@ -1182,7 +1211,8 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
                     >
                       {m.askFollowup.question}
                     </div>
-                    {m.askFollowup.options && m.askFollowup.options.length > 0 ? (
+                    {m.askFollowup.options &&
+                    m.askFollowup.options.length > 0 ? (
                       <div
                         style={{
                           display: "flex",
@@ -1494,7 +1524,8 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
                 } else if (e.key === "ArrowUp") {
                   e.preventDefault();
                   setCommandIndex(
-                    (idx) => (idx - 1 + slashCommands.length) % slashCommands.length,
+                    (idx) =>
+                      (idx - 1 + slashCommands.length) % slashCommands.length,
                   );
                 } else if (e.key === "Tab") {
                   e.preventDefault();
@@ -1518,7 +1549,9 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
             />
             <button
               type={sending ? "button" : "submit"}
-              onClick={sending ? () => abortControllerRef.current?.abort() : undefined}
+              onClick={
+                sending ? () => abortControllerRef.current?.abort() : undefined
+              }
               disabled={sending ? false : !input.trim()}
               style={{
                 background: sending ? "var(--rose)" : "var(--tt-green)",
@@ -1528,7 +1561,11 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
                 padding: "0 14px",
                 fontWeight: 700,
                 fontSize: 12.5,
-                cursor: sending ? "pointer" : !input.trim() ? "not-allowed" : "pointer",
+                cursor: sending
+                  ? "pointer"
+                  : !input.trim()
+                    ? "not-allowed"
+                    : "pointer",
                 opacity: sending ? 1 : !input.trim() ? 0.7 : 1,
                 minWidth: 42,
                 textAlign: "center",
@@ -1556,11 +1593,7 @@ function formatTokenCount(value?: number, estimated?: boolean): string {
   return `${estimated ? "~" : ""}${value.toLocaleString("nl-NL")}`;
 }
 
-function TokenUsageLine({
-  usage,
-}: {
-  usage: NonNullable<UIMessage["usage"]>;
-}) {
+function TokenUsageLine({ usage }: { usage: NonNullable<UIMessage["usage"]> }) {
   const cost =
     usage.costCents != null ? ` · €${(usage.costCents / 100).toFixed(4)}` : "";
   return (

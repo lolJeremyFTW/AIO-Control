@@ -40,10 +40,16 @@ function compactError(error?: string | null) {
 }
 
 function formatCost(costCents?: number) {
-  return costCents != null ? `Kosten EUR ${(costCents / 100).toFixed(4)}` : null;
+  return costCents != null
+    ? `Kosten EUR ${(costCents / 100).toFixed(4)}`
+    : null;
 }
 
-export function RunsToaster({ workspaceId, workspaceSlug, agents = [] }: Props) {
+export function RunsToaster({
+  workspaceId,
+  workspaceSlug,
+  agents = [],
+}: Props) {
   const router = useRouter();
   const [toasts, setToasts] = useState<Toast[]>([]);
   const seenStatusRef = useRef<Map<string, string>>(new Map());
@@ -71,9 +77,9 @@ export function RunsToaster({ workspaceId, workspaceSlug, agents = [] }: Props) 
     };
     const channel = supabase
       .channel(`runs:${workspaceId}`)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       .on(
-        "postgres_changes" as any,
+        "postgres_changes",
         {
           event: "*",
           schema: "aio_control",
@@ -149,7 +155,8 @@ export function RunsToaster({ workspaceId, workspaceSlug, agents = [] }: Props) 
             title = `${agentName} failed`;
             detail = compactError(newRow.error_text);
             const costText = formatCost(cost);
-            if (costText && cost && cost > 0) detail = `${detail} | ${costText}`;
+            if (costText && cost && cost > 0)
+              detail = `${detail} | ${costText}`;
           } else {
             title = `${agentName}: ${newRow.status ?? "updated"}`;
           }
@@ -174,9 +181,14 @@ export function RunsToaster({ workspaceId, workspaceSlug, agents = [] }: Props) 
                 : current;
             return [...trimmed, nextToast].slice(-MAX_VISIBLE_TOASTS);
           });
-          setTimeout(() => {
-            setToasts((current) => current.filter((toast) => toast.id !== id));
-          }, tone === "bad" ? 9000 : 4500);
+          setTimeout(
+            () => {
+              setToasts((current) =>
+                current.filter((toast) => toast.id !== id),
+              );
+            },
+            tone === "bad" ? 9000 : 4500,
+          );
         },
       )
       .subscribe();
@@ -205,7 +217,8 @@ export function RunsToaster({ workspaceId, workspaceSlug, agents = [] }: Props) 
           key={toast.id}
           type="button"
           onClick={() => {
-            if (toast.runId) router.push(`/${workspaceSlug}/runs?run=${toast.runId}`);
+            if (toast.runId)
+              router.push(`/${workspaceSlug}/runs?run=${toast.runId}`);
           }}
           title={toast.runId ? "Open run-details" : undefined}
           style={{

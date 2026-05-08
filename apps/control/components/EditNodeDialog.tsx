@@ -60,10 +60,10 @@ export function EditNodeDialog({ workspaceSlug, target, onClose }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
   const [name, setName] = useState(target.name);
   const [sub, setSub] = useState(
-    target.kind === "business" ? target.sub ?? "" : "",
+    target.kind === "business" ? (target.sub ?? "") : "",
   );
   const [href, setHref] = useState(
-    target.kind === "navnode" ? target.href ?? "" : "",
+    target.kind === "navnode" ? (target.href ?? "") : "",
   );
   const [appearance, setAppearance] = useState<AppearanceValue>({
     variant: target.variant ?? "slate",
@@ -249,7 +249,11 @@ export function EditNodeDialog({ workspaceSlug, target, onClose }: Props) {
                 onChange={(e) => setBizDescription(e.target.value)}
                 rows={3}
                 placeholder="Bijv. Faceless YouTube kanaal over NL tech. Doel: educatieve content + affiliate revenue."
-                style={{ ...inputStyle, resize: "vertical", fontFamily: "var(--type)" }}
+                style={{
+                  ...inputStyle,
+                  resize: "vertical",
+                  fontFamily: "var(--type)",
+                }}
               />
             </Field>
 
@@ -259,7 +263,11 @@ export function EditNodeDialog({ workspaceSlug, target, onClose }: Props) {
                 onChange={(e) => setBizMission(e.target.value)}
                 rows={4}
                 placeholder={`Bijv.\n• Schrijf in NL u-vorm, geen jargon\n• Geen click-bait, focus op insights\n• Bij twijfel: HITL review (state=review)\n• Maximaal 1 affiliate link per video`}
-                style={{ ...inputStyle, resize: "vertical", fontFamily: "var(--type)" }}
+                style={{
+                  ...inputStyle,
+                  resize: "vertical",
+                  fontFamily: "var(--type)",
+                }}
               />
             </Field>
 
@@ -272,107 +280,119 @@ export function EditNodeDialog({ workspaceSlug, target, onClose }: Props) {
               businessId={target.id}
             />
 
-          <div
-            style={{
-              border: "1.5px solid var(--app-border-2)",
-              borderRadius: 12,
-              padding: 12,
-              background: "var(--app-card-2)",
-              marginBottom: 12,
-              display: "flex",
-              flexDirection: "column",
-              gap: 10,
-            }}
-          >
-            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--app-fg-2)" }}>
-              Spend overrides (deze business)
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <Field label="Dag-cap (€, leeg = workspace default)">
+            <div
+              style={{
+                border: "1.5px solid var(--app-border-2)",
+                borderRadius: 12,
+                padding: 12,
+                background: "var(--app-card-2)",
+                marginBottom: 12,
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: "var(--app-fg-2)",
+                }}
+              >
+                Spend overrides (deze business)
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 10,
+                }}
+              >
+                <Field label="Dag-cap (€, leeg = workspace default)">
+                  <input
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    value={dailyEur}
+                    onChange={(e) => setDailyEur(e.target.value)}
+                    placeholder="bijv. 2.00"
+                    style={inputStyle}
+                  />
+                </Field>
+                <Field label="Maand-cap (€)">
+                  <input
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    value={monthlyEur}
+                    onChange={(e) => setMonthlyEur(e.target.value)}
+                    placeholder="bijv. 50.00"
+                    style={inputStyle}
+                  />
+                </Field>
+              </div>
+              <label
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  alignItems: "center",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
                 <input
-                  type="number"
-                  step="0.01"
-                  min={0}
-                  value={dailyEur}
-                  onChange={(e) => setDailyEur(e.target.value)}
-                  placeholder="bijv. 2.00"
-                  style={inputStyle}
+                  type="checkbox"
+                  checked={bizStatus === "running"}
+                  onChange={(e) =>
+                    setBizStatus(e.target.checked ? "running" : "paused")
+                  }
+                  style={{ accentColor: "var(--tt-green)" }}
                 />
-              </Field>
-              <Field label="Maand-cap (€)">
-                <input
-                  type="number"
-                  step="0.01"
-                  min={0}
-                  value={monthlyEur}
-                  onChange={(e) => setMonthlyEur(e.target.value)}
-                  placeholder="bijv. 50.00"
-                  style={inputStyle}
-                />
-              </Field>
+                {bizStatus === "running"
+                  ? "Business is actief — agents mogen runnen"
+                  : "Business is gepauzeerd — geen runs"}
+              </label>
             </div>
+
             <label
               style={{
                 display: "flex",
-                gap: 8,
-                alignItems: "center",
-                fontSize: 12,
-                fontWeight: 600,
+                gap: 10,
+                alignItems: "flex-start",
+                padding: 12,
+                border: `1.5px solid ${bizIsolated ? "var(--rose)" : "var(--app-border-2)"}`,
+                borderRadius: 10,
+                background: bizIsolated
+                  ? "rgba(230,82,107,0.06)"
+                  : "var(--app-card-2)",
                 cursor: "pointer",
+                marginBottom: 12,
               }}
             >
               <input
                 type="checkbox"
-                checked={bizStatus === "running"}
-                onChange={(e) =>
-                  setBizStatus(e.target.checked ? "running" : "paused")
-                }
-                style={{ accentColor: "var(--tt-green)" }}
+                checked={bizIsolated}
+                onChange={(e) => setBizIsolated(e.target.checked)}
+                style={{ accentColor: "var(--rose)", marginTop: 3 }}
               />
-              {bizStatus === "running"
-                ? "Business is actief — agents mogen runnen"
-                : "Business is gepauzeerd — geen runs"}
+              <div style={{ fontSize: 12 }}>
+                <div style={{ fontWeight: 700 }}>
+                  🔒 Isolated van workspace defaults
+                </div>
+                <div
+                  style={{
+                    color: "var(--app-fg-3)",
+                    marginTop: 2,
+                    lineHeight: 1.4,
+                  }}
+                >
+                  Wanneer aan: deze business gebruikt UITSLUITEND eigen API keys
+                  / Telegram bot / SMTP creds. Geen workspace fallback. Handig
+                  voor klantwerk waar je credentials niet wil mixen.
+                </div>
+              </div>
             </label>
-          </div>
-
-          <label
-            style={{
-              display: "flex",
-              gap: 10,
-              alignItems: "flex-start",
-              padding: 12,
-              border: `1.5px solid ${bizIsolated ? "var(--rose)" : "var(--app-border-2)"}`,
-              borderRadius: 10,
-              background: bizIsolated
-                ? "rgba(230,82,107,0.06)"
-                : "var(--app-card-2)",
-              cursor: "pointer",
-              marginBottom: 12,
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={bizIsolated}
-              onChange={(e) => setBizIsolated(e.target.checked)}
-              style={{ accentColor: "var(--rose)", marginTop: 3 }}
-            />
-            <div style={{ fontSize: 12 }}>
-              <div style={{ fontWeight: 700 }}>
-                🔒 Isolated van workspace defaults
-              </div>
-              <div
-                style={{
-                  color: "var(--app-fg-3)",
-                  marginTop: 2,
-                  lineHeight: 1.4,
-                }}
-              >
-                Wanneer aan: deze business gebruikt UITSLUITEND eigen API
-                keys / Telegram bot / SMTP creds. Geen workspace fallback.
-                Handig voor klantwerk waar je credentials niet wil mixen.
-              </div>
-            </div>
-          </label>
           </>
         )}
 
@@ -495,9 +515,7 @@ function BackfillTelegramTopicRow({
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [feedback, setFeedback] = useState<
-    | { kind: "ok"; msg: string }
-    | { kind: "err"; msg: string }
-    | null
+    { kind: "ok"; msg: string } | { kind: "err"; msg: string } | null
   >(null);
 
   const onClick = async () => {
@@ -541,9 +559,16 @@ function BackfillTelegramTopicRow({
         }}
       >
         Maak (of opnieuw) een forum-topic in je Telegram-groep voor deze
-        business aan. Vereist dat de bot admin is met "Manage Topics".
+        business aan. Vereist dat de bot admin is met &quot;Manage Topics&quot;.
       </p>
-      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          alignItems: "center",
+          flexWrap: "wrap",
+        }}
+      >
         <button
           type="button"
           onClick={() => void onClick()}
@@ -565,8 +590,7 @@ function BackfillTelegramTopicRow({
           <span
             style={{
               fontSize: 11,
-              color:
-                feedback.kind === "ok" ? "var(--tt-green)" : "var(--rose)",
+              color: feedback.kind === "ok" ? "var(--tt-green)" : "var(--rose)",
             }}
           >
             {feedback.msg}

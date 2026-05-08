@@ -105,9 +105,7 @@ export function RunsPage({
         return res.json() as Promise<{ runs: Run[]; hasMore: boolean }>;
       })
       .then((data) => {
-        setRuns((prev) =>
-          offset === 0 ? data.runs : [...prev, ...data.runs],
-        );
+        setRuns((prev) => (offset === 0 ? data.runs : [...prev, ...data.runs]));
         setHasMore(data.hasMore);
       })
       .catch((err) => {
@@ -117,7 +115,15 @@ export function RunsPage({
       })
       .finally(() => setLoading(false));
     return () => ctl.abort();
-  }, [businessId, workspaceId, statusFilter, agentFilter, navNodeId, offset, tick]);
+  }, [
+    businessId,
+    workspaceId,
+    statusFilter,
+    agentFilter,
+    navNodeId,
+    offset,
+    tick,
+  ]);
 
   // Live updates: re-fetch the visible page whenever a runs row changes
   // in this business/workspace scope. Same channel pattern as
@@ -135,9 +141,9 @@ export function RunsPage({
       : `workspace_id=eq.${workspaceId}`;
     const ch = supabase
       .channel(`runs-page:${businessId ?? workspaceId}`)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       .on(
-        "postgres_changes" as any,
+        "postgres_changes",
         { event: "*", schema: "aio_control", table: "runs", filter },
         () => setTick((t) => t + 1),
       )
@@ -196,9 +202,7 @@ export function RunsPage({
         ))}
       </div>
 
-      {error && (
-        <p style={{ color: "var(--rose)", fontSize: 12 }}>{error}</p>
-      )}
+      {error && <p style={{ color: "var(--rose)", fontSize: 12 }}>{error}</p>}
 
       {runs.length === 0 && !loading ? (
         <p
@@ -351,7 +355,9 @@ function RunRow({
           {run.status} · {run.triggered_by}
           {scheduleTitle && ` · ${scheduleTitle}`}
         </span>
-        <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--app-fg-3)" }}>
+        <span
+          style={{ marginLeft: "auto", fontSize: 11, color: "var(--app-fg-3)" }}
+        >
           {run.duration_ms != null && run.duration_ms > 0
             ? `${(run.duration_ms / 1000).toFixed(1)}s · `
             : ""}

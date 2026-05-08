@@ -65,9 +65,7 @@ export async function resolveNavPath(
     .in("id", ids);
   if (error || !data) return [];
   // Preserve the URL order (postgres returns in arbitrary order for IN).
-  const byId = new Map(
-    (data as NavNode[]).map((n) => [n.id, n]),
-  );
+  const byId = new Map((data as NavNode[]).map((n) => [n.id, n]));
   return ids.map((id) => byId.get(id)).filter((n): n is NavNode => !!n);
 }
 
@@ -96,17 +94,21 @@ export async function resolveNavPathBySlugs(
 
 /** Generates a URL-safe slug from a nav node name. */
 export function slugifyNavName(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, "")
-    .replace(/[\s-]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 60) || "node";
+  return (
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, "")
+      .replace(/[\s-]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 60) || "node"
+  );
 }
 
 /** Finds an available slug for a nav_node within a business, appending -2/-3 on collision. */
 export async function generateUniqueNavNodeSlug(
-  supabase: Awaited<ReturnType<typeof import("../supabase/server").createSupabaseServerClient>>,
+  supabase: Awaited<
+    ReturnType<typeof import("../supabase/server").createSupabaseServerClient>
+  >,
   businessId: string,
   name: string,
   excludeId?: string,
@@ -114,7 +116,7 @@ export async function generateUniqueNavNodeSlug(
   const base = slugifyNavName(name);
   let slug = base;
   let attempt = 2;
-  // eslint-disable-next-line no-constant-condition
+
   while (true) {
     let q = supabase
       .from("nav_nodes")

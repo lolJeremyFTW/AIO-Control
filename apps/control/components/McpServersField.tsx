@@ -106,10 +106,8 @@ export function McpServersField({
           checked && (opt.id === "filesystem" || opt.id === "aio");
         const scope =
           opt.id === "filesystem"
-            ? permissions?.filesystem ?? "rw"
-            : permissions?.aio ?? "rw";
-        const scopeKey = opt.id === "filesystem" ? "filesystem" : "aio";
-
+            ? (permissions?.filesystem ?? "rw")
+            : (permissions?.aio ?? "rw");
         return (
           <div
             key={opt.id}
@@ -138,20 +136,24 @@ export function McpServersField({
               <span>
                 <span style={{ fontWeight: 700 }}>{opt.label}</span>
                 {opt.badge && (
-                  <span style={{
-                    display: "inline-block",
-                    marginLeft: 6,
-                    fontSize: 9,
-                    fontWeight: 700,
-                    letterSpacing: "0.1em",
-                    textTransform: "uppercase",
-                    background: "rgba(57,178,85,0.15)",
-                    color: "var(--tt-green)",
-                    border: "1px solid var(--tt-green)",
-                    borderRadius: 4,
-                    padding: "1px 5px",
-                    verticalAlign: "middle",
-                  }}>{opt.badge}</span>
+                  <span
+                    style={{
+                      display: "inline-block",
+                      marginLeft: 6,
+                      fontSize: 9,
+                      fontWeight: 700,
+                      letterSpacing: "0.1em",
+                      textTransform: "uppercase",
+                      background: "rgba(57,178,85,0.15)",
+                      color: "var(--tt-green)",
+                      border: "1px solid var(--tt-green)",
+                      borderRadius: 4,
+                      padding: "1px 5px",
+                      verticalAlign: "middle",
+                    }}
+                  >
+                    {opt.badge}
+                  </span>
                 )}
                 <span
                   style={{
@@ -178,64 +180,77 @@ export function McpServersField({
                   alignSelf: "flex-start",
                 }}
               >
-                {opt.id === "aio" ? (
-                  ([
-                    { id: "ro", label: "Read-only", color: "var(--amber)" },
-                    { id: "rw", label: "Read + Write", color: "var(--tt-green)" },
-                  ] as const).map((mode) => {
-                    const active = scope === mode.id;
-                    return (
-                      <button
-                        key={mode.id}
-                        type="button"
-                        onClick={() =>
-                          onPermissionsChange({ ...permissions, aio: mode.id })
-                        }
-                        style={{
-                          padding: "4px 10px",
-                          fontSize: 11,
-                          fontWeight: 700,
-                          background: active ? mode.color : "transparent",
-                          color: active ? "#fff" : "var(--app-fg-2)",
-                          border: "none",
-                          cursor: "pointer",
-                        }}
-                      >
-                        {mode.label}
-                      </button>
-                    );
-                  })
-                ) : (
-                  ([
-                    { id: "ro", label: "Read-only", color: "var(--amber)" },
-                    { id: "rw", label: "Read + Write", color: "var(--tt-green)" },
-                  ] as const).map((mode) => {
-                    const active = scope === mode.id;
-                    return (
-                      <button
-                        key={mode.id}
-                        type="button"
-                        onClick={() =>
-                          onPermissionsChange({
-                            ...permissions,
-                            filesystem: mode.id,
-                          })
-                        }
-                        style={{
-                          padding: "4px 10px",
-                          fontSize: 11,
-                          fontWeight: 700,
-                          background: active ? mode.color : "transparent",
-                          color: active ? "#fff" : "var(--app-fg-2)",
-                          border: "none",
-                          cursor: "pointer",
-                        }}
-                      >
-                        {mode.label}
-                      </button>
-                    );
-                  })
-                )}
+                {opt.id === "aio"
+                  ? (
+                      [
+                        { id: "ro", label: "Read-only", color: "var(--amber)" },
+                        {
+                          id: "rw",
+                          label: "Read + Write",
+                          color: "var(--tt-green)",
+                        },
+                      ] as const
+                    ).map((mode) => {
+                      const active = scope === mode.id;
+                      return (
+                        <button
+                          key={mode.id}
+                          type="button"
+                          onClick={() =>
+                            onPermissionsChange({
+                              ...permissions,
+                              aio: mode.id,
+                            })
+                          }
+                          style={{
+                            padding: "4px 10px",
+                            fontSize: 11,
+                            fontWeight: 700,
+                            background: active ? mode.color : "transparent",
+                            color: active ? "#fff" : "var(--app-fg-2)",
+                            border: "none",
+                            cursor: "pointer",
+                          }}
+                        >
+                          {mode.label}
+                        </button>
+                      );
+                    })
+                  : (
+                      [
+                        { id: "ro", label: "Read-only", color: "var(--amber)" },
+                        {
+                          id: "rw",
+                          label: "Read + Write",
+                          color: "var(--tt-green)",
+                        },
+                      ] as const
+                    ).map((mode) => {
+                      const active = scope === mode.id;
+                      return (
+                        <button
+                          key={mode.id}
+                          type="button"
+                          onClick={() =>
+                            onPermissionsChange({
+                              ...permissions,
+                              filesystem: mode.id,
+                            })
+                          }
+                          style={{
+                            padding: "4px 10px",
+                            fontSize: 11,
+                            fontWeight: 700,
+                            background: active ? mode.color : "transparent",
+                            color: active ? "#fff" : "var(--app-fg-2)",
+                            border: "none",
+                            cursor: "pointer",
+                          }}
+                        >
+                          {mode.label}
+                        </button>
+                      );
+                    })}
               </div>
             )}
           </div>
@@ -300,8 +315,8 @@ export function McpServersField({
           lineHeight: 1.5,
         }}
       >
-        Geen tools aangevinkt = de agent draait als plain HTTP (snel,
-        goedkoop, maar zonder filesystem/web/MCP toegang).
+        Geen tools aangevinkt = de agent draait als plain HTTP (snel, goedkoop,
+        maar zonder filesystem/web/MCP toegang).
       </p>
     </div>
   );
@@ -321,7 +336,10 @@ function CustomMcpAdder({
   const [error, setError] = useState("");
 
   const submit = () => {
-    const id = inputId.trim().toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+    const id = inputId
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]/g, "-");
     if (!id) {
       setError("Voer een naam in");
       return;

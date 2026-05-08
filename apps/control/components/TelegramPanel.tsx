@@ -195,7 +195,11 @@ export function TelegramPanel({
             // Only one workspace-scope target may have it on at once
             // — clear siblings to mirror the server-side behaviour.
             auto_create_topics_for_businesses:
-              t.id === id ? enabled : enabled ? false : t.auto_create_topics_for_businesses,
+              t.id === id
+                ? enabled
+                : enabled
+                  ? false
+                  : t.auto_create_topics_for_businesses,
           })),
         );
         setInfo(
@@ -297,7 +301,13 @@ export function TelegramPanel({
             />
             <div>
               <div style={{ fontWeight: 700 }}>{opt.label}</div>
-              <div style={{ color: "var(--app-fg-3)", marginTop: 2, fontSize: 11.5 }}>
+              <div
+                style={{
+                  color: "var(--app-fg-3)",
+                  marginTop: 2,
+                  fontSize: 11.5,
+                }}
+              >
                 {opt.desc}
               </div>
             </div>
@@ -326,9 +336,9 @@ export function TelegramPanel({
                   margin: 0,
                 }}
               >
-                ⚠ Topology staat aan, maar er is geen workspace-target —
-                voeg er hieronder een toe (chat_id van je Telegram-groep)
-                anders worden er geen topics aangemaakt.
+                ⚠ Topology staat aan, maar er is geen workspace-target — voeg er
+                hieronder een toe (chat_id van je Telegram-groep) anders worden
+                er geen topics aangemaakt.
               </p>
             );
           }
@@ -346,8 +356,8 @@ export function TelegramPanel({
                 }}
               >
                 ℹ Geen target is gemarkeerd als auto-create parent — we
-                gebruiken de oudste workspace-target. Vink hieronder
-                expliciet "auto-create" aan op de juiste groep om geen
+                gebruiken de oudste workspace-target. Vink hieronder expliciet
+                &quot;auto-create&quot; aan op de juiste groep om geen
                 verrassingen te krijgen.
               </p>
             );
@@ -544,9 +554,7 @@ export function TelegramPanel({
         </p>
       )}
       {error && (
-        <p style={{ color: "var(--rose)", fontSize: 12, margin: 0 }}>
-          {error}
-        </p>
+        <p style={{ color: "var(--rose)", fontSize: 12, margin: 0 }}>{error}</p>
       )}
 
       {!adding && (
@@ -567,7 +575,9 @@ export function TelegramPanel({
             gap: 10,
           }}
         >
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div
+            style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}
+          >
             <Field label={tt("tg.field.name")}>
               <input
                 value={name}
@@ -586,13 +596,15 @@ export function TelegramPanel({
                     s === "workspace"
                       ? workspaceId
                       : s === "business"
-                        ? businesses[0]?.id ?? ""
-                        : navNodes[0]?.id ?? "",
+                        ? (businesses[0]?.id ?? "")
+                        : (navNodes[0]?.id ?? ""),
                   );
                 }}
                 style={inp}
               >
-                <option value="workspace">{tt("tg.field.scope.workspace")}</option>
+                <option value="workspace">
+                  {tt("tg.field.scope.workspace")}
+                </option>
                 <option value="business" disabled={businesses.length === 0}>
                   {tt("tg.field.scope.business")}
                 </option>
@@ -634,7 +646,9 @@ export function TelegramPanel({
             </Field>
           )}
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div
+            style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}
+          >
             <Field label={tt("tg.field.chatId")}>
               <input
                 value={chatId}

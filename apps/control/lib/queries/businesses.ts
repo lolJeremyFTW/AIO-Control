@@ -109,7 +109,9 @@ export async function listKpisForWorkspace(
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("business_kpis_view")
-    .select("business_id, workspace_id, period, usage_eur, revenue_eur, runs_count")
+    .select(
+      "business_id, workspace_id, period, usage_eur, revenue_eur, runs_count",
+    )
     .eq("workspace_id", workspaceId);
   if (error) {
     console.error("listKpisForWorkspace failed", error);
@@ -120,17 +122,21 @@ export async function listKpisForWorkspace(
 
 /** Converts a name into a URL-safe slug (lowercase alphanum + hyphens, max 60 chars). */
 export function slugifyName(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, "")
-    .replace(/[\s-]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 60) || "item";
+  return (
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, "")
+      .replace(/[\s-]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 60) || "item"
+  );
 }
 
 /** Finds an available slug for a business within a workspace, appending -2/-3 on collision. */
 export async function generateUniqueBusinessSlug(
-  supabase: Awaited<ReturnType<typeof import("../supabase/server").createSupabaseServerClient>>,
+  supabase: Awaited<
+    ReturnType<typeof import("../supabase/server").createSupabaseServerClient>
+  >,
   workspaceId: string,
   name: string,
   excludeId?: string,
@@ -138,7 +144,7 @@ export async function generateUniqueBusinessSlug(
   const base = slugifyName(name);
   let slug = base;
   let attempt = 2;
-  // eslint-disable-next-line no-constant-condition
+
   while (true) {
     let q = supabase
       .from("businesses")

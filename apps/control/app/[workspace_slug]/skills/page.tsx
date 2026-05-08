@@ -61,10 +61,10 @@ export default async function SkillsPage({ params }: Props) {
           }}
         >
           Herbruikbare procedurele kennis voor agents. Een skill is een
-          markdown-snippet met een naam, een korte beschrijving (wanneer
-          gebruik je 'm) en een body (de instructies). Per agent kies je
-          welke skills die mag laden — alleen die worden in de system-
-          prompt geïnjecteerd. Patroon overgenomen van OpenClaw's SKILL.md.
+          markdown-snippet met een naam, een korte beschrijving (wanneer gebruik
+          je &apos;m) en een body (de instructies). Per agent kies je welke
+          skills die mag laden — alleen die worden in de system- prompt
+          geïnjecteerd. Patroon overgenomen van OpenClaw&apos;s SKILL.md.
         </p>
       </header>
 

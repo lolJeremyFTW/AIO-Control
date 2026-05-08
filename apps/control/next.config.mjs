@@ -1,6 +1,8 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+/* global process */
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const monorepoRoot = join(__dirname, "..", "..");
 

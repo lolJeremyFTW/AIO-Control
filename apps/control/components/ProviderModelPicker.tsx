@@ -63,9 +63,7 @@ export function ProviderModelPicker({
       arr.push(m);
       byGroup.set(m.group, arr);
     }
-    return Array.from(byGroup.entries()).sort(([a], [b]) =>
-      a.localeCompare(b),
-    );
+    return Array.from(byGroup.entries()).sort(([a], [b]) => a.localeCompare(b));
   }, [models]);
 
   if (models === null) {
@@ -150,7 +148,7 @@ export function ProviderModelPicker({
           margin: 0,
         }}
       >
-        Gevonden in {provider}'s eigen config op de server. Werkt alleen
+        Gevonden in {provider}&apos;s eigen config op de server. Werkt alleen
         als de CLI er auth voor heeft.
       </p>
     </div>

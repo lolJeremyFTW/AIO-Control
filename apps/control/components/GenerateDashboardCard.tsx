@@ -72,11 +72,10 @@ export function GenerateDashboardCard({
               margin: 0,
             }}
           >
-            Laat een agent een eerste versie maken op basis van huidige data.
-            De agent publiceert via AIO MCP direct een custom dashboard-tab.
-            Je kan de prompt aanpassen en een tekstuele visuele referentie
-            toevoegen; de run-drawer blijft open voor live voortgang en
-            finetuning.
+            Laat een agent een eerste versie maken op basis van huidige data. De
+            agent publiceert via AIO MCP direct een custom dashboard-tab. Je kan
+            de prompt aanpassen en een tekstuele visuele referentie toevoegen;
+            de run-drawer blijft open voor live voortgang en finetuning.
           </p>
         </div>
         <div
@@ -117,8 +116,8 @@ export function GenerateDashboardCard({
                 textAlign: "right",
               }}
             >
-              Gebruik Claude/MiniMax/Codex met "AIO Control" op Read + Write,
-              of OpenClaw/Hermes met lokaal geconfigureerde MCPs.
+              Gebruik Claude/MiniMax/Codex met &quot;AIO Control&quot; op Read +
+              Write, of OpenClaw/Hermes met lokaal geconfigureerde MCPs.
             </span>
           )}
         </div>
@@ -141,10 +140,7 @@ export function GenerateDashboardCard({
       )}
 
       {openRunId && (
-        <RunDetailDrawer
-          runId={openRunId}
-          onClose={() => setOpenRunId(null)}
-        />
+        <RunDetailDrawer runId={openRunId} onClose={() => setOpenRunId(null)} />
       )}
     </>
   );
@@ -240,7 +236,7 @@ Gebruik een rustige AIO Control operator-layout met KPI-tegels bovenaan en een c
             margin: "0 0 4px",
           }}
         >
-          Dashboard voor "{navNodeName}"
+          Dashboard voor &quot;{navNodeName}&quot;
         </h2>
         <p
           style={{
@@ -422,7 +418,7 @@ function buildDashboardPublishPrompt(input: {
     "",
     "Uitvoering:",
     "1. Gebruik AIO MCP tools om huidige data te lezen. Start minimaal met `aio__list_runs` zonder args; die gebruikt de huidige business/topic scope. Gebruik `aio__list_custom_tabs` wanneer je bestaande dashboard-tabs wil checken.",
-    "2. Bouw een compact HTML-fragment: `<main class=\"aio-dashboard\">...</main>` met optioneel scoped `<style>`. Gebruik AIO CSS variables, geen eigen globale navigatie, geen marketingpagina.",
+    '2. Bouw een compact HTML-fragment: `<main class="aio-dashboard">...</main>` met optioneel scoped `<style>`. Gebruik AIO CSS variables, geen eigen globale navigatie, geen marketingpagina.',
     `3. Publiceer of update het dashboard door \`aio__publish_dashboard\` aan te roepen met exact deze scope en label: business_id=\`${input.businessId}\`, nav_node_id=\`${input.navNodeId}\`, label=\`${input.navNodeName} dashboard\`, plus jouw \`html_content\`.`,
     "4. Eindig met maximaal 4 bullets: welke dashboard-tab is gepubliceerd, welke data je gebruikte, de URL(s) uit de tool-result, en 1-2 logische vervolgstappen.",
     "",
@@ -432,8 +428,11 @@ function buildDashboardPublishPrompt(input: {
     "- Als specifieke data ontbreekt, zeg kort wat ontbreekt en gebruik geen verzonnen cijfers.",
     "",
     "Operatorwens:",
-    operatorPrompt || "Maak de beste eerste versie op basis van de huidige topicdata.",
-    visualReference ? `\nVisuele referentie in woorden:\n${visualReference}` : "",
+    operatorPrompt ||
+      "Maak de beste eerste versie op basis van de huidige topicdata.",
+    visualReference
+      ? `\nVisuele referentie in woorden:\n${visualReference}`
+      : "",
   ]
     .filter(Boolean)
     .join("\n");

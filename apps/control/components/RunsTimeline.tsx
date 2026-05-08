@@ -50,9 +50,9 @@ export function RunsTimeline({
       : `workspace_id=eq.${workspaceId}`;
     const ch = supabase
       .channel(`runs-timeline:${businessId ?? workspaceId}`)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       .on(
-        "postgres_changes" as any,
+        "postgres_changes",
         { event: "*", schema: "aio_control", table: "runs", filter },
         () => router.refresh(),
       )
@@ -73,8 +73,8 @@ export function RunsTimeline({
           borderRadius: 12,
         }}
       >
-        Geen runs in de afgelopen tijd. Trigger er één via "Run now" of een
-        webhook om hier verloop te zien verschijnen.
+        Geen runs in de afgelopen tijd. Trigger er één via &quot;Run now&quot;
+        of een webhook om hier verloop te zien verschijnen.
       </p>
     );
   }
@@ -170,9 +170,7 @@ export function RunsTimeline({
                   {r.duration_ms != null
                     ? ` · ${(r.duration_ms / 1000).toFixed(1)}s`
                     : ""}
-                  {r.cost_cents
-                    ? ` · ${(r.cost_cents / 100).toFixed(2)}€`
-                    : ""}
+                  {r.cost_cents ? ` · ${(r.cost_cents / 100).toFixed(2)}€` : ""}
                   {r.error_text ? ` · ${r.error_text}` : ""}
                 </div>
               </div>

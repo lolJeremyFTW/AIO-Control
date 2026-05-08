@@ -29,7 +29,8 @@ interface UseAudioCaptureReturn {
 
 function getMimeType(): string {
   if (typeof window === "undefined") return "audio/webm";
-  if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) return "audio/webm;codecs=opus";
+  if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus"))
+    return "audio/webm;codecs=opus";
   if (MediaRecorder.isTypeSupported("audio/webm")) return "audio/webm";
   if (MediaRecorder.isTypeSupported("audio/mp4")) return "audio/mp4";
   return "audio/webm";
@@ -47,7 +48,7 @@ export function useAudioCapture(
   const [state, setState] = useState<AudioCaptureState>("idle");
   const [error, setError] = useState<string | null>(null);
   const [currentVolume, setCurrentVolume] = useState(0);
-  const [audioUrl, setAudioUrlState] = useState<string | null>(null);
+  const [, setAudioUrlState] = useState<string | null>(null);
 
   // All mutable recorder state lives in refs — no closure staleness
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -59,7 +60,9 @@ export function useAudioCapture(
   const silenceCounterRef = useRef(0);
   const isCapturingRef = useRef(false);
 
-  const silenceIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const silenceIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
   const maxDurationRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const cleanup = useCallback(() => {
@@ -103,15 +106,16 @@ export function useAudioCapture(
         audio: { echoCancellation: true, noiseSuppression: true },
       });
     } catch (err) {
-      const msg = err instanceof Error
-        ? err.name === "NotAllowedError"
-          ? "Mikrofon toegang geweigerd. Check 🔒 in adresbalk → toestemming geven."
-          : err.name === "NotFoundError"
-            ? "Geen microfoon gevonden. Check of andere apps de microfoon blokkeren."
-            : err.name === "NotReadableError"
-              ? "Microfoon in gebruik door ander programma."
-              : err.message
-        : "Kon geen microfoon krijgen.";
+      const msg =
+        err instanceof Error
+          ? err.name === "NotAllowedError"
+            ? "Mikrofon toegang geweigerd. Check 🔒 in adresbalk → toestemming geven."
+            : err.name === "NotFoundError"
+              ? "Geen microfoon gevonden. Check of andere apps de microfoon blokkeren."
+              : err.name === "NotReadableError"
+                ? "Microfoon in gebruik door ander programma."
+                : err.message
+          : "Kon geen microfoon krijgen.";
       console.error("[useAudioCapture] getUserMedia failed:", err);
       setError(msg);
       setState("error");
@@ -176,7 +180,10 @@ export function useAudioCapture(
     };
 
     recorder.onstop = () => {
-      console.info("[useAudioCapture] recorder onstop, chunks:", chunksRef.current.length);
+      console.info(
+        "[useAudioCapture] recorder onstop, chunks:",
+        chunksRef.current.length,
+      );
       cleanup();
       stopMediaTracks();
       const chunks = chunksRef.current;
@@ -207,10 +214,19 @@ export function useAudioCapture(
     recorder.start(250);
     setState("listening");
     console.info("[useAudioCapture] recording started, state=idle");
-  }, [silenceThreshold, silenceDurationMs, maxDurationMs, cleanup, stopMediaTracks]);
+  }, [
+    silenceThreshold,
+    silenceDurationMs,
+    maxDurationMs,
+    cleanup,
+    stopMediaTracks,
+  ]);
 
   const stopCapture = useCallback(async (): Promise<Blob | null> => {
-    console.info("[useAudioCapture] stopCapture, recorder state:", recorderRef.current?.state);
+    console.info(
+      "[useAudioCapture] stopCapture, recorder state:",
+      recorderRef.current?.state,
+    );
     return new Promise((resolve) => {
       stopResolveRef.current = resolve;
       const rec = recorderRef.current;

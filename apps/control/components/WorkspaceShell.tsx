@@ -301,8 +301,7 @@ export function WorkspaceShell({
     const tabIndex = navSegments.indexOf("tab");
     const navPathCandidate =
       tabIndex >= 0 ? navSegments.slice(0, tabIndex) : navSegments;
-    const lastNavSegment =
-      navPathCandidate[navPathCandidate.length - 1] ?? "";
+    const lastNavSegment = navPathCandidate[navPathCandidate.length - 1] ?? "";
     const navPath = TOPIC_SUBROUTES.has(lastNavSegment)
       ? navPathCandidate.slice(0, -1)
       : navPathCandidate;
@@ -542,6 +541,7 @@ export function WorkspaceShell({
       };
     });
   }, [drilledBiz, effectiveTopicCounts, navContext, router, workspace.slug]);
+  void drillChainRail;
 
   // Build the right-click menu items based on which row the user
   // clicked. The Rail surfaces (x, y) + a typed origin descriptor; we

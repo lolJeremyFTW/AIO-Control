@@ -39,10 +39,6 @@ export async function GET(req: Request) {
 
   // Wrap the whole connect+tools in a 40 s timeout so the HTTP request
   // doesn't hang indefinitely if something freezes.
-  type TestResult =
-    | { status: "ok"; totalMs: number; toolCount: number }
-    | { status: "error"; ms: number; error: string };
-
   let connectMs = -1;
   let toolCount = -1;
   let connectError: string | null = null;

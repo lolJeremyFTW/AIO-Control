@@ -11,7 +11,7 @@
 
 import { useRouter } from "next/navigation";
 import type { CSSProperties } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { translate } from "../lib/i18n/dict";
 import { useLocale } from "../lib/i18n/client";
@@ -87,8 +87,11 @@ export function AgentsDashboard({
   const locale = useLocale();
   // Renamed to `tr` to avoid shadowing by the time-variable `t` used
   // in the calendar `for (const t of fires)` loop below.
-  const tr = (key: string, vars?: Record<string, string | number>) =>
-    translate(locale, key, vars);
+  const tr = useCallback(
+    (key: string, vars?: Record<string, string | number>) =>
+      translate(locale, key, vars),
+    [locale],
+  );
   // The toLocale*() format strings used by the calendar pull from
   // the active i18n locale (nl-NL / en-US / de-DE) so day initials
   // and time formats follow the user's language.
@@ -261,7 +264,7 @@ export function AgentsDashboard({
       arr.sort((a, b) => a.time.getTime() - b.time.getTime());
     }
     return map;
-  }, [window, filteredSchedules, filteredRuns, agents, businesses]);
+  }, [window, filteredSchedules, filteredRuns, agents, businesses, tr]);
 
   const shiftAnchor = (delta: number) => {
     const d = new Date(anchor);
@@ -459,7 +462,9 @@ export function AgentsDashboard({
               style={filterSelectStyle}
             >
               <option value="all">
-                {businessFilter === "all" ? "Kies eerst business" : "Alle topics"}
+                {businessFilter === "all"
+                  ? "Kies eerst business"
+                  : "Alle topics"}
               </option>
               {visibleTopics.map((topic) => (
                 <option key={topic.id} value={topic.id}>
@@ -492,7 +497,6 @@ export function AgentsDashboard({
             day={anchor}
             fires={fireMap.get(dayKey(anchor)) ?? []}
             intlLocale={intlLocale}
-            tr={tr}
             onOpenFire={openFire}
           />
         )}
@@ -511,7 +515,6 @@ export function AgentsDashboard({
             days={window.days}
             fireMap={fireMap}
             intlLocale={intlLocale}
-            tr={tr}
             onOpenFire={openFire}
           />
         )}
@@ -740,13 +743,11 @@ function DayView({
   day,
   fires,
   intlLocale,
-  tr,
   onOpenFire,
 }: {
   day: Date;
   fires: ScheduleFire[];
   intlLocale: string;
-  tr: Tr;
   onOpenFire: (fire: ScheduleFire) => void;
 }) {
   // Hour rail with chips per fire — compacted from the original 24×58px
@@ -772,7 +773,6 @@ function DayView({
             hour={h}
             fires={inHour}
             intlLocale={intlLocale}
-            tr={tr}
             onOpenFire={onOpenFire}
           />
         );
@@ -788,13 +788,11 @@ function DayHourRow({
   hour,
   fires,
   intlLocale,
-  tr,
   onOpenFire,
 }: {
   hour: number;
   fires: ScheduleFire[];
   intlLocale: string;
-  tr: Tr;
   onOpenFire: (fire: ScheduleFire) => void;
 }) {
   const isEmpty = fires.length === 0;
@@ -832,7 +830,6 @@ function DayHourRow({
             fire={f}
             compact
             intlLocale={intlLocale}
-            tr={tr}
             onOpen={() => onOpenFire(f)}
           />
         ))}
@@ -917,7 +914,6 @@ function WeekView({
                     fire={f}
                     compact
                     intlLocale={intlLocale}
-                    tr={tr}
                     onOpen={() => onOpenFire(f)}
                   />
                 ))
@@ -935,14 +931,12 @@ function MonthView({
   days,
   fireMap,
   intlLocale,
-  tr,
   onOpenFire,
 }: {
   anchor: Date;
   days: Date[];
   fireMap: Map<string, ScheduleFire[]>;
   intlLocale: string;
-  tr: Tr;
   onOpenFire: (fire: ScheduleFire) => void;
 }) {
   // Day-of-week headers using the active locale. We start at a known
@@ -1038,7 +1032,6 @@ function MonthView({
                     fire={f}
                     compact
                     intlLocale={intlLocale}
-                    tr={tr}
                     onOpen={() => onOpenFire(f)}
                   />
                 ))}
@@ -1070,13 +1063,11 @@ function FireChip({
   // tr unused inside the chip currently — kept on the prop list so
   // callers don't have to drop it; will surface as the run-status
   // label gets translated next pass.
-  tr: _tr,
 }: {
   fire: ScheduleFire;
   compact?: boolean;
   intlLocale: string;
   onOpen: () => void;
-  tr: Tr;
 }) {
   const isPast = !!fire.run;
   const dotColor = fire.run

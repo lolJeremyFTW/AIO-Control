@@ -14,7 +14,7 @@ self.addEventListener("push", (event) => {
   let data = {};
   try {
     data = event.data ? event.data.json() : {};
-  } catch (err) {
+  } catch {
     data = { title: "AIO Control", body: event.data ? event.data.text() : "" };
   }
   const title = data.title || "AIO Control";
@@ -30,7 +30,8 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = (event.notification.data && event.notification.data.url) || "/aio/";
+  const url =
+    (event.notification.data && event.notification.data.url) || "/aio/";
   event.waitUntil(
     (async () => {
       const all = await self.clients.matchAll({

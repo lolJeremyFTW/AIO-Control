@@ -222,7 +222,13 @@ export function MarketplaceAdmin({ sources, items }: Props) {
                     >
                       [{p.marketplace_kind}]
                     </span>
-                    <div style={{ color: "var(--app-fg-3)", fontSize: 11, marginTop: 2 }}>
+                    <div
+                      style={{
+                        color: "var(--app-fg-3)",
+                        fontSize: 11,
+                        marginTop: 2,
+                      }}
+                    >
                       {p.tagline}
                     </div>
                   </div>
@@ -365,8 +371,8 @@ export function MarketplaceAdmin({ sources, items }: Props) {
                       )}
                     </div>
                     <div style={{ fontSize: 11, color: "var(--app-fg-3)" }}>
-                      {it.marketplace_kind} ·{" "}
-                      {it.install_count} installs · {it.share_count} shares
+                      {it.marketplace_kind} · {it.install_count} installs ·{" "}
+                      {it.share_count} shares
                       {it.source_url && (
                         <>
                           {" · "}
@@ -396,6 +402,7 @@ export function MarketplaceAdmin({ sources, items }: Props) {
                       border: "1px solid var(--app-border)",
                       borderRadius: 6,
                     }}
+                    rel="noreferrer"
                   >
                     Open share
                   </a>
@@ -513,9 +520,9 @@ function LocalSkillUploader() {
           }}
         >
           Drop een <code>SKILL.md</code> hier (of klik <em>Bestand kiezen</em>).
-          De YAML-frontmatter wordt geparset en de body wordt opgeslagen
-          als <code>config.content</code> zodat anderen 'm in de
-          marketplace kunnen openen.
+          De YAML-frontmatter wordt geparset en de body wordt opgeslagen als{" "}
+          <code>config.content</code> zodat anderen &apos;m in de marketplace
+          kunnen openen.
         </p>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <input

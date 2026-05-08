@@ -41,10 +41,7 @@ function formatBusinessLimit(value: number | "unlimited") {
   return value === 1 ? "1 business" : `${value} businesses`;
 }
 
-export function SubscriptionPanel({
-  subscription,
-  stripeCustomerId,
-}: Props) {
+export function SubscriptionPanel({ subscription, stripeCustomerId }: Props) {
   const [billing, setBilling] = useState<BillingCadence>(
     subscription.billingCadence,
   );
@@ -57,7 +54,7 @@ export function SubscriptionPanel({
       <div className="card">
         <h3>Huidig plan</h3>
         <p className="desc">
-          Wat je nu hebt en wanneer 'ie verlengd / vernieuwd wordt.
+          Wat je nu hebt en wanneer &apos;ie verlengd / vernieuwd wordt.
         </p>
         <div
           style={{
@@ -161,8 +158,8 @@ export function SubscriptionPanel({
       <div className="card">
         <h3>Wissel plan</h3>
         <p className="desc">
-          Up- of downgraden kan op elk moment. Je betaalt naar rato voor
-          de rest van je periode.
+          Up- of downgraden kan op elk moment. Je betaalt naar rato voor de rest
+          van je periode.
         </p>
 
         <div
@@ -190,9 +187,7 @@ export function SubscriptionPanel({
                   borderRadius: 999,
                   border: "none",
                   cursor: "pointer",
-                  background: active
-                    ? "var(--tt-green)"
-                    : "transparent",
+                  background: active ? "var(--tt-green)" : "transparent",
                   color: active ? "#fff" : "var(--app-fg-2)",
                   fontFamily: "var(--type)",
                   fontWeight: 700,
@@ -218,10 +213,7 @@ export function SubscriptionPanel({
             const discountPercent = isCurrent
               ? subscription.discountPercent
               : 0;
-            const netPrice = calculateNetPriceCents(
-              listPrice,
-              discountPercent,
-            );
+            const netPrice = calculateNetPriceCents(listPrice, discountPercent);
             return (
               <div
                 key={t.id}
@@ -230,9 +222,7 @@ export function SubscriptionPanel({
                   flexDirection: "column",
                   padding: "16px 14px",
                   border: `1.5px solid ${
-                    t.recommended
-                      ? "var(--tt-green)"
-                      : "var(--app-border)"
+                    t.recommended ? "var(--tt-green)" : "var(--app-border)"
                   }`,
                   borderRadius: 14,
                   background: t.recommended
@@ -307,8 +297,7 @@ export function SubscriptionPanel({
                       fontWeight: 700,
                     }}
                   >
-                    {formatPrice(listPrice)} bruto · {discountPercent}%
-                    korting
+                    {formatPrice(listPrice)} bruto · {discountPercent}% korting
                   </div>
                 )}
                 <ul
@@ -364,8 +353,8 @@ export function SubscriptionPanel({
       <div className="card">
         <h3>Betaalmethode</h3>
         <p className="desc">
-          Wij storten de facturen via Stripe. Je beheert je kaart, IBAN
-          of overschrijving in de Stripe customer portal.
+          Wij storten de facturen via Stripe. Je beheert je kaart, IBAN of
+          overschrijving in de Stripe customer portal.
         </p>
         {subscription.managedInternally && (
           <p

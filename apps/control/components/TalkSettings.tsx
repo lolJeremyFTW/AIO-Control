@@ -128,7 +128,8 @@ export function TalkSettings({
   // preview. Editing routes the user to /settings/keys (the existing
   // workspace api-keys panel) — keeps the secret-handling in one
   // place and avoids re-implementing rotation/encryption flows.
-  const providerSpec = PROVIDERS.find((p) => p.id === provider) ?? PROVIDERS[0]!;
+  const providerSpec =
+    PROVIDERS.find((p) => p.id === provider) ?? PROVIDERS[0]!;
   const keyPreview = keyPreviews[providerSpec.keyProvider] ?? "Niet ingesteld";
 
   const [pending, startTransition] = useTransition();
@@ -219,7 +220,13 @@ export function TalkSettings({
               readOnly
               style={{ opacity: 0.85 }}
             />
-            <span style={{ fontSize: 11, color: "var(--app-fg-3)", padding: "0 6px" }}>
+            <span
+              style={{
+                fontSize: 11,
+                color: "var(--app-fg-3)",
+                padding: "0 6px",
+              }}
+            >
               {keyPreview === "Niet ingesteld" ? "Niet ingesteld" : "Verborgen"}
             </span>
           </div>
@@ -232,10 +239,7 @@ export function TalkSettings({
             <small>Welke variant van de provider.</small>
           </div>
           <div>
-            <select
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-            >
+            <select value={model} onChange={(e) => setModel(e.target.value)}>
               <option value="eleven_multilingual_v2">
                 eleven_multilingual_v2 (NL + EN)
               </option>
@@ -253,9 +257,9 @@ export function TalkSettings({
           <div className="lbl">
             LLM
             <small>
-              Brein achter de antwoorden. Default = de agent die je in de
-              header microfoon selecteert; je kunt 'm hier overschrijven
-              met een specifiek model.
+              Brein achter de antwoorden. Default = de agent die je in de header
+              microfoon selecteert; je kunt &apos;m hier overschrijven met een
+              specifiek model.
             </small>
           </div>
           <div>
@@ -270,9 +274,7 @@ export function TalkSettings({
                 <option value="claude-sonnet-4-5">
                   Anthropic · claude-sonnet-4-5
                 </option>
-                <option value="gemini-2.5-pro">
-                  Google · gemini-2.5-pro
-                </option>
+                <option value="gemini-2.5-pro">Google · gemini-2.5-pro</option>
               </optgroup>
               {ollamaModels.length > 0 ? (
                 <optgroup label="Lokale Ollama">
@@ -451,10 +453,7 @@ export function TalkSettings({
         ) : (
           <div className="talk-log">
             {log.map((l, i) => (
-              <div
-                key={i}
-                className={"talk-log-row " + l.who.toLowerCase()}
-              >
+              <div key={i} className={"talk-log-row " + l.who.toLowerCase()}>
                 <span className="talk-log-time">{l.t}</span>
                 <span className={"talk-log-who " + l.who.toLowerCase()}>
                   {l.who}
@@ -492,9 +491,7 @@ export function TalkSettings({
         }}
       >
         {error && (
-          <span style={{ color: "var(--rose)", fontSize: 12.5 }}>
-            {error}
-          </span>
+          <span style={{ color: "var(--rose)", fontSize: 12.5 }}>{error}</span>
         )}
         {savedAt && !error && (
           <span
