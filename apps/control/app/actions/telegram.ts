@@ -77,6 +77,7 @@ export async function createTelegramTarget(
     return { ok: false, error: mirror.error };
   }
   revalidatePath(`/${input.workspace_slug}/settings`);
+  revalidatePath(`/${input.workspace_slug}/settings/notifications`);
   return { ok: true, data: { id: data.id } };
 }
 
@@ -103,6 +104,7 @@ export async function setTelegramAutoCreateTopics(input: {
     .eq("id", input.target_id);
   if (error) return { ok: false, error: error.message };
   revalidatePath(`/${input.workspace_slug}/settings`);
+  revalidatePath(`/${input.workspace_slug}/settings/notifications`);
   return { ok: true, data: null };
 }
 
@@ -151,6 +153,7 @@ export async function deleteTelegramTarget(input: {
     .eq("id", input.id);
   if (error) return { ok: false, error: error.message };
   revalidatePath(`/${input.workspace_slug}/settings`);
+  revalidatePath(`/${input.workspace_slug}/settings/notifications`);
   return { ok: true, data: null };
 }
 

@@ -10,7 +10,9 @@ import { revalidatePath } from "next/cache";
 
 import { createSupabaseServerClient } from "../../lib/supabase/server";
 
-export type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string };
+export type ActionResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: string };
 
 export type IntegrationProvider =
   | "youtube_data"
@@ -44,10 +46,14 @@ export async function createIntegration(input: {
     })
     .select("id")
     .single();
-  if (error || !data) return { ok: false, error: error?.message ?? "insert failed" };
+  if (error || !data)
+    return { ok: false, error: error?.message ?? "insert failed" };
   revalidatePath(`/${input.workspace_slug}/settings/integrations`);
+  revalidatePath(`/${input.workspace_slug}/settings/workspace`);
   if (input.business_id) {
-    revalidatePath(`/${input.workspace_slug}/business/${input.business_id}/integrations`);
+    revalidatePath(
+      `/${input.workspace_slug}/business/${input.business_id}/integrations`,
+    );
   }
   return { ok: true, data: { id: data.id } };
 }
@@ -58,11 +64,17 @@ export async function deleteIntegration(input: {
   id: string;
 }): Promise<ActionResult<null>> {
   const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.from("integrations").delete().eq("id", input.id);
+  const { error } = await supabase
+    .from("integrations")
+    .delete()
+    .eq("id", input.id);
   if (error) return { ok: false, error: error.message };
   revalidatePath(`/${input.workspace_slug}/settings/integrations`);
+  revalidatePath(`/${input.workspace_slug}/settings/workspace`);
   if (input.business_id) {
-    revalidatePath(`/${input.workspace_slug}/business/${input.business_id}/integrations`);
+    revalidatePath(
+      `/${input.workspace_slug}/business/${input.business_id}/integrations`,
+    );
   }
   return { ok: true, data: null };
 }

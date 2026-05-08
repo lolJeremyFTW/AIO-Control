@@ -518,6 +518,15 @@ const nl: Dict = {
 
   "settings.title": "Instellingen",
   "settings.sub": "Account · workspace · automatiseringen",
+  "settings.section.workspace": "Workspace",
+  "settings.section.workspace.desc":
+    "Algemeen, team, weer, integraties en admin-bestanden.",
+  "settings.section.ai": "AI & modellen",
+  "settings.section.ai.desc":
+    "Agentstandaarden, providers, API-keys, MCP-tools en Talk to AI.",
+  "settings.section.billing": "Billing",
+  "settings.section.billing.desc":
+    "Uitgavelimieten, abonnement, betaalmethode en facturen.",
   "settings.section.general": "Algemeen",
   "settings.section.general.desc":
     "Workspace-naam, e-mail, tijdzone en uitloggen.",
@@ -529,6 +538,9 @@ const nl: Dict = {
     "Stap-voor-stap onboarding voor self-hosted providers (Hermes-agent, OpenClaw, Ollama). Geen handmatig prutsen meer.",
   "settings.section.subscription.desc": "Plan, betaalmethode, facturen.",
   "settings.section.notifications": "Notificaties",
+  "settings.section.notifications.desc":
+    "Telegram, Slack, Discord, e-mail, browser push en webhooks.",
+  "settings.section.browserNotifications": "Browser push",
   "settings.section.team": "Team & rollen",
   "settings.section.danger": "Gevarenzone",
   "settings.section.appearance": "Uiterlijk",
@@ -979,6 +991,15 @@ const en: Partial<Dict> = {
   "dash.perBusiness.runsToday": "{count} runs today",
 
   "settings.title": "Settings",
+  "settings.section.workspace": "Workspace",
+  "settings.section.workspace.desc":
+    "General settings, team, weather, integrations and admin files.",
+  "settings.section.ai": "AI & models",
+  "settings.section.ai.desc":
+    "Agent defaults, providers, API keys, MCP tools and Talk to AI.",
+  "settings.section.billing": "Billing",
+  "settings.section.billing.desc":
+    "Spend limits, subscription, payment method and invoices.",
   "settings.section.general": "General",
   "settings.section.general.desc":
     "Workspace name, email, timezone and sign-out.",
@@ -990,6 +1011,9 @@ const en: Partial<Dict> = {
     "Step-by-step onboarding for self-hosted providers (Hermes-agent, OpenClaw, Ollama). No more manual fiddling.",
   "settings.section.subscription.desc": "Plan, payment method, invoices.",
   "settings.section.notifications": "Notifications",
+  "settings.section.notifications.desc":
+    "Telegram, Slack, Discord, email, browser push and webhooks.",
+  "settings.section.browserNotifications": "Browser push",
   "settings.section.team": "Team & roles",
   "settings.section.danger": "Danger zone",
   "settings.section.appearance": "Appearance",
@@ -1643,6 +1667,15 @@ const de: Partial<Dict> = {
   "dash.perBusiness.runsToday": "{count} Runs heute",
 
   "settings.title": "Einstellungen",
+  "settings.section.workspace": "Workspace",
+  "settings.section.workspace.desc":
+    "Allgemeines, Team, Wetter, Integrationen und Admin-Dateien.",
+  "settings.section.ai": "KI & Modelle",
+  "settings.section.ai.desc":
+    "Agent-Standards, Provider, API-Keys, MCP-Tools und Talk to AI.",
+  "settings.section.billing": "Abrechnung",
+  "settings.section.billing.desc":
+    "Ausgabelimits, Abonnement, Zahlungsmethode und Rechnungen.",
   "settings.section.general": "Allgemein",
   "settings.section.general.desc":
     "Workspace-Name, E-Mail, Zeitzone und Abmelden.",
@@ -1654,6 +1687,9 @@ const de: Partial<Dict> = {
     "Schritt-für-Schritt-Onboarding für self-hosted Provider (Hermes-Agent, OpenClaw, Ollama).",
   "settings.section.subscription.desc": "Plan, Zahlungsmethode, Rechnungen.",
   "settings.section.notifications": "Benachrichtigungen",
+  "settings.section.notifications.desc":
+    "Telegram, Slack, Discord, E-Mail, Browser-Push und Webhooks.",
+  "settings.section.browserNotifications": "Browser-Push",
   "settings.section.team": "Team & Rollen",
   "settings.section.danger": "Gefahrenzone",
   "settings.section.appearance": "Erscheinungsbild",

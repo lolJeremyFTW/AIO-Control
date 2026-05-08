@@ -1,177 +1,63 @@
 // Single source of truth for the /[ws]/settings sidebar. Used by:
 //   - the SettingsSidebar client component (rendering)
 //   - the /settings layout (link generation)
-//   - the /settings root page (redirect target — first entry)
+//   - the /settings root page (redirect target - first entry)
 //
-// Each entry maps an id to a translation key. The id doubles as the
-// route segment (e.g. id "agent-defaults" → /settings/agent-defaults).
+// Older granular routes still exist as redirects, but the visible
+// settings IA is intentionally consolidated into a few fuller pages.
 
 export type SettingsSectionId =
-  | "general"
-  | "integrations"
-  | "agent-defaults"
-  | "weather"
-  | "api-keys"
-  | "mcp-tools"
-  | "spend-limits"
-  | "channels"
-  | "telegram"
-  | "email"
-  | "custom-integrations"
+  | "workspace"
+  | "ai"
   | "notifications"
-  | "team"
-  | "talk"
-  | "server-files"
-  | "subscription"
-  | "providers"
+  | "billing"
   | "danger";
 
-export type SettingsGroup = "workspace" | "ai" | "notif" | "money" | "danger";
+export type SettingsGroup = "main" | "danger";
 
 export type SettingsSection = {
   id: SettingsSectionId;
   labelKey: string;
   /** Description shown in the sub-page header + the index card. */
   descKey: string;
-  /** Visual sidebar grouping — keeps the sub-pages discoverable without
-   *  exploding into a flat 15-item list. Routes themselves stay flat. */
+  /** Visual sidebar grouping. */
   group: SettingsGroup;
-  /** When set, the sidebar shows a small marker (e.g. red triangle
-   *  for the danger zone) so destructive sections stand out. */
+  /** When set, the sidebar shows a small marker so destructive sections stand out. */
   badge?: "danger";
 };
 
 export const SETTINGS_GROUP_LABELS: Record<SettingsGroup, string> = {
-  workspace: "Workspace",
-  ai: "AI & Modellen",
-  notif: "Notificaties",
-  money: "Geld & Plan",
+  main: "Settings",
   danger: "Gevarenzone",
 };
 
-export const SETTINGS_GROUP_ORDER: SettingsGroup[] = [
-  "workspace",
-  "ai",
-  "notif",
-  "money",
-  "danger",
-];
+export const SETTINGS_GROUP_ORDER: SettingsGroup[] = ["main", "danger"];
 
 export const SETTINGS_SECTIONS: SettingsSection[] = [
-  // ── Workspace ────────────────────────────────────────────────────
   {
-    id: "general",
-    labelKey: "settings.section.general",
-    descKey: "settings.section.general.desc",
-    group: "workspace",
+    id: "workspace",
+    labelKey: "settings.section.workspace",
+    descKey: "settings.section.workspace.desc",
+    group: "main",
   },
   {
-    id: "integrations",
-    labelKey: "settings.section.integrations",
-    descKey: "settings.section.integrations.desc",
-    group: "workspace",
-  },
-  {
-    id: "team",
-    labelKey: "settings.section.team",
-    descKey: "settings.section.team.desc",
-    group: "workspace",
-  },
-  {
-    id: "weather",
-    labelKey: "settings.section.weather",
-    descKey: "settings.section.weather.desc",
-    group: "workspace",
-  },
-  {
-    id: "talk",
-    labelKey: "settings.section.talk",
-    descKey: "page.talk.sub",
-    group: "workspace",
-  },
-  {
-    id: "server-files",
-    labelKey: "settings.section.serverFiles",
-    descKey: "settings.section.serverFiles.desc",
-    group: "workspace",
-  },
-
-  // ── AI & Modellen ────────────────────────────────────────────────
-  // Note: Ollama config used to live at /settings/ollama; it's been
-  // folded into the Providers onboarding card, so the route now
-  // redirects and the sidebar entry is gone.
-  {
-    id: "agent-defaults",
-    labelKey: "settings.section.agentDefaults",
-    descKey: "settings.section.agentDefaults.desc",
-    group: "ai",
-  },
-  {
-    id: "providers",
-    labelKey: "settings.section.providers",
-    descKey: "settings.section.providers.desc",
-    group: "ai",
-  },
-  {
-    id: "api-keys",
-    labelKey: "settings.section.apiKeys",
-    descKey: "settings.section.apiKeys.desc",
-    group: "ai",
-  },
-  {
-    id: "mcp-tools",
-    labelKey: "settings.section.mcpTools",
-    descKey: "settings.section.mcpTools.desc",
-    group: "ai",
-  },
-
-  // ── Notificaties ────────────────────────────────────────────────
-  {
-    id: "channels",
-    labelKey: "settings.section.channels",
-    descKey: "settings.section.channels.desc",
-    group: "notif",
-  },
-  {
-    id: "telegram",
-    labelKey: "settings.section.telegram",
-    descKey: "settings.section.telegram.desc",
-    group: "notif",
-  },
-  {
-    id: "email",
-    labelKey: "settings.section.email",
-    descKey: "settings.section.email.desc",
-    group: "notif",
+    id: "ai",
+    labelKey: "settings.section.ai",
+    descKey: "settings.section.ai.desc",
+    group: "main",
   },
   {
     id: "notifications",
     labelKey: "settings.section.notifications",
-    descKey: "settings.section.notifs.desc",
-    group: "notif",
+    descKey: "settings.section.notifications.desc",
+    group: "main",
   },
   {
-    id: "custom-integrations",
-    labelKey: "settings.section.customIntegrations",
-    descKey: "settings.section.customIntegrations.desc",
-    group: "notif",
+    id: "billing",
+    labelKey: "settings.section.billing",
+    descKey: "settings.section.billing.desc",
+    group: "main",
   },
-
-  // ── Geld & Plan ─────────────────────────────────────────────────
-  {
-    id: "spend-limits",
-    labelKey: "settings.section.spendLimits",
-    descKey: "settings.section.spendLimits.desc",
-    group: "money",
-  },
-  {
-    id: "subscription",
-    labelKey: "settings.section.subscription",
-    descKey: "settings.section.subscription.desc",
-    group: "money",
-  },
-
-  // ── Danger ──────────────────────────────────────────────────────
   {
     id: "danger",
     labelKey: "settings.section.danger",
@@ -181,5 +67,5 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   },
 ];
 
-/** First section — the redirect target for /settings root. */
-export const SETTINGS_DEFAULT_SECTION: SettingsSectionId = "general";
+/** First section - the redirect target for /settings root. */
+export const SETTINGS_DEFAULT_SECTION: SettingsSectionId = "workspace";

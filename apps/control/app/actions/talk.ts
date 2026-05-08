@@ -8,10 +8,7 @@
 
 import { revalidatePath } from "next/cache";
 
-import {
-  getCurrentUser,
-  getWorkspaceBySlug,
-} from "../../lib/auth/workspace";
+import { getCurrentUser, getWorkspaceBySlug } from "../../lib/auth/workspace";
 import { createSupabaseServerClient } from "../../lib/supabase/server";
 
 export type TalkSettingsInput = {
@@ -37,17 +34,23 @@ export async function saveTalkSettings(
   input: TalkSettingsInput & { workspace_slug: string },
 ): Promise<Result<null>> {
   const startedAt = Date.now();
-  console.info(`[talk] saveTalkSettings: ws=${input.workspace_slug} provider=${input.provider ?? "(unchanged)"} voice=${input.voice ?? "(unchanged)"}`);
+  console.info(
+    `[talk] saveTalkSettings: ws=${input.workspace_slug} provider=${input.provider ?? "(unchanged)"} voice=${input.voice ?? "(unchanged)"}`,
+  );
 
   const user = await getCurrentUser();
   if (!user) {
-    console.warn(`[talk] saveTalkSettings: unauthed for ws=${input.workspace_slug}`);
+    console.warn(
+      `[talk] saveTalkSettings: unauthed for ws=${input.workspace_slug}`,
+    );
     return { ok: false, error: "Niet ingelogd." };
   }
 
   const workspace = await getWorkspaceBySlug(input.workspace_slug);
   if (!workspace) {
-    console.warn(`[talk] saveTalkSettings: workspace not found: ${input.workspace_slug}`);
+    console.warn(
+      `[talk] saveTalkSettings: workspace not found: ${input.workspace_slug}`,
+    );
     return { ok: false, error: "Workspace niet gevonden." };
   }
 
@@ -78,11 +81,16 @@ export async function saveTalkSettings(
     .upsert(patch, { onConflict: "workspace_id" });
 
   if (error) {
-    console.error(`[talk] saveTalkSettings: upsert error=${error.message} ws=${input.workspace_slug}`);
+    console.error(
+      `[talk] saveTalkSettings: upsert error=${error.message} ws=${input.workspace_slug}`,
+    );
     return { ok: false, error: error.message };
   }
 
-  console.info(`[talk] saveTalkSettings: OK ws=${input.workspace_slug} duration_ms=${Date.now() - startedAt}`);
+  console.info(
+    `[talk] saveTalkSettings: OK ws=${input.workspace_slug} duration_ms=${Date.now() - startedAt}`,
+  );
   revalidatePath(`/${input.workspace_slug}/settings/talk`);
+  revalidatePath(`/${input.workspace_slug}/settings/ai`);
   return { ok: true, data: null };
 }

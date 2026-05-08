@@ -32,10 +32,18 @@ export async function saveSmtpCreds(input: {
   // backs on the existing encryption + RLS infra without a new table.
   const fields: { provider: string; value: string; label: string }[] = [
     { provider: "smtp_host", value: input.host.trim(), label: "SMTP host" },
-    { provider: "smtp_port", value: input.port.trim() || "587", label: "SMTP port" },
+    {
+      provider: "smtp_port",
+      value: input.port.trim() || "587",
+      label: "SMTP port",
+    },
     { provider: "smtp_user", value: input.user.trim(), label: "SMTP user" },
     { provider: "smtp_pass", value: input.pass, label: "SMTP password" },
-    { provider: "smtp_from", value: input.from.trim() || input.user.trim(), label: "SMTP from" },
+    {
+      provider: "smtp_from",
+      value: input.from.trim() || input.user.trim(),
+      label: "SMTP from",
+    },
   ];
   for (const f of fields) {
     const res = await setApiKey({
@@ -53,5 +61,6 @@ export async function saveSmtpCreds(input: {
   // picks up the freshly saved values.
   clearEmailTransportCache(input.workspace_id);
   revalidatePath(`/${input.workspace_slug}/settings`);
+  revalidatePath(`/${input.workspace_slug}/settings/notifications`);
   return { ok: true, data: null };
 }

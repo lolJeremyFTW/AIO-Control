@@ -7,7 +7,9 @@ import { revalidatePath } from "next/cache";
 
 import { createSupabaseServerClient } from "../../lib/supabase/server";
 
-export type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string };
+export type ActionResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: string };
 
 export async function updateWorkspaceWeather(input: {
   workspace_slug: string;
@@ -33,6 +35,7 @@ export async function updateWorkspaceWeather(input: {
     .eq("id", input.workspace_id);
   if (error) return { ok: false, error: error.message };
   revalidatePath(`/${input.workspace_slug}`, "layout");
+  revalidatePath(`/${input.workspace_slug}/settings/workspace`);
   return { ok: true, data: null };
 }
 
@@ -54,6 +57,7 @@ export async function updateWorkspaceSpendLimits(input: {
     .eq("id", input.workspace_id);
   if (error) return { ok: false, error: error.message };
   revalidatePath(`/${input.workspace_slug}/settings`);
+  revalidatePath(`/${input.workspace_slug}/settings/billing`);
   return { ok: true, data: null };
 }
 
@@ -75,6 +79,7 @@ export async function updateWorkspaceEmailNotifs(input: {
     .eq("id", input.workspace_id);
   if (error) return { ok: false, error: error.message };
   revalidatePath(`/${input.workspace_slug}/settings`);
+  revalidatePath(`/${input.workspace_slug}/settings/notifications`);
   return { ok: true, data: null };
 }
 
@@ -96,6 +101,7 @@ export async function updateWorkspaceDefaults(input: {
     .eq("id", input.workspace_id);
   if (error) return { ok: false, error: error.message };
   revalidatePath(`/${input.workspace_slug}/settings`);
+  revalidatePath(`/${input.workspace_slug}/settings/ai`);
   return { ok: true, data: null };
 }
 
@@ -111,6 +117,7 @@ export async function updateTelegramTopology(input: {
     .eq("id", input.workspace_id);
   if (error) return { ok: false, error: error.message };
   revalidatePath(`/${input.workspace_slug}/settings`);
+  revalidatePath(`/${input.workspace_slug}/settings/notifications`);
   return { ok: true, data: null };
 }
 
@@ -121,7 +128,9 @@ export async function updateTelegramTopology(input: {
  */
 export async function geocodeCity(
   city: string,
-): Promise<ActionResult<{ name: string; country: string; lat: number; lon: number }>> {
+): Promise<
+  ActionResult<{ name: string; country: string; lat: number; lon: number }>
+> {
   if (!city.trim()) return { ok: false, error: "City required" };
   try {
     const res = await fetch(
@@ -130,7 +139,12 @@ export async function geocodeCity(
     );
     if (!res.ok) return { ok: false, error: `Geocoder: ${res.status}` };
     const data = (await res.json()) as {
-      results?: { name: string; country: string; latitude: number; longitude: number }[];
+      results?: {
+        name: string;
+        country: string;
+        latitude: number;
+        longitude: number;
+      }[];
     };
     const hit = data.results?.[0];
     if (!hit) return { ok: false, error: "Plaats niet gevonden." };

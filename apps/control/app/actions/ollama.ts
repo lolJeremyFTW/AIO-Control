@@ -110,6 +110,7 @@ export async function saveOllamaEndpoint(input: {
   revalidatePath(`/${input.workspace_slug}/settings/ollama`);
   revalidatePath(`/${input.workspace_slug}/settings/providers`);
   revalidatePath(`/${input.workspace_slug}/settings/talk`);
+  revalidatePath(`/${input.workspace_slug}/settings/ai`);
   return { ok: true, data: { log }, log };
 }
 
@@ -280,5 +281,6 @@ export async function scanOllamaModels(input: {
   revalidatePath(`/${input.workspace_slug}/settings/ollama`);
   revalidatePath(`/${input.workspace_slug}/settings/providers`);
   revalidatePath(`/${input.workspace_slug}/settings/talk`);
+  revalidatePath(`/${input.workspace_slug}/settings/ai`);
   return { ok: true, data: { models, endpoint }, log };
 }

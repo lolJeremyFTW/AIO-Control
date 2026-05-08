@@ -150,7 +150,7 @@ function CodexOAuthCard({
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-  const next = `/${workspaceSlug}/settings/providers`;
+  const next = `/${workspaceSlug}/settings/ai#providers`;
   const loginHref = `${base}/api/providers/openai-codex/login?workspace_id=${encodeURIComponent(workspaceId)}&next=${encodeURIComponent(next)}`;
 
   const refresh = () => {

@@ -88,6 +88,7 @@ export async function createNotificationTarget(
   }
   revalidatePath(`/${input.workspace_slug}/settings`);
   revalidatePath(`/${input.workspace_slug}/settings/channels`);
+  revalidatePath(`/${input.workspace_slug}/settings/notifications`);
   return { ok: true, data: { id: data.id } };
 }
 
@@ -103,6 +104,7 @@ export async function deleteNotificationTarget(input: {
   if (error) return { ok: false, error: error.message };
   revalidatePath(`/${input.workspace_slug}/settings`);
   revalidatePath(`/${input.workspace_slug}/settings/channels`);
+  revalidatePath(`/${input.workspace_slug}/settings/notifications`);
   return { ok: true, data: null };
 }
 

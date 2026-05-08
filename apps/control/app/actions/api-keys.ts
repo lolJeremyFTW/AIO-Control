@@ -23,9 +23,7 @@ import {
 // `export type` re-exports — so call-sites must import types directly
 // from "../lib/api-keys/consts".
 
-type ActionResult<T> =
-  | { ok: true; data: T }
-  | { ok: false; error: string };
+type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
 export async function listApiKeys(
   workspaceId: string,
@@ -107,6 +105,7 @@ export async function setApiKey(input: {
 
   revalidatePath(`/${input.workspace_slug}/settings`);
   revalidatePath(`/${input.workspace_slug}/settings/api-keys`);
+  revalidatePath(`/${input.workspace_slug}/settings/ai`);
   return { ok: true, data: { id } };
 }
 

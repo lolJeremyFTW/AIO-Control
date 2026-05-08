@@ -23,11 +23,7 @@ type Props = {
   isAdmin?: boolean;
 };
 
-export function SettingsSidebar({
-  workspaceSlug,
-  locale,
-  isAdmin = false,
-}: Props) {
+export function SettingsSidebar({ workspaceSlug, locale }: Props) {
   const pathname = usePathname() ?? "";
   const t = (k: string) => translate(locale, k);
 
@@ -36,7 +32,6 @@ export function SettingsSidebar({
   // order; group order is fixed in SETTINGS_GROUP_ORDER.
   const byGroup = new Map<SettingsGroup, typeof SETTINGS_SECTIONS>();
   for (const s of SETTINGS_SECTIONS) {
-    if (s.id === "server-files" && !isAdmin) continue;
     const arr = byGroup.get(s.group) ?? [];
     arr.push(s);
     byGroup.set(s.group, arr);
@@ -63,8 +58,7 @@ export function SettingsSidebar({
                 fontWeight: 800,
                 letterSpacing: "0.18em",
                 textTransform: "uppercase",
-                color:
-                  group === "danger" ? "var(--rose)" : "var(--app-fg-3)",
+                color: group === "danger" ? "var(--rose)" : "var(--app-fg-3)",
                 padding: "4px 12px 4px",
               }}
             >
@@ -82,9 +76,7 @@ export function SettingsSidebar({
                     padding: "9px 12px",
                     borderRadius: 10,
                     color: active ? "var(--app-fg)" : "var(--app-fg-2)",
-                    background: active
-                      ? "var(--app-card-2)"
-                      : "transparent",
+                    background: active ? "var(--app-card-2)" : "transparent",
                     borderLeft: active
                       ? "2.5px solid var(--tt-green)"
                       : "2.5px solid transparent",

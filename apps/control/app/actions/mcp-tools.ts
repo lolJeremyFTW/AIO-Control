@@ -85,6 +85,7 @@ export async function saveMcpToolKey(input: {
   });
 
   revalidatePath(`/${input.workspace_slug}/settings/mcp-tools`);
+  revalidatePath(`/${input.workspace_slug}/settings/ai`);
   return { ...res, log };
 }
 
@@ -117,9 +118,7 @@ export async function testMcpToolKey(input: {
   try {
     const headers: Record<string, string> = {
       [cfg.authHeader]:
-        input.tool === "firecrawl"
-          ? `Bearer ${input.value}`
-          : input.value,
+        input.tool === "firecrawl" ? `Bearer ${input.value}` : input.value,
     };
 
     let res: Response;

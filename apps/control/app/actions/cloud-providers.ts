@@ -71,6 +71,7 @@ export async function saveCloudProviderKey(input: {
   // the providers route so the green ✓ pill flips on this page after
   // navigation. Cheap and idempotent.
   revalidatePath(`/${input.workspace_slug}/settings/providers`);
+  revalidatePath(`/${input.workspace_slug}/settings/ai`);
   return res;
 }
 

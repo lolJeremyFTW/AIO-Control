@@ -64,7 +64,7 @@ const PROVIDERS: ProviderSpec[] = [
       "BotFather bot, group chat_id, optional forum topics, and inbound webhook commands.",
     dashboardHref: "https://t.me/BotFather",
     dashboardLabel: "Open BotFather",
-    targetHref: "/settings/telegram",
+    targetHref: "/settings/notifications#telegram",
     targetLabel: "Open Telegram targets",
     credentials: [
       { id: "telegram", label: "Telegram bot token" },
@@ -82,7 +82,7 @@ const PROVIDERS: ProviderSpec[] = [
       "Slack app manifest, slash command URL, interactivity URL, and channel targets.",
     dashboardHref: "https://api.slack.com/apps?new_app=1",
     dashboardLabel: "Open Slack apps",
-    targetHref: "/settings/channels",
+    targetHref: "/settings/notifications#channels",
     targetLabel: "Open Slack targets",
     credentials: [
       { id: "slack_bot_token", label: "Slack bot token" },
@@ -96,7 +96,7 @@ const PROVIDERS: ProviderSpec[] = [
       "Discord application, public key verification, bot token, command registration, and channel targets.",
     dashboardHref: "https://discord.com/developers/applications",
     dashboardLabel: "Open Discord apps",
-    targetHref: "/settings/channels",
+    targetHref: "/settings/notifications#channels",
     targetLabel: "Open Discord targets",
     credentials: [
       { id: "discord_bot_token", label: "Discord bot token" },
@@ -319,7 +319,7 @@ export function ProviderSetupKit({
           </p>
         </div>
         <Link
-          href={`/${workspaceSlug}/settings/api-keys`}
+          href={`/${workspaceSlug}/settings/ai#api-keys`}
           style={linkButton}
           aria-label="Open API Keys"
         >
@@ -400,7 +400,7 @@ export function ProviderSetupKit({
               status={setupStatus.credentials}
             />
             <Link
-              href={`/${workspaceSlug}/settings/api-keys`}
+              href={`/${workspaceSlug}/settings/ai#api-keys`}
               style={inlineLink}
             >
               Save or replace secrets

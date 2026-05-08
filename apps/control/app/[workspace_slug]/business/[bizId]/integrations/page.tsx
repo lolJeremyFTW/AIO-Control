@@ -9,5 +9,5 @@ type Props = {
 
 export default async function BusinessIntegrationsPage({ params }: Props) {
   const { workspace_slug } = await params;
-  redirect(`/${workspace_slug}/settings/integrations`);
+  redirect(`/${workspace_slug}/settings/workspace#integrations`);
 }

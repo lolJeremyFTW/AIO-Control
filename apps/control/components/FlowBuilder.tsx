@@ -379,7 +379,7 @@ export function FlowBuilder({ workspaceSlug, workspaceId, businesses }: Props) {
             <>
               Geen API key geconfigureerd.{" "}
               <Link
-                href={`/${workspaceSlug}/settings/api-keys`}
+                href={`/${workspaceSlug}/settings/ai#api-keys`}
                 style={{ color: "inherit", fontWeight: 600, textDecoration: "underline" }}
               >
                 Voeg een Claude of MiniMax key toe via Settings → API Keys

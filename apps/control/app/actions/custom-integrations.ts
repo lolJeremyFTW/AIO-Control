@@ -62,6 +62,7 @@ export async function createCustomIntegration(
     return { ok: false, error: error?.message ?? "Insert failed." };
   }
   revalidatePath(`/${input.workspace_slug}/settings`);
+  revalidatePath(`/${input.workspace_slug}/settings/notifications`);
   return { ok: true, data: { id: data.id } };
 }
 
@@ -76,6 +77,7 @@ export async function deleteCustomIntegration(input: {
     .eq("id", input.id);
   if (error) return { ok: false, error: error.message };
   revalidatePath(`/${input.workspace_slug}/settings`);
+  revalidatePath(`/${input.workspace_slug}/settings/notifications`);
   return { ok: true, data: null };
 }
 

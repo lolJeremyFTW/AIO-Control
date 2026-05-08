@@ -100,22 +100,22 @@ const TEMPLATES: Template[] = [
   {
     labelKey: "search.tpl.settingsTelegram",
     hintKey: "search.tpl.settingsTelegram.hint",
-    href: "/settings/telegram",
+    href: "/settings/notifications#telegram",
   },
   {
     labelKey: "search.tpl.settingsApiKeys",
     hintKey: "search.tpl.settingsApiKeys.hint",
-    href: "/settings/api-keys",
+    href: "/settings/ai#api-keys",
   },
   {
     labelKey: "search.tpl.settingsSpendLimits",
     hintKey: "search.tpl.settingsSpendLimits.hint",
-    href: "/settings/spend-limits",
+    href: "/settings/billing#spend-limits",
   },
   {
     labelKey: "search.tpl.settingsProviders",
     hintKey: "search.tpl.settingsProviders.hint",
-    href: "/settings/providers",
+    href: "/settings/ai#providers",
   },
   // Business-scoped — only when drilled in.
   {

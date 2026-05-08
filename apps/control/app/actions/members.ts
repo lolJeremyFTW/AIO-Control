@@ -16,7 +16,9 @@ import { createSupabaseServerClient } from "../../lib/supabase/server";
 
 export type Role = "owner" | "admin" | "editor" | "viewer";
 
-export type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string };
+export type ActionResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: string };
 
 export async function inviteWorkspaceMember(input: {
   workspace_slug: string;
@@ -61,6 +63,7 @@ export async function inviteWorkspaceMember(input: {
   if (error) return { ok: false, error: error.message };
 
   revalidatePath(`/${input.workspace_slug}/settings`);
+  revalidatePath(`/${input.workspace_slug}/settings/workspace`);
   return { ok: true, data: { user_id: profile.id } };
 }
 
@@ -77,6 +80,7 @@ export async function removeWorkspaceMember(input: {
     .eq("user_id", input.user_id);
   if (error) return { ok: false, error: error.message };
   revalidatePath(`/${input.workspace_slug}/settings`);
+  revalidatePath(`/${input.workspace_slug}/settings/workspace`);
   return { ok: true, data: null };
 }
 
@@ -94,5 +98,6 @@ export async function updateWorkspaceMemberRole(input: {
     .eq("user_id", input.user_id);
   if (error) return { ok: false, error: error.message };
   revalidatePath(`/${input.workspace_slug}/settings`);
+  revalidatePath(`/${input.workspace_slug}/settings/workspace`);
   return { ok: true, data: null };
 }

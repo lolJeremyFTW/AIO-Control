@@ -221,7 +221,7 @@ export function TalkModule({ agents, workspaceSlug, defaultAgentId }: Props) {
 
   const goToSettings = () => {
     setOpen(false);
-    router.push(`/${workspaceSlug}/settings/talk`);
+    router.push(`/${workspaceSlug}/settings/ai#talk`);
   };
 
   const handleMicClick = useCallback(async () => {

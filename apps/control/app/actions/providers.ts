@@ -113,7 +113,9 @@ async function probeBinary(binary: string): Promise<BinaryProbeResult> {
 
     let child: ReturnType<typeof spawn>;
     try {
-      child = spawn(binary, ["--version"], { stdio: ["ignore", "pipe", "pipe"] });
+      child = spawn(binary, ["--version"], {
+        stdio: ["ignore", "pipe", "pipe"],
+      });
     } catch (err) {
       resolve({
         ok: false,
@@ -185,8 +187,7 @@ async function probeBinary(binary: string): Promise<BinaryProbeResult> {
 async function probeHealthz(
   base: string,
 ): Promise<
-  | { ok: true; url: string; latencyMs: number }
-  | { ok: false; error: string }
+  { ok: true; url: string; latencyMs: number } | { ok: false; error: string }
 > {
   const url = base.replace(/\/+$/, "");
   const probe = `${url}/healthz`;
@@ -223,9 +224,7 @@ async function probeHealthz(
   }
 }
 
-type Result<T> =
-  | { ok: true; data: T }
-  | { ok: false; error: string };
+type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 
 async function requireAdmin(
   workspaceId: string,
@@ -243,9 +242,13 @@ async function requireAdmin(
     .eq("user_id", user.id)
     .in("role", ["owner", "admin"])
     .maybeSingle();
-  if (!member)
-    return { ok: false, error: "Alleen workspace owners/admins." };
+  if (!member) return { ok: false, error: "Alleen workspace owners/admins." };
   return { ok: true, data: { userId: user.id } };
+}
+
+function revalidateProviderSettings(workspaceSlug: string) {
+  revalidatePath(`/${workspaceSlug}/settings/providers`);
+  revalidatePath(`/${workspaceSlug}/settings/ai`);
 }
 
 /** Save the Hermes endpoint (clears it when value is empty/null). */
@@ -262,7 +265,7 @@ export async function saveHermesEndpoint(input: {
     .update({ hermes_endpoint: input.endpoint?.trim() || null })
     .eq("id", input.workspace_id);
   if (error) return { ok: false, error: error.message };
-  revalidatePath(`/${input.workspace_slug}/settings/providers`);
+  revalidateProviderSettings(input.workspace_slug);
   return { ok: true, data: null };
 }
 
@@ -274,7 +277,9 @@ export async function testHermesEndpoint(input: {
   workspace_id: string;
   workspace_slug: string;
   endpoint?: string | null;
-}): Promise<Result<{ mode: "cli" | "http"; detail: string; latencyMs: number }>> {
+}): Promise<
+  Result<{ mode: "cli" | "http"; detail: string; latencyMs: number }>
+> {
   const auth = await requireAdmin(input.workspace_id);
   if (!auth.ok) return auth;
 
@@ -299,7 +304,7 @@ export async function testHermesEndpoint(input: {
       .update({ hermes_last_test_at: new Date().toISOString() })
       .eq("id", input.workspace_id);
     if (updErr) return { ok: false, error: updErr.message };
-    revalidatePath(`/${input.workspace_slug}/settings/providers`);
+    revalidateProviderSettings(input.workspace_slug);
     return {
       ok: true,
       data: { mode: "http", detail: r.url, latencyMs: r.latencyMs },
@@ -314,7 +319,7 @@ export async function testHermesEndpoint(input: {
     .update({ hermes_last_test_at: new Date().toISOString() })
     .eq("id", input.workspace_id);
   if (updErr) return { ok: false, error: updErr.message };
-  revalidatePath(`/${input.workspace_slug}/settings/providers`);
+  revalidateProviderSettings(input.workspace_slug);
   return {
     ok: true,
     data: { mode: "cli", detail: r.firstLine, latencyMs: r.latencyMs },
@@ -335,7 +340,7 @@ export async function saveOpenClawEndpoint(input: {
     .update({ openclaw_endpoint: input.endpoint?.trim() || null })
     .eq("id", input.workspace_id);
   if (error) return { ok: false, error: error.message };
-  revalidatePath(`/${input.workspace_slug}/settings/providers`);
+  revalidateProviderSettings(input.workspace_slug);
   return { ok: true, data: null };
 }
 
@@ -344,7 +349,9 @@ export async function testOpenClawEndpoint(input: {
   workspace_id: string;
   workspace_slug: string;
   endpoint?: string | null;
-}): Promise<Result<{ mode: "cli" | "http"; detail: string; latencyMs: number }>> {
+}): Promise<
+  Result<{ mode: "cli" | "http"; detail: string; latencyMs: number }>
+> {
   const auth = await requireAdmin(input.workspace_id);
   if (!auth.ok) return auth;
 
@@ -367,7 +374,7 @@ export async function testOpenClawEndpoint(input: {
       .update({ openclaw_last_test_at: new Date().toISOString() })
       .eq("id", input.workspace_id);
     if (updErr) return { ok: false, error: updErr.message };
-    revalidatePath(`/${input.workspace_slug}/settings/providers`);
+    revalidateProviderSettings(input.workspace_slug);
     return {
       ok: true,
       data: { mode: "http", detail: r.url, latencyMs: r.latencyMs },
@@ -382,7 +389,7 @@ export async function testOpenClawEndpoint(input: {
     .update({ openclaw_last_test_at: new Date().toISOString() })
     .eq("id", input.workspace_id);
   if (updErr) return { ok: false, error: updErr.message };
-  revalidatePath(`/${input.workspace_slug}/settings/providers`);
+  revalidateProviderSettings(input.workspace_slug);
   return {
     ok: true,
     data: { mode: "cli", detail: r.firstLine, latencyMs: r.latencyMs },
@@ -432,7 +439,7 @@ export async function setRuntimeAgentName(input: {
     .update({ [col]: trimmed, [initCol]: null })
     .eq("id", input.workspace_id);
   if (error) return { ok: false, error: error.message };
-  revalidatePath(`/${input.workspace_slug}/settings/providers`);
+  revalidateProviderSettings(input.workspace_slug);
   return { ok: true, data: null };
 }
 
@@ -523,7 +530,7 @@ export async function verifyRuntimeAgent(input: {
     .eq("id", input.workspace_id);
   if (updErr) return { ok: false, error: updErr.message };
 
-  revalidatePath(`/${input.workspace_slug}/settings/providers`);
+  revalidateProviderSettings(input.workspace_slug);
   return { ok: true, data: { name, latencyMs: r.latencyMs } };
 }
 
