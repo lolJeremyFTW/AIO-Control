@@ -328,15 +328,43 @@ export function OutreachPipelineModule({
     const remaining = saved.filter(
       (pipeline) => pipeline.pipeline_id !== pipelineId,
     );
-    const next =
+    const nextActive =
       pipelineId === activePipelineId
         ? remaining[0]
         : saved.find((pipeline) => pipeline.pipeline_id === activePipelineId) ??
           remaining[0];
+    const nextActiveId = nextActive?.pipeline_id ?? "";
+    const nextBlueprint = nextActive ?? makeBlankBlueprint();
+
     setPipelines(remaining);
-    setActivePipelineId(next?.pipeline_id ?? "");
-    setBlueprint(next ?? makeBlankBlueprint());
-    setInfo("Pipeline verwijderd. Klik Opslaan om dit permanent te bewaren.");
+    setActivePipelineId(nextActiveId);
+    setBlueprint(nextBlueprint);
+    setError(null);
+    setInfo(null);
+
+    startTransition(async () => {
+      const res = await updateOutreachPipelineConfig({
+        workspace_slug: workspaceSlug,
+        business_slug: businessSlug,
+        workspace_id: workspaceId,
+        business_id: businessId,
+        nav_node_id: navNodeId,
+        enabled: config?.enabled ?? false,
+        interval_seconds: intervalSeconds,
+        batch_size: batchSize,
+        pipeline_blueprint: serializePipelineSet(
+          nextActiveId,
+          remaining,
+          nextBlueprint,
+        ),
+        pipeline_steps: nextActive ? nextBlueprint.steps : [],
+      });
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      setInfo("Pipeline verwijderd.");
+    });
   };
 
   const generatePipelineWithAi = () => {
