@@ -293,6 +293,7 @@ export const docPages: DocPage[] = [
           "Workspace, business, and topic targets",
           "Optional forum topic IDs",
           "Inbound commands and run reports",
+          "Failure alerts for both provider errors and pre-flight dispatcher blocks",
         ],
       },
       {

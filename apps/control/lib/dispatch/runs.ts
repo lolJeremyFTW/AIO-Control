@@ -595,11 +595,12 @@ async function markFailed(
   reason: string,
 ): Promise<DispatchResult> {
   const supabase = getServiceRoleSupabase();
+  const endedAt = new Date().toISOString();
   await supabase
     .from("runs")
     .update({
       status: "failed",
-      ended_at: new Date().toISOString(),
+      ended_at: endedAt,
       error_text: reason,
       // Pre-flight failures (paused business, missing agent, spend
       // limit hit) are NOT transient — never retry.
@@ -608,7 +609,9 @@ async function markFailed(
     .eq("id", runId);
   const { data: failedRun } = await supabase
     .from("runs")
-    .select("schedule_id, created_at")
+    .select(
+      "id, workspace_id, business_id, nav_node_id, agent_id, schedule_id, status, cost_cents, duration_ms, output, error_text, created_at",
+    )
     .eq("id", runId)
     .maybeSingle();
   const scheduleMemorySource = await loadScheduleMemorySource(
@@ -616,7 +619,6 @@ async function markFailed(
     (failedRun?.schedule_id as string | null) ?? null,
   );
   if (scheduleMemorySource) {
-    const endedAt = new Date().toISOString();
     await recordScheduleRunMemory({
       schedule: scheduleMemorySource,
       runId,
@@ -632,6 +634,37 @@ async function markFailed(
       console.warn("[schedule-memory] failed-write failed", err),
     );
   }
+
+  // Pre-flight failures return before the main dispatch path reaches its
+  // notification block. Alert here too so missing agents, archived agents,
+  // spend-limit failures, subscription-provider blocks, and concurrency skips
+  // are visible in Telegram / custom / email / generic notification channels
+  // instead of silently becoming red rows in the Runs table.
+  if (failedRun) {
+    const createdAt = failedRun.created_at as string | null | undefined;
+    const durationMs = createdAt
+      ? new Date(endedAt).getTime() - new Date(createdAt).getTime()
+      : null;
+    await dispatchRunEvent(
+      {
+        id: failedRun.id as string,
+        workspace_id: failedRun.workspace_id as string,
+        business_id: (failedRun.business_id as string | null) ?? null,
+        nav_node_id: (failedRun.nav_node_id as string | null) ?? null,
+        agent_id: (failedRun.agent_id as string | null) ?? null,
+        schedule_id: (failedRun.schedule_id as string | null) ?? null,
+        status: "failed",
+        cost_cents: (failedRun.cost_cents as number | null) ?? 0,
+        duration_ms: (failedRun.duration_ms as number | null) ?? durationMs,
+        output:
+          (failedRun.output as Record<string, unknown> | null | undefined) ??
+          null,
+        error_text: reason,
+      },
+      "failed",
+    ).catch((err) => console.error("dispatchRunEvent failed", err));
+  }
+
   return { ok: false, status: "failed", error: reason };
 }
 
