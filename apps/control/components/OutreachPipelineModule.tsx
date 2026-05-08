@@ -303,6 +303,7 @@ export function OutreachPipelineModule({
     setPipelines([...saved, next]);
     setActivePipelineId(next.pipeline_id);
     setBlueprint(next);
+    setInfo("Nieuwe pipeline aangemaakt. Stel hem in en klik Opslaan.");
   };
 
   const deletePipeline = () => {
@@ -383,6 +384,13 @@ export function OutreachPipelineModule({
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button
               type="button"
+              onClick={createPipeline}
+              style={primaryButtonStyle(false)}
+            >
+              + Nieuwe pipeline
+            </button>
+            <button
+              type="button"
               disabled={pending}
               onClick={() => save({ enabled: !running })}
               style={running ? dangerButtonStyle(pending) : primaryButtonStyle(pending)}
@@ -410,6 +418,9 @@ export function OutreachPipelineModule({
         </div>
 
         <div style={pipelineSwitcherStyle}>
+          <span style={pipelineSwitcherLabelStyle}>
+            Pipelines op deze pagina
+          </span>
           {syncActivePipeline(pipelines, activePipelineId, blueprint).map((pipeline) => {
             const active = pipeline.pipeline_id === activePipelineId;
             return (
@@ -423,9 +434,6 @@ export function OutreachPipelineModule({
               </button>
             );
           })}
-          <button type="button" onClick={createPipeline} style={secondaryButtonStyle(false)}>
-            + Pipeline
-          </button>
         </div>
 
         <div style={settingsGridStyle}>
@@ -1090,6 +1098,15 @@ const pipelineSwitcherStyle: React.CSSProperties = {
   marginTop: 14,
   paddingTop: 14,
   borderTop: "1px solid var(--app-border-2)",
+};
+
+const pipelineSwitcherLabelStyle: React.CSSProperties = {
+  color: "var(--app-fg-3)",
+  fontSize: 11,
+  fontWeight: 900,
+  letterSpacing: ".08em",
+  textTransform: "uppercase",
+  marginRight: 4,
 };
 
 const pipelineButtonStyle: React.CSSProperties = {
