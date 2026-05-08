@@ -53,7 +53,11 @@ export async function GET(
   ctx: { params: Promise<{ run_id: string }> },
 ) {
   const { run_id } = await ctx.params;
-  const locale = normalizeLocale(new URL(req.url).searchParams.get("locale"));
+  const searchParams = new URL(req.url).searchParams;
+  const locale =
+    searchParams.get("translate") === "1"
+      ? normalizeLocale(searchParams.get("locale"))
+      : null;
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -68,7 +72,7 @@ export async function GET(
       `id, workspace_id, agent_id, business_id, nav_node_id, schedule_id,
        triggered_by, status, started_at, ended_at, duration_ms,
        cost_cents, input_tokens, output_tokens, output,
-       error_text, message_history,
+       error_text,
        created_at, attempt, max_attempts, next_retry_at,
        agents:agent_id ( id, name, provider, model ),
        schedules:schedule_id ( title, kind, cron_expr )`,
@@ -83,9 +87,9 @@ export async function GET(
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
 
+  const messageHistory = await getMessageHistoryPreview(supabase, run_id);
   let input: unknown = null;
-  const hasReplay =
-    Array.isArray(data.message_history) && data.message_history.length > 0;
+  const hasReplay = Array.isArray(messageHistory) && messageHistory.length > 0;
   if (!hasReplay) {
     const { data: inputRow, error: inputError } = await supabase
       .from("runs")
@@ -109,6 +113,7 @@ export async function GET(
   const run: RunDetailForTranslation = {
     ...row,
     input,
+    message_history: messageHistory,
     agents: singleRelation(row.agents),
     schedules: singleRelation(row.schedules),
   };
@@ -125,6 +130,97 @@ function normalizeLocale(value: string | null): Locale | null {
 
 function singleRelation<T>(value: T | T[] | null | undefined): T | null {
   return Array.isArray(value) ? (value[0] ?? null) : (value ?? null);
+}
+
+async function getMessageHistoryPreview(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  runId: string,
+): Promise<RunStep[] | null> {
+  const { data, error } = await supabase.rpc("run_message_history_preview", {
+    _run_id: runId,
+    _max_steps: 200,
+    _max_text_chars: 20_000,
+    _max_json_chars: 4_000,
+  });
+
+  if (!error && Array.isArray(data)) return data as RunStep[];
+  if (error) {
+    console.error("run_message_history_preview failed", error);
+  }
+
+  const { data: row, error: fallbackError } = await supabase
+    .from("runs")
+    .select("message_history")
+    .eq("id", runId)
+    .maybeSingle();
+  if (fallbackError) {
+    console.error("run detail history fallback failed", fallbackError);
+    return null;
+  }
+  return compactMessageHistory(row?.message_history);
+}
+
+function compactMessageHistory(value: unknown): RunStep[] | null {
+  if (!Array.isArray(value)) return null;
+  return value.slice(0, 200).map((step) => compactRunStep(step));
+}
+
+function compactRunStep(value: unknown): RunStep {
+  const step = asRecord(value);
+  if (!step) return { kind: "error", message: "Invalid run step" };
+
+  if (step.kind === "user") {
+    return {
+      ...step,
+      kind: "user",
+      text: clipText(typeof step.text === "string" ? step.text : "", 20_000),
+    };
+  }
+  if (step.kind === "assistant") {
+    return {
+      ...step,
+      kind: "assistant",
+      text: clipText(typeof step.text === "string" ? step.text : "", 20_000),
+    };
+  }
+  if (step.kind === "tool_call") {
+    return {
+      ...step,
+      kind: "tool_call",
+      name: typeof step.name === "string" ? step.name : "tool",
+      args: previewJsonValue(step.args, 4_000),
+      ...(step.result === undefined
+        ? {}
+        : { result: previewJsonValue(step.result, 4_000) }),
+    };
+  }
+  if (step.kind === "error") {
+    return {
+      ...step,
+      kind: "error",
+      message: clipText(
+        typeof step.message === "string" ? step.message : "",
+        20_000,
+      ),
+    };
+  }
+  return { kind: "error", message: "Unknown run step" };
+}
+
+function previewJsonValue(value: unknown, maxChars: number): unknown {
+  try {
+    const text = JSON.stringify(value);
+    if (!text || text.length <= maxChars) return value;
+    return clipText(text, maxChars);
+  } catch {
+    return clipText(String(value), maxChars);
+  }
+}
+
+function clipText(value: string, maxChars: number): string {
+  if (value.length <= maxChars) return value;
+  const hidden = value.length - maxChars;
+  return `${value.slice(0, maxChars)}\n... ${hidden} characters hidden`;
 }
 
 async function translateRunDetail(

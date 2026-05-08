@@ -7,10 +7,8 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { useLocale } from "../lib/i18n/client";
 import type { RunStep } from "../lib/runs/message-history";
 import { getRunScheduleLabel } from "../lib/runs/schedule-label";
-import { getSupabaseBrowserClient } from "../lib/supabase/client";
 import { MarkdownText } from "./MarkdownText";
 
 type RunDetail = {
@@ -60,12 +58,6 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
   // the new run carries the prior message_history forward, so the
   // drawer keeps showing the full thread without juggling external state.
   const [currentRunId, setCurrentRunId] = useState(runId);
-  const locale = useLocale();
-  // Reset to the prop's run when the parent opens a different one.
-  useEffect(() => {
-    setCurrentRunId(runId);
-  }, [runId]);
-
   const [run, setRun] = useState<RunDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -96,10 +88,17 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
     }
   }, [showTools]);
 
-  // Re-fetch counter — bumped on realtime events so a still-running run
-  // streams its updates into this drawer live (status: running → done,
-  // message_history grows with each tool call).
+  // Re-fetch counter. Live runs poll the compact detail endpoint below.
   const [tick, setTick] = useState(0);
+
+  // Reset to the prop's run when the parent opens a different one.
+  useEffect(() => {
+    setCurrentRunId(runId);
+    setRun(null);
+    setLoading(true);
+    setError(null);
+    setTick(0);
+  }, [runId]);
 
   // Auto-scroll: ref to the scrollable container and a bottom sentinel.
   // userScrolledRef tracks whether the user scrolled up manually so we
@@ -113,8 +112,7 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
     setLoading(tick === 0);
     setError(null);
     const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-    const params = new URLSearchParams({ locale });
-    fetch(`${base}/api/runs/${currentRunId}?${params.toString()}`, {
+    fetch(`${base}/api/runs/${currentRunId}`, {
       signal: ctl.signal,
     })
       .then(async (res) => {
@@ -129,35 +127,16 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
       })
       .finally(() => setLoading(false));
     return () => ctl.abort();
-  }, [currentRunId, tick, locale]);
+  }, [currentRunId, tick]);
 
-  // Subscribe to changes on this specific run row — fires as the
-  // dispatcher promotes queued → running → done and writes message_history.
+  // Poll live runs instead of subscribing to the whole runs row. Supabase
+  // Realtime sends the full updated row, including huge message_history values
+  // for tool-heavy runs; the API returns a compact preview.
   useEffect(() => {
-    let supabase: ReturnType<typeof getSupabaseBrowserClient>;
-    try {
-      supabase = getSupabaseBrowserClient();
-    } catch {
-      return;
-    }
-    const ch = supabase
-      .channel(`run-detail:${currentRunId}`)
-      .on(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        "postgres_changes" as any,
-        {
-          event: "UPDATE",
-          schema: "aio_control",
-          table: "runs",
-          filter: `id=eq.${currentRunId}`,
-        },
-        () => setTick((t) => t + 1),
-      )
-      .subscribe();
-    return () => {
-      void supabase.removeChannel(ch);
-    };
-  }, [currentRunId]);
+    if (run?.status !== "queued" && run?.status !== "running") return;
+    const id = window.setInterval(() => setTick((t) => t + 1), 2_000);
+    return () => window.clearInterval(id);
+  }, [run?.status]);
 
   // ESC closes the drawer.
   useEffect(() => {
@@ -255,6 +234,9 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
       }
       const data = (await res.json()) as { run_id: string };
       setFollowupText("");
+      setRun(null);
+      setTick(0);
+      setLoading(true);
       setCurrentRunId(data.run_id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "followup error");
@@ -1021,6 +1003,7 @@ function ToolCallCard({ step }: { step: RunStep & { kind: "tool_call" } }) {
 }
 
 function previewJson(value: unknown, maxChars = 2_000): string {
+  if (typeof value === "string") return truncatePreview(value, maxChars);
   try {
     const s = JSON.stringify(value, null, 2);
     return truncatePreview(s ?? String(value), maxChars);
