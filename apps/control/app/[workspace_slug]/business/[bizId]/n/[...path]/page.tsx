@@ -279,7 +279,6 @@ export default async function NavNodePage({ params, searchParams }: Props) {
   // ── Overview (default) ──────────────────────────────────────────────
   if (subRoute === "pipeline" || subRoute === "pipelines") {
     const supabase = await createSupabaseServerClient();
-    const since24h = new Date(Date.now() - 24 * 60 * 60_000).toISOString();
     const topicAgents = allAgents.filter(
       (a) =>
         a.business_id === biz.id &&
@@ -295,12 +294,6 @@ export default async function NavNodePage({ params, searchParams }: Props) {
       { data: config },
       { data: recentRuns },
       { data: recentEvents },
-      { count: total },
-      { count: eligible },
-      { count: modulePrepared },
-      { count: sent },
-      { count: pendingWhatsapp },
-      { count: failedQa24h },
     ] = await Promise.all([
       supabase
         .from("outreach_pipeline_configs")
@@ -331,46 +324,6 @@ export default async function NavNodePage({ params, searchParams }: Props) {
         .eq("nav_node_id", current.id)
         .order("created_at", { ascending: false })
         .limit(80),
-      supabase
-        .from("outreach_leads")
-        .select("id", { count: "exact", head: true })
-        .eq("workspace_id", workspace.id)
-        .eq("business_id", biz.id),
-      supabase
-        .from("outreach_leads")
-        .select("id", { count: "exact", head: true })
-        .eq("workspace_id", workspace.id)
-        .eq("business_id", biz.id)
-        .in("status", ["new", "pitched", "approved", "freebie_ready"])
-        .is("outreach_pipeline_outreached_at", null)
-        .is("sent_at", null)
-        .not("lead_name", "is", null),
-      supabase
-        .from("outreach_leads")
-        .select("id", { count: "exact", head: true })
-        .eq("workspace_id", workspace.id)
-        .eq("business_id", biz.id)
-        .eq("sent_via", "aio_pipeline_local_outbox_pending"),
-      supabase
-        .from("outreach_leads")
-        .select("id", { count: "exact", head: true })
-        .eq("workspace_id", workspace.id)
-        .eq("business_id", biz.id)
-        .eq("status", "sent"),
-      supabase
-        .from("outreach_leads")
-        .select("id", { count: "exact", head: true })
-        .eq("workspace_id", workspace.id)
-        .eq("business_id", biz.id)
-        .eq("status", "pending_whatsapp"),
-      supabase
-        .from("outreach_pipeline_events")
-        .select("id", { count: "exact", head: true })
-        .eq("workspace_id", workspace.id)
-        .eq("business_id", biz.id)
-        .eq("event_type", "error")
-        .eq("nav_node_id", current.id)
-        .gte("created_at", since24h),
     ]);
 
     return (
@@ -398,14 +351,6 @@ export default async function NavNodePage({ params, searchParams }: Props) {
             scopeName={current.name}
             scopeKind="topic"
             config={(config as Parameters<typeof OutreachPipelineModule>[0]["config"]) ?? null}
-            stats={{
-              total: total ?? 0,
-              eligible: eligible ?? 0,
-              moduleOutreached: modulePrepared ?? 0,
-              sent: sent ?? 0,
-              pendingWhatsapp: pendingWhatsapp ?? 0,
-              failedQa24h: failedQa24h ?? 0,
-            }}
             recentRuns={(recentRuns ?? []) as Parameters<
               typeof OutreachPipelineModule
             >[0]["recentRuns"]}

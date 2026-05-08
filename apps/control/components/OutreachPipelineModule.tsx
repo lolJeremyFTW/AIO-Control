@@ -103,7 +103,9 @@ type Props = {
   scopeName: string;
   scopeKind: "business" | "topic";
   config: Config | null;
-  stats: Stats;
+  /** Outreach-lead metrics. Only pass on the outreach-specific pipeline page;
+   *  generic pipeline pages leave this off so the metrics row is hidden. */
+  stats?: Stats;
   recentRuns: RunRow[];
   recentEvents: EventRow[];
   agents: AgentOption[];
@@ -157,7 +159,7 @@ export function OutreachPipelineModule({
       (pipeline) => pipeline.pipeline_id === initialPipelineSet.active_pipeline_id,
     ) ?? firstPipeline(initialPipelineSet),
   );
-  const [outreached, setOutreached] = useState(stats.moduleOutreached);
+  const [outreached, setOutreached] = useState(stats?.moduleOutreached ?? 0);
   const [info, setInfo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [aiPrompt, setAiPrompt] = useState("");
@@ -500,14 +502,16 @@ export function OutreachPipelineModule({
           </div>
         </div>
 
-        <div style={metricsGridStyle}>
-          <Metric label="Local outbox" value={outreached} accent="#39b255" />
-          <Metric label="Eligible now" value={stats.eligible} />
-          <Metric label="Alle leads" value={stats.total} />
-          <Metric label="Sent" value={stats.sent} />
-          <Metric label="WA klaar" value={stats.pendingWhatsapp} />
-          <Metric label="QA errors 24h" value={stats.failedQa24h} accent="#c44d4d" />
-        </div>
+        {stats && (
+          <div style={metricsGridStyle}>
+            <Metric label="Local outbox" value={outreached} accent="#39b255" />
+            <Metric label="Eligible now" value={stats.eligible} />
+            <Metric label="Alle leads" value={stats.total} />
+            <Metric label="Sent" value={stats.sent} />
+            <Metric label="WA klaar" value={stats.pendingWhatsapp} />
+            <Metric label="QA errors 24h" value={stats.failedQa24h} accent="#c44d4d" />
+          </div>
+        )}
 
         <div style={pipelineSwitcherStyle}>
           <span style={pipelineSwitcherLabelStyle}>
