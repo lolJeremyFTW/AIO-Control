@@ -361,6 +361,18 @@ export function OutreachPipelineModule({
     }));
   };
 
+  const moveStep = (index: number, direction: -1 | 1) => {
+    setBlueprint((current) => {
+      const nextIndex = index + direction;
+      if (nextIndex < 0 || nextIndex >= current.steps.length) return current;
+      const steps = [...current.steps];
+      const [item] = steps.splice(index, 1);
+      if (!item) return current;
+      steps.splice(nextIndex, 0, item);
+      return { ...current, steps };
+    });
+  };
+
   const updateRule = (index: number, value: string) => {
     setBlueprint((current) => ({
       ...current,
@@ -584,13 +596,33 @@ export function OutreachPipelineModule({
         <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
           {blueprint.steps.map((step, index) => (
             <div key={`${step.id}-${index}`} style={stepEditorStyle}>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <span style={nodeIndexStyle}>{String(index + 1).padStart(2, "0")}</span>
+              <div style={stepEditorHeaderStyle}>
+                <span style={stepNumberBadgeStyle}>{String(index + 1).padStart(2, "0")}</span>
                 <input
                   value={step.label}
                   onChange={(e) => updateStep(index, { label: e.target.value })}
                   style={{ ...inputStyle, fontWeight: 800 }}
                 />
+                <div style={stepMoveGroupStyle}>
+                  <button
+                    type="button"
+                    title="Stap omhoog"
+                    disabled={index === 0}
+                    onClick={() => moveStep(index, -1)}
+                    style={iconButtonStyle(index === 0)}
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    title="Stap omlaag"
+                    disabled={index === blueprint.steps.length - 1}
+                    onClick={() => moveStep(index, 1)}
+                    style={iconButtonStyle(index === blueprint.steps.length - 1)}
+                  >
+                    ↓
+                  </button>
+                </div>
                 <button
                   type="button"
                   onClick={() => removeStep(index)}
@@ -1564,6 +1596,47 @@ const stepEditorStyle: React.CSSProperties = {
   display: "grid",
   gap: 10,
 };
+
+const stepEditorHeaderStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "34px minmax(0, 1fr) auto auto",
+  gap: 8,
+  alignItems: "center",
+};
+
+const stepNumberBadgeStyle: React.CSSProperties = {
+  width: 30,
+  height: 30,
+  borderRadius: 8,
+  border: "1px solid var(--app-border)",
+  background: "var(--app-card)",
+  color: "var(--app-fg-3)",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontSize: 10,
+  fontWeight: 900,
+  letterSpacing: ".08em",
+};
+
+const stepMoveGroupStyle: React.CSSProperties = {
+  display: "inline-flex",
+  gap: 4,
+};
+
+function iconButtonStyle(disabled: boolean): React.CSSProperties {
+  return {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    border: "1px solid var(--app-border)",
+    background: "var(--app-card)",
+    color: disabled ? "var(--app-fg-3)" : "var(--app-fg)",
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.45 : 1,
+    fontWeight: 900,
+  };
+}
 
 const checkStyle: React.CSSProperties = {
   display: "inline-flex",
