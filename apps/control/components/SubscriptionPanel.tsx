@@ -7,80 +7,49 @@
 
 import { useState } from "react";
 
-type Tier = {
-  id: "free" | "pro" | "team";
-  name: string;
-  monthly: string;
-  yearly: string;
-  /** Marketing tagline. */
-  tagline: string;
-  features: string[];
-  /** Highlight + recommend in the picker. */
-  recommended?: boolean;
-};
-
-const TIERS: Tier[] = [
-  {
-    id: "free",
-    name: "Free",
-    monthly: "€0",
-    yearly: "€0",
-    tagline: "Voor solo testing.",
-    features: [
-      "1 workspace",
-      "3 businesses",
-      "Manual + webhook triggers",
-      "OpenClaw + Hermes via je eigen VPS",
-      "Geen routine quota",
-    ],
-  },
-  {
-    id: "pro",
-    name: "Pro",
-    monthly: "€29",
-    yearly: "€290",
-    tagline: "Voor solo operators die het serieus runnen.",
-    features: [
-      "Onbeperkt businesses",
-      "Cron schedules op Claude subscription OF API key",
-      "Telegram + email notifications",
-      "Spend limits + auto-pause",
-      "Mobile push (web + Capacitor)",
-      "10K runs / maand inbegrepen",
-    ],
-    recommended: true,
-  },
-  {
-    id: "team",
-    name: "Team",
-    monthly: "€99",
-    yearly: "€990",
-    tagline: "Voor teams en agencies met meerdere clients.",
-    features: [
-      "Alles uit Pro",
-      "Onbeperkt members + role-based access",
-      "Per-business isolated mode (geen workspace fallback)",
-      "Audit log export + GDPR DSR helpers",
-      "Priority support",
-      "100K runs / maand inbegrepen",
-    ],
-  },
-];
+import {
+  calculateNetPriceCents,
+  PLAN_TIERS,
+  type BillingCadence,
+  type WorkspaceSubscription,
+} from "../lib/billing/subscription";
 
 type Props = {
-  /** Current plan tier — defaults to free when not yet wired. */
-  currentTier?: Tier["id"];
+  subscription: WorkspaceSubscription;
   /** Stripe customer id, when present means the user has a card on
    *  file and can be sent to the Stripe portal for management. */
   stripeCustomerId?: string | null;
 };
 
+const eur = new Intl.NumberFormat("nl-NL", {
+  style: "currency",
+  currency: "EUR",
+  maximumFractionDigits: 0,
+});
+
+function formatPrice(cents: number) {
+  return eur.format(cents / 100);
+}
+
+function formatLimit(value: number | "unlimited", unit: string) {
+  if (value === "unlimited") return `Onbeperkt ${unit}`;
+  return `${value} ${unit}`;
+}
+
+function formatBusinessLimit(value: number | "unlimited") {
+  if (value === "unlimited") return "Onbeperkt businesses";
+  return value === 1 ? "1 business" : `${value} businesses`;
+}
+
 export function SubscriptionPanel({
-  currentTier = "free",
+  subscription,
   stripeCustomerId,
 }: Props) {
-  const [billing, setBilling] = useState<"monthly" | "yearly">("monthly");
-  const tier = TIERS.find((t) => t.id === currentTier) ?? TIERS[0]!;
+  const [billing, setBilling] = useState<BillingCadence>(
+    subscription.billingCadence,
+  );
+  const tier =
+    PLAN_TIERS.find((t) => t.id === subscription.planId) ?? PLAN_TIERS[0]!;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
@@ -122,26 +91,65 @@ export function SubscriptionPanel({
             >
               {tier.tagline}
             </div>
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 6,
+                marginTop: 8,
+                fontSize: 11,
+                color: "var(--app-fg-2)",
+              }}
+            >
+              <span>{tier.limits.workspaces} workspace per subscription</span>
+              <span>|</span>
+              <span>{formatBusinessLimit(tier.limits.businesses)}</span>
+              <span>|</span>
+              <span>
+                {formatLimit(
+                  tier.limits.automationRunsPerMonth,
+                  "automatisering-runs",
+                )}{" "}
+                / maand
+              </span>
+            </div>
           </div>
           <div
             style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 4,
               fontSize: 13,
               fontWeight: 700,
               color: "var(--app-fg-2)",
               fontVariantNumeric: "tabular-nums",
             }}
           >
-            {tier.monthly}
-            <span
-              style={{
-                fontSize: 11,
-                fontWeight: 500,
-                color: "var(--app-fg-3)",
-              }}
-            >
-              {" "}
-              / maand
+            <span>
+              {formatPrice(subscription.netPriceCents)}
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 500,
+                  color: "var(--app-fg-3)",
+                }}
+              >
+                {" "}
+                / maand
+              </span>
             </span>
+            {subscription.discountPercent > 0 && (
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: "var(--tt-green)",
+                }}
+              >
+                {formatPrice(subscription.listPriceCents)} bruto,{" "}
+                {subscription.discountPercent}% korting
+              </span>
+            )}
           </div>
           <button type="button" className="btn">
             Beheer abonnement
@@ -199,12 +207,21 @@ export function SubscriptionPanel({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(3, 1fr)",
+            gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
             gap: 12,
           }}
         >
-          {TIERS.map((t) => {
-            const isCurrent = t.id === currentTier;
+          {PLAN_TIERS.map((t) => {
+            const isCurrent = t.id === subscription.planId;
+            const listPrice =
+              billing === "monthly" ? t.monthlyCents : t.yearlyCents;
+            const discountPercent = isCurrent
+              ? subscription.discountPercent
+              : 0;
+            const netPrice = calculateNetPriceCents(
+              listPrice,
+              discountPercent,
+            );
             return (
               <div
                 key={t.id}
@@ -269,7 +286,7 @@ export function SubscriptionPanel({
                     color: "var(--app-fg)",
                   }}
                 >
-                  {billing === "monthly" ? t.monthly : t.yearly}
+                  {formatPrice(netPrice)}
                   <span
                     style={{
                       fontSize: 12,
@@ -281,6 +298,19 @@ export function SubscriptionPanel({
                     / {billing === "monthly" ? "maand" : "jaar"}
                   </span>
                 </div>
+                {discountPercent > 0 && (
+                  <div
+                    style={{
+                      marginTop: 5,
+                      fontSize: 11.5,
+                      color: "var(--tt-green)",
+                      fontWeight: 700,
+                    }}
+                  >
+                    {formatPrice(listPrice)} bruto · {discountPercent}%
+                    korting
+                  </div>
+                )}
                 <ul
                   style={{
                     listStyle: "none",
@@ -337,6 +367,18 @@ export function SubscriptionPanel({
           Wij storten de facturen via Stripe. Je beheert je kaart, IBAN
           of overschrijving in de Stripe customer portal.
         </p>
+        {subscription.managedInternally && (
+          <p
+            style={{
+              fontSize: 12.5,
+              color: "var(--tt-green)",
+              fontWeight: 700,
+              marginTop: -4,
+            }}
+          >
+            {subscription.invoiceNote}
+          </p>
+        )}
         {stripeCustomerId ? (
           <div className="field">
             <div className="lbl">

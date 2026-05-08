@@ -6,8 +6,10 @@ import { notFound, redirect } from "next/navigation";
 
 import {
   getCurrentUser,
+  getProfile,
   getWorkspaceBySlug,
 } from "../../../../lib/auth/workspace";
+import { resolveWorkspaceSubscription } from "../../../../lib/billing/subscription";
 import { getDict } from "../../../../lib/i18n/server";
 import { SubscriptionPanel } from "../../../../components/SubscriptionPanel";
 
@@ -21,11 +23,10 @@ export default async function SubscriptionPage({ params }: Props) {
   const workspace = await getWorkspaceBySlug(workspace_slug);
   if (!workspace) notFound();
 
-  // Plan tier + Stripe customer id will live on `workspaces` once
-  // migration 039 lands. For now everyone is on the free tier and
-  // has no Stripe customer yet — the panel renders the appropriate
-  // empty/CTA state.
-  const currentTier: "free" | "pro" | "team" = "free";
+  const profile = await getProfile(user.id);
+  const subscription = resolveWorkspaceSubscription({
+    isAdmin: Boolean(profile?.is_admin),
+  });
   const stripeCustomerId: string | null = null;
 
   const { t } = await getDict();
@@ -39,7 +40,7 @@ export default async function SubscriptionPage({ params }: Props) {
         </span>
       </div>
       <SubscriptionPanel
-        currentTier={currentTier}
+        subscription={subscription}
         stripeCustomerId={stripeCustomerId}
       />
     </>
