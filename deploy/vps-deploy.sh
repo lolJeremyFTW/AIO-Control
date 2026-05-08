@@ -82,31 +82,48 @@ build_and_stage() {
     return "$build_status"
   fi
 
-  # Stage the standalone bundle. Standalone produces apps/control under
-  # the .next/standalone tree because we're in a monorepo — preserve that.
-  rm -rf "$stage_dir"
-  mkdir -p "$stage_dir"
-  cp -r "$APP/.next/standalone/." "$stage_dir/"
-  mkdir -p "$stage_dir/apps/control/.next"
-  cp -r "$APP/.next/static" "$stage_dir/apps/control/.next/static"
+  # Stage the standalone bundle atomically: copy everything to .new first,
+  # validate key files are non-empty, then rename over the live dir in one
+  # syscall. This prevents a failed/interrupted copy from leaving a corrupt
+  # staged dir that crashes the running service (server.js/package.json = 0B).
+  local new_dir="${stage_dir}.new"
+  rm -rf "$new_dir"
+  mkdir -p "$new_dir"
+  cp -r "$APP/.next/standalone/." "$new_dir/"
+  mkdir -p "$new_dir/apps/control/.next"
+  cp -r "$APP/.next/static" "$new_dir/apps/control/.next/static"
   if [[ -d "$APP/public" ]]; then
-    cp -r "$APP/public" "$stage_dir/apps/control/public"
+    cp -r "$APP/public" "$new_dir/apps/control/public"
   fi
 
   # Bake .env.production + version metadata into the standalone tree.
-  cp "$APP/.env.production" "$stage_dir/apps/control/.env"
+  cp "$APP/.env.production" "$new_dir/apps/control/.env"
   {
     echo ""
     echo "GIT_COMMIT_SHA=$GIT_COMMIT_SHA"
     echo "BUILD_TIME=$BUILD_TIME"
     # Override BASE_PATH per build so process.env matches what Next baked in.
     echo "BASE_PATH=$base_path"
-  } >> "$stage_dir/apps/control/.env"
+  } >> "$new_dir/apps/control/.env"
 
-  # The deploy runs as root via ssh, while systemd starts the app as jeremy.
-  # Keep staged bundles and baked env readable by the service user.
-  chown -R jeremy:jeremy "$stage_dir"
-  chmod 600 "$stage_dir/apps/control/.env"
+  # Validate key files are present and non-empty before going live.
+  if [[ ! -s "$new_dir/apps/control/server.js" ]]; then
+    echo "✗ staging validation failed: server.js is missing or empty — keeping old build"
+    rm -rf "$new_dir"
+    return 1
+  fi
+  if [[ ! -s "$new_dir/apps/control/package.json" ]]; then
+    echo "✗ staging validation failed: package.json is missing or empty — keeping old build"
+    rm -rf "$new_dir"
+    return 1
+  fi
+
+  # Atomic swap: mv is a single rename(2) syscall on the same filesystem.
+  # The deploy runs as root via ssh; systemd starts the app as jeremy.
+  chown -R jeremy:jeremy "$new_dir"
+  chmod 600 "$new_dir/apps/control/.env"
+  rm -rf "$stage_dir"
+  mv "$new_dir" "$stage_dir"
 }
 
 build_and_stage "path /aio"        "/aio" "$STAGE_AIO"
