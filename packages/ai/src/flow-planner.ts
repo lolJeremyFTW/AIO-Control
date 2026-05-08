@@ -37,6 +37,31 @@ export type FlowPlan = {
   explanation: string;
 };
 
+export type PipelineStepPlan = {
+  id: string;
+  label: string;
+  agent: string;
+  provider: string;
+  model: string;
+  needs: string;
+  task: string;
+  handoff: string;
+  qa_rule: string;
+  positive_prompt: string;
+  negative_prompt: string;
+  context_policy: "handoff_only" | "none";
+};
+
+export type PipelineBlueprintPlan = {
+  pipeline_id: string;
+  pipeline_name: string;
+  orchestrator_agent_id: string | null;
+  learning_enabled: boolean;
+  correction_rules: string[];
+  steps: PipelineStepPlan[];
+  explanation: string;
+};
+
 export type BlueprintSkillPlan = SkillPlan & {
   key: string;
 };
@@ -278,6 +303,67 @@ const SKILL_TOOL: Anthropic.Tool = {
       explanation: {
         type: "string",
         description: "Korte uitleg waarom deze skill zo is opgebouwd.",
+      },
+    },
+  },
+};
+
+const PIPELINE_BLUEPRINT_TOOL: Anthropic.Tool = {
+  name: "create_pipeline_blueprint",
+  description:
+    "Maak een volledige AIO pipeline blueprint met orchestrator, geisoleerde subagent stappen, QA-regels en prompts.",
+  input_schema: {
+    type: "object" as const,
+    required: [
+      "pipeline_name",
+      "learning_enabled",
+      "correction_rules",
+      "steps",
+      "explanation",
+    ],
+    properties: {
+      pipeline_id: { type: "string" },
+      pipeline_name: { type: "string" },
+      orchestrator_agent_id: { type: ["string", "null"] },
+      learning_enabled: { type: "boolean" },
+      correction_rules: { type: "array", items: { type: "string" } },
+      explanation: { type: "string" },
+      steps: {
+        type: "array",
+        items: {
+          type: "object",
+          required: [
+            "id",
+            "label",
+            "agent",
+            "provider",
+            "model",
+            "needs",
+            "task",
+            "handoff",
+            "qa_rule",
+            "positive_prompt",
+            "negative_prompt",
+            "context_policy",
+          ],
+          properties: {
+            id: { type: "string" },
+            label: { type: "string" },
+            agent: { type: "string" },
+            provider: { type: "string" },
+            model: { type: "string" },
+            needs: { type: "string" },
+            task: { type: "string" },
+            handoff: { type: "string" },
+            qa_rule: { type: "string" },
+            positive_prompt: { type: "string" },
+            negative_prompt: { type: "string" },
+            context_policy: {
+              type: "string",
+              enum: ["handoff_only", "none"],
+            },
+          },
+        },
       },
     },
   },
@@ -636,6 +722,71 @@ function normalizeSkillDraftPlan(input: Partial<SkillDraftPlan>): SkillDraftPlan
   };
 }
 
+function slugifyPipelineId(value: string, fallback: string): string {
+  const id = value
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 48);
+  return id || fallback;
+}
+
+function normalizePipelineBlueprintPlan(
+  input: Partial<PipelineBlueprintPlan>,
+): PipelineBlueprintPlan {
+  const name = input.pipeline_name?.trim() || "Nieuwe pipeline";
+  const steps = (input.steps ?? [])
+    .map((step, index) => {
+      const label = step.label?.trim() || `Stap ${index + 1}`;
+      return {
+        id: slugifyPipelineId(step.id || label, `step_${index + 1}`),
+        label,
+        agent: step.agent?.trim() || "Subagent",
+        provider: step.provider?.trim() || "openai_codex",
+        model: step.model?.trim() || "",
+        needs:
+          step.needs?.trim() ||
+          "Alleen de expliciete instructie en vorige output van de orchestrator.",
+        task: step.task?.trim() || "Voer deze pipeline-stap afgebakend uit.",
+        handoff:
+          step.handoff?.trim() ||
+          "Geef resultaat, bewijs, onzekerheden en aanbevolen vervolgactie terug.",
+        qa_rule:
+          step.qa_rule?.trim() ||
+          "Orchestrator controleert volledigheid, risico en herbruikbaarheid.",
+        positive_prompt:
+          step.positive_prompt?.trim() ||
+          "Volg de taak strikt en lever compact bewijs bij je output.",
+        negative_prompt:
+          step.negative_prompt?.trim() ||
+          "Geen brede context ophalen, geen aannames en geen externe actie uitvoeren.",
+        context_policy: (
+          step.context_policy === "none" ? "none" : "handoff_only"
+        ) as PipelineStepPlan["context_policy"],
+      };
+    })
+    .slice(0, 20);
+
+  return {
+    pipeline_id: slugifyPipelineId(
+      input.pipeline_id || name,
+      `pipeline_${Date.now().toString(36)}`,
+    ),
+    pipeline_name: name,
+    orchestrator_agent_id:
+      typeof input.orchestrator_agent_id === "string"
+        ? input.orchestrator_agent_id
+        : null,
+    learning_enabled: input.learning_enabled !== false,
+    correction_rules: (input.correction_rules ?? [])
+      .map((rule) => rule.trim())
+      .filter(Boolean)
+      .slice(0, 20),
+    steps,
+    explanation: input.explanation?.trim() ?? "",
+  };
+}
+
 function normalizeTopicSuggestionsPlan(
   input: Partial<BusinessTopicSuggestionsPlan>,
 ): BusinessTopicSuggestionsPlan {
@@ -761,6 +912,83 @@ export async function generateSkillDraftPlan(
   }
 
   return normalizeSkillDraftPlan(toolBlock.input as Partial<SkillDraftPlan>);
+}
+
+export async function generatePipelineBlueprintPlan(
+  input: {
+    description: string;
+    scopeName?: string;
+    availableAgents?: Array<{
+      id: string;
+      name: string;
+      kind?: string;
+      provider?: string;
+      model?: string | null;
+    }>;
+  },
+  apiKey: string,
+  provider: FlowPlanProvider = "claude",
+): Promise<PipelineBlueprintPlan> {
+  const clientOpts: ConstructorParameters<typeof Anthropic>[0] = { apiKey };
+  if (provider === "minimax") {
+    clientOpts.baseURL = minimaxAnthropicBase();
+    clientOpts.defaultHeaders = { Authorization: `Bearer ${apiKey}` };
+  }
+
+  const model = provider === "minimax" ? MINIMAX_MODEL : "claude-sonnet-4-6";
+  const client = new Anthropic(clientOpts);
+  const system = `Je bent een senior AIO Control pipeline architect.
+Ontwerp pipelines als n8n-achtige uitvoerbare stappen voor multi-agent werk.
+
+Regels:
+- Gebruik de main/orchestrator agent als planner en QA. Kies een beschikbare router/reviewer/lead agent als orchestrator_agent_id wanneer dat logisch is.
+- Elke subagent stap krijgt alleen context_policy "handoff_only", tenzij de taak expliciet helemaal zonder context kan.
+- Subagents mogen geen volledige thread of business context krijgen; beschrijf in "needs" exact wat de orchestrator moet doorgeven.
+- Zet per stap provider en model. Gebruik bestaande agent provider/model wanneer de stap aan een bestaande agent lijkt te koppelen, anders "openai_codex" met leeg model.
+- Geen fake externe acties: als e-mailen, formulieren invullen, betalen of publiceren niet expliciet als beschikbare integratie bestaat, maak de stap een draft/QA/handmatige review stap.
+- Voeg positieve en negatieve promptregels per stap toe.
+- Voeg self-learning correctieregels toe die QA-fouten als regels vastleggen.
+- Geef dezelfde taal terug als de gebruiker gebruikt.`;
+
+  const msg = await client.messages.create({
+    model,
+    max_tokens: 8192,
+    system,
+    tools: [PIPELINE_BLUEPRINT_TOOL],
+    tool_choice: { type: "tool", name: "create_pipeline_blueprint" },
+    messages: [
+      {
+        role: "user",
+        content:
+          "Maak een AIO pipeline blueprint. Gebruik verplicht de create_pipeline_blueprint tool. Als de provider geen tool-call kan teruggeven, antwoord dan uitsluitend met JSON volgens hetzelfde schema.\n\n" +
+          JSON.stringify(
+            {
+              scope_name: input.scopeName ?? "",
+              description: input.description,
+              available_agents: input.availableAgents ?? [],
+            },
+            null,
+            2,
+          ),
+      },
+    ],
+  });
+
+  const toolBlock = msg.content.find((block) => block.type === "tool_use");
+  if (!toolBlock || toolBlock.type !== "tool_use") {
+    const parsed =
+      parseJsonObjectFromText<Partial<PipelineBlueprintPlan>>(
+        textFromMessage(msg),
+      );
+    if (parsed) return normalizePipelineBlueprintPlan(parsed);
+    throw new Error(
+      "AI gaf geen bruikbare pipeline terug. Probeer opnieuw met een concretere beschrijving.",
+    );
+  }
+
+  return normalizePipelineBlueprintPlan(
+    toolBlock.input as Partial<PipelineBlueprintPlan>,
+  );
 }
 
 export async function generateBusinessBlueprintPlan(

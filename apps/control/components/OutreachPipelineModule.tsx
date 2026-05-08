@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 
 import {
+  generateOutreachPipelineBlueprint,
   runOutreachPipelineNow,
   updateOutreachPipelineConfig,
 } from "../app/actions/outreach-pipeline";
@@ -159,6 +160,7 @@ export function OutreachPipelineModule({
   const [outreached, setOutreached] = useState(stats.moduleOutreached);
   const [info, setInfo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [aiPrompt, setAiPrompt] = useState("");
   const [collapsedStepIds, setCollapsedStepIds] = useState<Set<string>>(
     () => new Set(),
   );
@@ -226,6 +228,10 @@ export function OutreachPipelineModule({
   const orchestrator = agents.find((agent) => agent.id === blueprint.orchestrator_agent_id);
   const running = config?.enabled ?? false;
   const lastRun = runs[0] ?? null;
+  const visiblePipelines = syncActivePipeline(pipelines, activePipelineId, blueprint);
+  const hasActivePipeline = visiblePipelines.some(
+    (pipeline) => pipeline.pipeline_id === activePipelineId,
+  );
 
   const save = (patch?: { enabled?: boolean }) => {
     setError(null);
@@ -245,7 +251,7 @@ export function OutreachPipelineModule({
           pipelines,
           blueprint,
         ),
-        pipeline_steps: blueprint.steps,
+        pipeline_steps: hasActivePipeline ? blueprint.steps : [],
       });
       if (!res.ok) {
         setError(res.error);
@@ -300,7 +306,7 @@ export function OutreachPipelineModule({
 
   const createPipeline = () => {
     const saved = syncActivePipeline(pipelines, activePipelineId, blueprint);
-    const next = makeDefaultBlueprint(
+    const next = makeEmptyBlueprint(
       agents,
       `Pipeline ${saved.length + 1}`,
       `pipeline_${Date.now().toString(36)}`,
@@ -317,7 +323,6 @@ export function OutreachPipelineModule({
 
   const deletePipelineById = (pipelineId: string) => {
     const saved = syncActivePipeline(pipelines, activePipelineId, blueprint);
-    if (saved.length <= 1) return;
     const remaining = saved.filter(
       (pipeline) => pipeline.pipeline_id !== pipelineId,
     );
@@ -326,11 +331,46 @@ export function OutreachPipelineModule({
         ? remaining[0]
         : saved.find((pipeline) => pipeline.pipeline_id === activePipelineId) ??
           remaining[0];
-    if (!next) return;
     setPipelines(remaining);
-    setActivePipelineId(next.pipeline_id);
-    setBlueprint(next);
+    setActivePipelineId(next?.pipeline_id ?? "");
+    setBlueprint(next ?? makeBlankBlueprint());
     setInfo("Pipeline verwijderd. Klik Opslaan om dit permanent te bewaren.");
+  };
+
+  const generatePipelineWithAi = () => {
+    const description = aiPrompt.trim();
+    if (!description) {
+      setError("Beschrijf eerst kort welke pipeline je wilt laten maken.");
+      return;
+    }
+    setError(null);
+    setInfo(null);
+    startTransition(async () => {
+      const res = await generateOutreachPipelineBlueprint({
+        workspace_id: workspaceId,
+        business_id: businessId,
+        nav_node_id: navNodeId,
+        scope_name: scopeName,
+        description,
+        agents,
+      });
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      const next = normalizeBlueprint(res.data, agents, pipelines.length);
+      const saved = syncActivePipeline(pipelines, activePipelineId, blueprint);
+      const replaced = hasActivePipeline
+        ? saved.map((pipeline) =>
+            pipeline.pipeline_id === activePipelineId ? next : pipeline,
+          )
+        : [...saved, next];
+      setPipelines(replaced);
+      setActivePipelineId(next.pipeline_id);
+      setBlueprint(next);
+      setCollapsedStepIds(new Set());
+      setInfo("AI pipeline aangemaakt. Controleer hem en klik Opslaan.");
+    });
   };
 
   const addStep = () => {
@@ -473,7 +513,10 @@ export function OutreachPipelineModule({
           <span style={pipelineSwitcherLabelStyle}>
             Pipelines op deze pagina
           </span>
-          {syncActivePipeline(pipelines, activePipelineId, blueprint).map((pipeline) => {
+          {visiblePipelines.length === 0 && (
+            <span style={emptyChipStyle}>Nog geen pipeline op deze pagina</span>
+          )}
+          {visiblePipelines.map((pipeline) => {
             const active = pipeline.pipeline_id === activePipelineId;
             return (
               <span
@@ -487,21 +530,47 @@ export function OutreachPipelineModule({
                 >
                   {pipeline.pipeline_name}
                 </button>
-                {syncActivePipeline(pipelines, activePipelineId, blueprint).length > 1 && (
-                  <button
-                    type="button"
-                    title="Pipeline verwijderen"
-                    onClick={() => deletePipelineById(pipeline.pipeline_id)}
-                    style={pipelineChipDeleteStyle}
-                  >
-                    x
-                  </button>
-                )}
+                <button
+                  type="button"
+                  title="Pipeline verwijderen"
+                  onClick={() => deletePipelineById(pipeline.pipeline_id)}
+                  style={pipelineChipDeleteStyle}
+                >
+                  x
+                </button>
               </span>
             );
           })}
         </div>
 
+        <div style={aiBuilderStyle}>
+          <Field label="AI pipeline aanmaken">
+            <textarea
+              value={aiPrompt}
+              onChange={(e) => setAiPrompt(e.target.value)}
+              placeholder="Bijv. maak een sales pipeline met research, lead kwalificatie, contactformulier draft, QA en follow-up check."
+              style={textareaStyle}
+            />
+          </Field>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={generatePipelineWithAi}
+            style={primaryButtonStyle(pending)}
+          >
+            AI maakt stappen
+          </button>
+        </div>
+
+        {!hasActivePipeline ? (
+          <div style={emptyStateStyle}>
+            <strong>Lege pipeline pagina</strong>
+            <span>
+              Maak handmatig een pipeline of laat AI een voorstel bouwen. Er worden
+              geen standaard stappen meer teruggezet nadat je alles verwijdert.
+            </span>
+          </div>
+        ) : (
         <div style={settingsGridStyle}>
           <Field label="Pipeline naam">
             <input
@@ -557,7 +626,7 @@ export function OutreachPipelineModule({
             </button>
             <button
               type="button"
-              disabled={pipelines.length <= 1}
+              disabled={pending}
               onClick={deletePipeline}
               style={dangerButtonStyle(pending)}
             >
@@ -574,6 +643,7 @@ export function OutreachPipelineModule({
             </span>
           </div>
         </div>
+        )}
 
         {info && <p style={infoStyle}>{info}</p>}
         {error && <p style={errorStyle}>{error}</p>}
@@ -582,6 +652,7 @@ export function OutreachPipelineModule({
         )}
       </section>
 
+      {hasActivePipeline && (
       <section style={panelStyle}>
         <div style={topRowStyle}>
           <div>
@@ -605,7 +676,9 @@ export function OutreachPipelineModule({
           running={running}
         />
       </section>
+      )}
 
+      {hasActivePipeline && (
       <section style={panelStyle}>
         <div style={topRowStyle}>
           <div>
@@ -621,6 +694,12 @@ export function OutreachPipelineModule({
         </div>
 
         <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+          {blueprint.steps.length === 0 && (
+            <div style={emptyStateStyle}>
+              <strong>Nog geen stappen</strong>
+              <span>Voeg zelf stappen toe of laat AI de volledige pipeline invullen.</span>
+            </div>
+          )}
           {blueprint.steps.map((step, index) => {
             const stepKey = `${step.id}-${index}`;
             const collapsed = collapsedStepIds.has(stepKey);
@@ -796,7 +875,9 @@ export function OutreachPipelineModule({
           })}
         </div>
       </section>
+      )}
 
+      {hasActivePipeline && (
       <section style={panelStyle}>
         <div style={topRowStyle}>
           <div>
@@ -859,6 +940,7 @@ export function OutreachPipelineModule({
           </button>
         </div>
       </section>
+      )}
 
       <section style={panelStyle}>
         <h2 style={titleStyle}>Live event stream</h2>
@@ -1105,7 +1187,7 @@ function normalizeBlueprintSet(config: Config | null, agents: AgentOption[]): Pi
   const raw = config?.pipeline_blueprint;
   if (raw && typeof raw === "object" && !Array.isArray(raw)) {
     const obj = raw as Partial<PipelineBlueprint> & Partial<PipelineSet>;
-    if (Array.isArray(obj.pipelines) && obj.pipelines.length > 0) {
+    if (Array.isArray(obj.pipelines)) {
       const pipelines = obj.pipelines.map((pipeline, index) =>
         normalizeBlueprint(pipeline, agents, index),
       );
@@ -1115,9 +1197,16 @@ function normalizeBlueprintSet(config: Config | null, agents: AgentOption[]): Pi
           ? obj.active_pipeline_id
           : pipelines[0]?.pipeline_id;
       return {
-        active_pipeline_id: active ?? firstPipeline({ active_pipeline_id: "", pipelines }).pipeline_id,
+        active_pipeline_id: active ?? "",
         pipelines,
       };
+    }
+    const hasLegacyBlueprint =
+      Array.isArray(obj.steps) ||
+      typeof obj.pipeline_id === "string" ||
+      typeof obj.pipeline_name === "string";
+    if (!hasLegacyBlueprint) {
+      return { active_pipeline_id: "", pipelines: [] };
     }
     const legacy = normalizeBlueprint(obj, agents, 0);
     return {
@@ -1125,25 +1214,23 @@ function normalizeBlueprintSet(config: Config | null, agents: AgentOption[]): Pi
       pipelines: [legacy],
     };
   }
-  const fallback = makeDefaultBlueprint(agents, "Main pipeline", "main_pipeline");
-  return {
-    active_pipeline_id: fallback.pipeline_id,
-    pipelines: [fallback],
-  };
+  return { active_pipeline_id: "", pipelines: [] };
 }
 
 function firstPipeline(set: PipelineSet): PipelineBlueprint {
-  return set.pipelines[0] ?? makeDefaultBlueprint([], "Main pipeline", "main_pipeline");
+  return set.pipelines[0] ?? makeBlankBlueprint();
 }
 
 function normalizeBlueprint(
-  raw: Partial<PipelineBlueprint>,
+  raw: Partial<Omit<PipelineBlueprint, "steps">> & {
+    steps?: Array<Partial<PipelineStep>>;
+  },
   agents: AgentOption[],
   index: number,
 ): PipelineBlueprint {
     const steps = Array.isArray(raw.steps) && raw.steps.length > 0
       ? raw.steps.map(normalizeStep)
-      : defaultSteps();
+      : [];
     return {
       pipeline_id: raw.pipeline_id || (index === 0 ? "main_pipeline" : `pipeline_${index + 1}`),
       pipeline_name: raw.pipeline_name || (index === 0 ? "Main pipeline" : `Pipeline ${index + 1}`),
@@ -1155,7 +1242,7 @@ function normalizeBlueprint(
       correction_rules:
         Array.isArray(raw.correction_rules) && raw.correction_rules.length > 0
           ? raw.correction_rules.filter((rule): rule is string => typeof rule === "string")
-          : defaultRules(),
+          : [],
       steps,
     };
 }
@@ -1191,7 +1278,18 @@ function defaultOrchestrator(agents: AgentOption[]): string | null {
   );
 }
 
-function makeDefaultBlueprint(
+function makeBlankBlueprint(): PipelineBlueprint {
+  return {
+    pipeline_id: "",
+    pipeline_name: "",
+    orchestrator_agent_id: null,
+    learning_enabled: true,
+    correction_rules: [],
+    steps: [],
+  };
+}
+
+function makeEmptyBlueprint(
   agents: AgentOption[],
   name: string,
   id: string,
@@ -1201,8 +1299,8 @@ function makeDefaultBlueprint(
     pipeline_name: name,
     orchestrator_agent_id: defaultOrchestrator(agents),
     learning_enabled: true,
-    correction_rules: defaultRules(),
-    steps: defaultSteps(),
+    correction_rules: [],
+    steps: [],
   };
 }
 
@@ -1211,6 +1309,7 @@ function syncActivePipeline(
   activePipelineId: string,
   active: PipelineBlueprint,
 ): PipelineBlueprint[] {
+  if (!activePipelineId || !active.pipeline_id) return pipelines;
   const next = pipelines.map((pipeline) =>
     pipeline.pipeline_id === activePipelineId ? active : pipeline,
   );
@@ -1225,37 +1324,21 @@ function serializePipelineSet(
   active: PipelineBlueprint,
 ) {
   const synced = syncActivePipeline(pipelines, activePipelineId, active);
+  if (synced.length === 0) {
+    return {
+      active_pipeline_id: "",
+      pipelines: [],
+      ...makeBlankBlueprint(),
+    };
+  }
+  const selected =
+    synced.find((pipeline) => pipeline.pipeline_id === activePipelineId) ??
+    synced[0]!;
   return {
-    active_pipeline_id: activePipelineId,
+    active_pipeline_id: selected.pipeline_id,
     pipelines: synced,
-    ...active,
+    ...selected,
   };
-}
-
-function defaultSteps(): PipelineStep[] {
-  return OUTREACH_PIPELINE_STAGES.map((stage) => ({
-    id: stage.key,
-    label: stage.label,
-    agent: stage.agent,
-    task: `Voer de stap "${stage.label}" uit zonder extra business-context te laden.`,
-    handoff: "Kort resultaat, bewijs, risico's en aanbevolen volgende actie.",
-    provider: "openai_codex",
-    model: "",
-    agent_id: null,
-    context_policy: "handoff_only",
-    needs: "Alleen lead, doel, vorige output en expliciete acceptatiecriteria.",
-    qa_rule: "Orchestrator valideert op volledigheid, duplicate risico en tone-of-voice.",
-    positive_prompt: "Volg de taak strikt, benoem bronnen/signalen en geef een compacte output.",
-    negative_prompt: "Geen verzonnen feiten, geen externe verzending, geen extra context buiten de handoff.",
-  }));
-}
-
-function defaultRules(): string[] {
-  return [
-    "Subagents krijgen geen volledige thread/context; alleen het handoff-pakket van de orchestrator.",
-    "Bij fout of twijfel corrigeert de orchestrator de instructie en probeert alleen de betreffende stap opnieuw.",
-    "Nieuwe correcties worden als regel opgeslagen wanneer QA dezelfde fout vaker ziet.",
-  ];
 }
 
 function timeAgo(iso: string): string {
@@ -1346,6 +1429,26 @@ const pipelineSwitcherStyle: React.CSSProperties = {
   borderTop: "1px solid var(--app-border-2)",
 };
 
+const aiBuilderStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(220px, 1fr) auto",
+  gap: 10,
+  alignItems: "end",
+  marginTop: 12,
+};
+
+const emptyStateStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 4,
+  padding: 14,
+  marginTop: 12,
+  border: "1px dashed var(--app-border)",
+  borderRadius: 8,
+  background: "var(--app-bg-soft)",
+  color: "var(--app-fg-2)",
+  fontSize: 12,
+};
+
 const pipelineSwitcherLabelStyle: React.CSSProperties = {
   color: "var(--app-fg-3)",
   fontSize: 11,
@@ -1353,6 +1456,14 @@ const pipelineSwitcherLabelStyle: React.CSSProperties = {
   letterSpacing: ".08em",
   textTransform: "uppercase",
   marginRight: 4,
+};
+
+const emptyChipStyle: React.CSSProperties = {
+  border: "1px dashed var(--app-border)",
+  borderRadius: 8,
+  padding: "7px 10px",
+  color: "var(--app-fg-3)",
+  fontSize: 12,
 };
 
 const pipelineChipStyle: React.CSSProperties = {

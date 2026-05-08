@@ -546,7 +546,8 @@ export async function executeAioTool(
       case "create_business":
       case "create_agent":
       case "update_agent":
-      case "create_schedule": {
+      case "create_schedule":
+      case "upsert_pipeline_blueprint": {
         return {
           kind: "defer",
           event: {
@@ -740,6 +741,112 @@ async function resolveHumanReviewScope(
 function cleanReviewText(value: unknown, max: number): string {
   const text = typeof value === "string" ? value.trim() : "";
   return text.length > max ? text.slice(0, max - 1) + "..." : text;
+}
+
+function cleanToolText(value: unknown, fallback = "", max = 500): string {
+  const text = typeof value === "string" ? value.trim() : "";
+  const safe = text || fallback;
+  return safe.length > max ? safe.slice(0, max - 1) + "..." : safe;
+}
+
+function slugifyToolId(value: unknown, fallback: string): string {
+  const id = cleanToolText(value, fallback, 80)
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 48);
+  return id || fallback;
+}
+
+function normalizePipelineToolBlueprint(
+  a: Record<string, unknown>,
+  fallbackOrchestratorId: string | null,
+) {
+  const name = cleanToolText(a.pipeline_name, "Nieuwe pipeline", 80);
+  const pipelineId = slugifyToolId(
+    a.pipeline_id,
+    `pipeline_${Date.now().toString(36)}`,
+  );
+  const rawSteps = Array.isArray(a.steps) ? a.steps : [];
+  const steps = rawSteps
+    .filter((step): step is Record<string, unknown> => !!step && typeof step === "object")
+    .map((step, index) => {
+      const label = cleanToolText(step.label, `Stap ${index + 1}`, 80);
+      return {
+        id: slugifyToolId(step.id ?? label, `step_${index + 1}`),
+        label,
+        agent: cleanToolText(step.agent, "Subagent", 80),
+        task: cleanToolText(step.task, "Voer deze stap uit.", 500),
+        handoff: cleanToolText(
+          step.handoff,
+          "Geef resultaat, bewijs, onzekerheden en vervolgactie terug.",
+          500,
+        ),
+        provider: cleanToolText(step.provider, "openai_codex", 40),
+        model: cleanToolText(step.model, "", 120),
+        agent_id:
+          typeof step.agent_id === "string" && /^[0-9a-f-]{20,}$/i.test(step.agent_id)
+            ? step.agent_id
+            : null,
+        context_policy:
+          step.context_policy === "none" ? "none" : "handoff_only",
+        needs: cleanToolText(
+          step.needs,
+          "Alleen de instructie en vorige output van de orchestrator.",
+          500,
+        ),
+        qa_rule: cleanToolText(
+          step.qa_rule,
+          "Orchestrator controleert output.",
+          500,
+        ),
+        positive_prompt: cleanToolText(
+          step.positive_prompt,
+          "Volg de taak strikt en lever compact bewijs.",
+          500,
+        ),
+        negative_prompt: cleanToolText(
+          step.negative_prompt,
+          "Geen aannames, geen brede context ophalen, geen externe actie uitvoeren.",
+          500,
+        ),
+      };
+    })
+    .slice(0, 20);
+
+  return {
+    pipeline_id: pipelineId,
+    pipeline_name: name,
+    orchestrator_agent_id:
+      typeof a.orchestrator_agent_id === "string"
+        ? a.orchestrator_agent_id
+        : fallbackOrchestratorId,
+    learning_enabled: a.learning_enabled !== false,
+    correction_rules: Array.isArray(a.correction_rules)
+      ? a.correction_rules
+          .map((rule) => cleanToolText(rule, "", 220))
+          .filter(Boolean)
+          .slice(0, 20)
+      : [],
+    steps,
+  };
+}
+
+function normalizePipelineToolSet(value: unknown): {
+  active_pipeline_id: string;
+  pipelines: Array<ReturnType<typeof normalizePipelineToolBlueprint>>;
+} {
+  const row = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const pipelines = Array.isArray(row.pipelines)
+    ? row.pipelines
+        .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
+        .map((item) => normalizePipelineToolBlueprint(item, null))
+    : [];
+  return {
+    active_pipeline_id:
+      typeof row.active_pipeline_id === "string" ? row.active_pipeline_id : "",
+    pipelines,
+  };
 }
 
 function clamp01(value: number): number {
@@ -1006,6 +1113,92 @@ export async function executeAioWriteTool(
         });
         if (!res.ok) return { kind: "error", error: res.error };
         return { kind: "ok", data: res.data };
+      }
+
+      case "upsert_pipeline_blueprint": {
+        const admin = getServiceRoleSupabase();
+        const businessId =
+          typeof a.business_id === "string" ? a.business_id : ctx.defaultBusinessId;
+        if (!businessId) {
+          return {
+            kind: "error",
+            error: "upsert_pipeline_blueprint needs business_id.",
+          };
+        }
+        const navNodeId =
+          typeof a.nav_node_id === "string"
+            ? a.nav_node_id
+            : a.nav_node_id === null
+              ? null
+              : ctx.defaultNavNodeId ?? null;
+        const pipeline = normalizePipelineToolBlueprint(a, ctx.agentId ?? null);
+        let existingQuery = admin
+          .from("outreach_pipeline_configs")
+          .select("id, enabled, interval_seconds, batch_size, pipeline_blueprint")
+          .eq("workspace_id", ctx.workspaceId)
+          .eq("business_id", businessId);
+        existingQuery = navNodeId
+          ? existingQuery.eq("nav_node_id", navNodeId)
+          : existingQuery.is("nav_node_id", null);
+        const { data: existing, error: existingError } =
+          await existingQuery.maybeSingle();
+        if (existingError) return { kind: "error", error: existingError.message };
+
+        const current = normalizePipelineToolSet(existing?.pipeline_blueprint);
+        const mode = a.mode === "replace_all" ? "replace_all" : "append";
+        const pipelines =
+          mode === "replace_all"
+            ? [pipeline]
+            : [
+                ...current.pipelines.filter(
+                  (item) => item.pipeline_id !== pipeline.pipeline_id,
+                ),
+                pipeline,
+              ];
+        const patch = {
+          workspace_id: ctx.workspaceId,
+          business_id: businessId,
+          nav_node_id: navNodeId,
+          enabled: (existing?.enabled as boolean | undefined) ?? false,
+          interval_seconds:
+            (existing?.interval_seconds as number | undefined) ?? 10,
+          batch_size: (existing?.batch_size as number | undefined) ?? 3,
+          delivery_mode: "local_outbox",
+          pipeline_steps: pipeline.steps,
+          pipeline_blueprint: {
+            active_pipeline_id: pipeline.pipeline_id,
+            pipelines,
+            ...pipeline,
+          },
+        };
+        const query = existing?.id
+          ? admin
+              .from("outreach_pipeline_configs")
+              .update(patch)
+              .eq("id", existing.id)
+              .select("id")
+              .single()
+          : admin
+              .from("outreach_pipeline_configs")
+              .insert(patch)
+              .select("id")
+              .single();
+        const { data, error } = await query;
+        if (error || !data) {
+          return {
+            kind: "error",
+            error: error?.message ?? "Pipeline opslaan mislukt.",
+          };
+        }
+        return {
+          kind: "ok",
+          data: {
+            ok: true,
+            config_id: data.id,
+            pipeline_id: pipeline.pipeline_id,
+            steps: pipeline.steps.length,
+          },
+        };
       }
 
       default:

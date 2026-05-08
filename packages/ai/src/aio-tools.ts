@@ -378,6 +378,68 @@ export const AIO_TOOLS: Record<string, AioToolSpec> = {
   },
 
   // ── META (UI side-effects, emitted as AG-UI events) ──────────────
+  upsert_pipeline_blueprint: {
+    name: "upsert_pipeline_blueprint",
+    category: "write",
+    description:
+      "Create or replace an AIO pipeline for the current business/topic. Use this to turn a workflow request into concrete pipeline steps with isolated handoffs, provider/model per subagent, QA rules, and positive/negative prompts. Requires user confirmation.",
+    parameters: {
+      type: "object",
+      properties: {
+        business_id: {
+          type: "string",
+          description:
+            "Business UUID. Defaults to the current agent business when omitted.",
+        },
+        nav_node_id: {
+          type: ["string", "null"],
+          description:
+            "Optional topic/nav-node UUID. Defaults to current topic when available.",
+        },
+        mode: {
+          type: "string",
+          enum: ["append", "replace_all"],
+          description:
+            "append adds this pipeline next to existing pipelines; replace_all clears existing pipelines first.",
+        },
+        pipeline_name: { type: "string" },
+        orchestrator_agent_id: {
+          type: ["string", "null"],
+          description: "Main agent that orchestrates and performs QA.",
+        },
+        learning_enabled: { type: "boolean" },
+        correction_rules: { type: "array", items: { type: "string" } },
+        steps: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "string" },
+              label: { type: "string" },
+              agent: { type: "string" },
+              provider: { type: "string" },
+              model: { type: "string" },
+              agent_id: { type: ["string", "null"] },
+              context_policy: {
+                type: "string",
+                enum: ["handoff_only", "none"],
+              },
+              needs: { type: "string" },
+              task: { type: "string" },
+              handoff: { type: "string" },
+              qa_rule: { type: "string" },
+              positive_prompt: { type: "string" },
+              negative_prompt: { type: "string" },
+            },
+            required: ["label", "agent", "task", "handoff"],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ["pipeline_name", "steps"],
+      additionalProperties: false,
+    },
+  },
   ask_followup: {
     name: "ask_followup",
     category: "meta",
@@ -560,6 +622,7 @@ export function defaultToolsForKind(kind: string): string[] {
         "list_agents",
         "list_businesses",
         "list_review_learnings",
+        "upsert_pipeline_blueprint",
         "ask_followup",
         "request_human_review",
       ];

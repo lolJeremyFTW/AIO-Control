@@ -2,6 +2,15 @@
 
 import { revalidatePath } from "next/cache";
 
+import {
+  generatePipelineBlueprintPlan,
+  type FlowPlanProvider,
+} from "@aio/ai/flow-planner";
+
+import {
+  resolveApiKey,
+  resolveApiKeyEnvFallback,
+} from "../../lib/api-keys/resolve";
 import { runOutreachPipelineCycle } from "../../lib/outreach/pipeline-runner";
 import { createSupabaseServerClient } from "../../lib/supabase/server";
 
@@ -27,6 +36,14 @@ type ConfigLite = {
   enabled: boolean;
   interval_seconds: number;
   batch_size: number;
+};
+
+type PipelineAgentOption = {
+  id: string;
+  name: string;
+  kind?: string;
+  provider?: string;
+  model?: string | null;
 };
 
 export async function updateOutreachPipelineConfig(
@@ -155,6 +172,85 @@ async function getExistingConfig(
   return (data as ConfigLite | null) ?? null;
 }
 
+export async function generateOutreachPipelineBlueprint(input: {
+  workspace_id: string;
+  business_id: string;
+  nav_node_id?: string | null;
+  scope_name?: string;
+  description: string;
+  agents?: PipelineAgentOption[];
+}): Promise<OutreachPipelineActionResult<ReturnType<typeof sanitizeSingleBlueprint>>> {
+  const description = cleanText(input.description, "");
+  if (!description) {
+    return { ok: false, error: "Beschrijving is verplicht." };
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data: auth } = await supabase.auth.getUser();
+  const userId = auth.user?.id;
+
+  let apiKey: string | null = null;
+  let provider: FlowPlanProvider = "claude";
+  if (userId) {
+    apiKey = await resolveApiKey("claude", {
+      workspaceId: input.workspace_id,
+      businessId: input.business_id,
+      credentialOwnerUserId: userId,
+    });
+  }
+  if (!apiKey) apiKey = resolveApiKeyEnvFallback("claude");
+  if (!apiKey) {
+    if (userId) {
+      apiKey = await resolveApiKey("minimax", {
+        workspaceId: input.workspace_id,
+        businessId: input.business_id,
+        credentialOwnerUserId: userId,
+      });
+    }
+    if (!apiKey) apiKey = resolveApiKeyEnvFallback("minimax");
+    if (apiKey) provider = "minimax";
+  }
+
+  if (!apiKey) {
+    return {
+      ok: false,
+      error:
+        "Geen Claude of MiniMax API key gevonden. Voeg een key toe via Settings -> API Keys.",
+    };
+  }
+
+  try {
+    const plan = await generatePipelineBlueprintPlan(
+      {
+        description,
+        scopeName: input.scope_name,
+        availableAgents: input.agents ?? [],
+      },
+      apiKey,
+      provider,
+    );
+    return {
+      ok: true,
+      data: sanitizeSingleBlueprint(
+        {
+          ...plan,
+          pipeline_id:
+            plan.pipeline_id || `pipeline_${Date.now().toString(36)}`,
+          orchestrator_agent_id:
+            plan.orchestrator_agent_id ??
+            pickOrchestratorAgentId(input.agents ?? []),
+        },
+        0,
+      ),
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Pipeline genereren mislukt.",
+    };
+  }
+}
+
 function clampInt(value: number, min: number, max: number): number {
   const n = Math.floor(Number(value));
   if (!Number.isFinite(n)) return min;
@@ -211,8 +307,23 @@ function sanitizePipelineBlueprint(value: unknown): {
   const pipelines = Array.isArray(row.pipelines)
     ? row.pipelines.map((item, index) => sanitizeSingleBlueprint(item, index))
     : [];
+  const hasExplicitPipelines = Array.isArray(row.pipelines);
   const fallback = sanitizeSingleBlueprint(row, 0);
-  const safePipelines = pipelines.length > 0 ? pipelines.slice(0, 20) : [fallback];
+  const safePipelines = hasExplicitPipelines
+    ? pipelines.slice(0, 20)
+    : [fallback];
+  if (safePipelines.length === 0) {
+    return {
+      active_pipeline_id: "",
+      pipelines: [],
+      pipeline_id: "",
+      pipeline_name: "",
+      orchestrator_agent_id: null,
+      learning_enabled: true,
+      correction_rules: [],
+      steps: [],
+    };
+  }
   const activeId =
     typeof row.active_pipeline_id === "string" &&
     safePipelines.some((pipeline) => pipeline.pipeline_id === row.active_pipeline_id)
@@ -224,6 +335,15 @@ function sanitizePipelineBlueprint(value: unknown): {
     pipelines: safePipelines,
     ...active,
   };
+}
+
+function pickOrchestratorAgentId(agents: PipelineAgentOption[]): string | null {
+  return (
+    agents.find((agent) => agent.kind === "router")?.id ??
+    agents.find((agent) => agent.kind === "reviewer")?.id ??
+    agents[0]?.id ??
+    null
+  );
 }
 
 function sanitizeSingleBlueprint(value: unknown, index: number): {
