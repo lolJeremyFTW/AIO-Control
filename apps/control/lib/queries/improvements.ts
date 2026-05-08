@@ -20,12 +20,19 @@ export async function listImprovements(
   workspaceId: string,
 ): Promise<ImprovementRow[]> {
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from("improvements")
-    .select("*")
-    .eq("workspace_id", workspaceId)
-    .order("sort_order", { ascending: true })
-    .order("created_at", { ascending: false });
+  const selectRows = () =>
+    supabase
+      .from("improvements")
+      .select("*")
+      .eq("workspace_id", workspaceId)
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: false });
+
+  let { data, error } = await selectRows();
+  if (isMissingImprovementsTableError(error)) {
+    await ensureImprovementsTable(supabase);
+    ({ data, error } = await selectRows());
+  }
 
   if (error) {
     console.error("listImprovements failed", error);
@@ -41,16 +48,23 @@ export async function createImprovement(input: {
   description: string;
 }): Promise<{ id: string }> {
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from("improvements")
-    .insert({
-      workspace_id: input.workspace_id,
-      title: input.title.trim(),
-      description: input.description.trim(),
-      status: "proposed",
-    })
-    .select("id")
-    .single();
+  const insertRow = () =>
+    supabase
+      .from("improvements")
+      .insert({
+        workspace_id: input.workspace_id,
+        title: input.title.trim(),
+        description: input.description.trim(),
+        status: "proposed",
+      })
+      .select("id")
+      .single();
+
+  let { data, error } = await insertRow();
+  if (isMissingImprovementsTableError(error)) {
+    await ensureImprovementsTable(supabase);
+    ({ data, error } = await insertRow());
+  }
 
   if (error) throw new Error(error.message);
   return { id: data!.id };
@@ -73,11 +87,18 @@ export async function updateImprovementStatus(input: {
     if (input.built_notes) patch.built_notes = input.built_notes;
   }
 
-  const { error } = await supabase
-    .from("improvements")
-    .update(patch)
-    .eq("id", input.id)
-    .eq("workspace_id", input.workspace_id);
+  const updateRow = () =>
+    supabase
+      .from("improvements")
+      .update(patch)
+      .eq("id", input.id)
+      .eq("workspace_id", input.workspace_id);
+
+  let { error } = await updateRow();
+  if (isMissingImprovementsTableError(error)) {
+    await ensureImprovementsTable(supabase);
+    ({ error } = await updateRow());
+  }
 
   if (error) throw new Error(error.message);
 }
@@ -87,11 +108,51 @@ export async function deleteImprovement(input: {
   workspace_id: string;
 }): Promise<void> {
   const supabase = await createSupabaseServerClient();
-  const { error } = await supabase
-    .from("improvements")
-    .delete()
-    .eq("id", input.id)
-    .eq("workspace_id", input.workspace_id);
+  const deleteRow = () =>
+    supabase
+      .from("improvements")
+      .delete()
+      .eq("id", input.id)
+      .eq("workspace_id", input.workspace_id);
+
+  let { error } = await deleteRow();
+  if (isMissingImprovementsTableError(error)) {
+    await ensureImprovementsTable(supabase);
+    ({ error } = await deleteRow());
+  }
 
   if (error) throw new Error(error.message);
+}
+
+type Supabase = Awaited<ReturnType<typeof createSupabaseServerClient>>;
+type MaybePostgrestError = {
+  code?: string;
+  message?: string;
+  details?: string | null;
+  hint?: string | null;
+} | null;
+
+async function ensureImprovementsTable(supabase: Supabase): Promise<void> {
+  const { error } = await supabase.rpc("ensure_improvements_table");
+  if (error) {
+    throw new Error(
+      `Kon self-improvement storage niet aanmaken: ${error.message}`,
+    );
+  }
+}
+
+function isMissingImprovementsTableError(error: MaybePostgrestError): boolean {
+  if (!error) return false;
+  const text = `${error.code ?? ""} ${error.message ?? ""} ${
+    error.details ?? ""
+  } ${error.hint ?? ""}`.toLowerCase();
+  return (
+    text.includes("improvements") &&
+    (text.includes("schema cache") ||
+      text.includes("could not find") ||
+      text.includes("does not exist") ||
+      text.includes("undefined_table") ||
+      text.includes("42p01") ||
+      text.includes("pgrst205"))
+  );
 }

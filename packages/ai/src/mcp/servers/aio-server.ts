@@ -1826,13 +1826,26 @@ async function proposeImprovement(args: unknown): Promise<string> {
       : "",
   ].filter(Boolean);
 
-  const { data: existing, error: existingError } = await supabaseAio
-    .from("improvements")
-    .select("id, status")
-    .eq("workspace_id", WORKSPACE_ID)
-    .eq("title", title)
-    .in("status", ["proposed", "approved"])
-    .maybeSingle();
+  const selectExisting = () =>
+    supabaseAio
+      .from("improvements")
+      .select("id, status")
+      .eq("workspace_id", WORKSPACE_ID)
+      .eq("title", title)
+      .in("status", ["proposed", "approved"])
+      .maybeSingle();
+
+  let { data: existing, error: existingError } = await selectExisting();
+  if (isMissingImprovementsTableError(existingError)) {
+    const ensureError = await ensureImprovementsTable();
+    if (ensureError) {
+      return JSON.stringify({
+        error: "storage_unavailable",
+        message: ensureError,
+      });
+    }
+    ({ data: existing, error: existingError } = await selectExisting());
+  }
   if (existingError) {
     return JSON.stringify({ error: "db_error", message: existingError.message });
   }
@@ -1845,16 +1858,29 @@ async function proposeImprovement(args: unknown): Promise<string> {
     });
   }
 
-  const { data, error } = await supabaseAio
-    .from("improvements")
-    .insert({
-      workspace_id: WORKSPACE_ID,
-      title,
-      description: sections.join("\n\n"),
-      status: "proposed",
-    })
-    .select("id")
-    .single();
+  const insertImprovement = () =>
+    supabaseAio
+      .from("improvements")
+      .insert({
+        workspace_id: WORKSPACE_ID,
+        title,
+        description: sections.join("\n\n"),
+        status: "proposed",
+      })
+      .select("id")
+      .single();
+
+  let { data, error } = await insertImprovement();
+  if (isMissingImprovementsTableError(error)) {
+    const ensureError = await ensureImprovementsTable();
+    if (ensureError) {
+      return JSON.stringify({
+        error: "storage_unavailable",
+        message: ensureError,
+      });
+    }
+    ({ data, error } = await insertImprovement());
+  }
   if (error || !data) {
     return JSON.stringify({
       error: "db_error",
@@ -1873,6 +1899,36 @@ async function proposeImprovement(args: unknown): Promise<string> {
     status: "proposed",
     path: workspace?.slug ? `/${workspace.slug}/self-improving` : null,
   });
+}
+
+async function ensureImprovementsTable(): Promise<string | null> {
+  const { error } = await supabaseAio.rpc("ensure_improvements_table");
+  return error ? error.message : null;
+}
+
+function isMissingImprovementsTableError(
+  error:
+    | {
+        code?: string;
+        message?: string;
+        details?: string | null;
+        hint?: string | null;
+      }
+    | null,
+): boolean {
+  if (!error) return false;
+  const text = `${error.code ?? ""} ${error.message ?? ""} ${
+    error.details ?? ""
+  } ${error.hint ?? ""}`.toLowerCase();
+  return (
+    text.includes("improvements") &&
+    (text.includes("schema cache") ||
+      text.includes("could not find") ||
+      text.includes("does not exist") ||
+      text.includes("undefined_table") ||
+      text.includes("42p01") ||
+      text.includes("pgrst205"))
+  );
 }
 
 const server = new Server(
@@ -2387,7 +2443,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: "propose_improvement",
       description:
-        "Create a safe self-improvement proposal for the operator to approve later. Use this for new agents, skills, integrations, strategy changes, or risky automation changes instead of silently mutating the system.",
+        "Create a safe self-improvement proposal for the operator to approve later. Use this instead of direct Supabase REST inserts for improvements; it self-provisions storage if needed. Use this for new agents, skills, integrations, strategy changes, or risky automation changes instead of silently mutating the system.",
       inputSchema: {
         type: "object",
         properties: {
