@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { type CSSProperties, type ReactNode, useMemo, useState } from "react";
 
 import { CopyIcon, ExternalLinkIcon } from "@aio/ui/icon";
@@ -181,14 +182,14 @@ export function ProviderSetupKit({ publicOrigin, workspaceSlug }: Props) {
             target below.
           </p>
         </div>
-        <a
+        <Link
           href={`/${workspaceSlug}/settings/api-keys`}
           style={linkButton}
           aria-label="Open API Keys"
         >
           API Keys
           <ExternalLinkIcon />
-        </a>
+        </Link>
       </div>
 
       <div style={grid}>
