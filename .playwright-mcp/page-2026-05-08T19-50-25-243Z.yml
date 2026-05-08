@@ -1,0 +1,16 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e4]:
+    - heading "Inloggen" [level=1] [ref=e5]
+    - paragraph [ref=e6]: Log in op je AIO Control workspace.
+    - generic [ref=e7]:
+      - generic [ref=e8]: Gebruikersnaam of e-mail
+      - textbox "Gebruikersnaam of e-mail" [ref=e9]
+    - generic [ref=e10]:
+      - generic [ref=e11]: Wachtwoord
+      - textbox "Wachtwoord" [ref=e12]
+    - button "Log in" [ref=e13] [cursor=pointer]
+    - paragraph [ref=e14]:
+      - text: Nog geen account?
+      - link "Registreer" [ref=e15] [cursor=pointer]:
+        - /url: /signup
+  - alert [ref=e16]

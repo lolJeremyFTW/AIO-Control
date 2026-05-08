@@ -1,0 +1,78 @@
+- main [ref=e2]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e5]: "31"
+      - generic [ref=e6]: Voorgesteld
+    - generic [ref=e7]:
+      - generic [ref=e8]: "1"
+      - generic [ref=e9]: Goedgekeurd
+    - generic [ref=e10]:
+      - generic [ref=e11]: "1"
+      - generic [ref=e12]: Gebouwd
+  - generic [ref=e13]:
+    - heading "Goedgekeurd (wacht op bouwen)" [level=2] [ref=e14]
+    - generic [ref=e15]:
+      - generic [ref=e16]: "Fix routing: /srv/self-improving en approval gate accessibility"
+      - generic [ref=e17]:
+        - text: 08-05-2026 19:51 ·
+        - generic [ref=e18]: approved
+  - generic [ref=e19]:
+    - heading "Voorgesteld (laatste 10)" [level=2] [ref=e20]
+    - generic [ref=e21]:
+      - generic [ref=e22]: Self-Improving Agent Run Quality Scoring
+      - generic [ref=e23]:
+        - text: 08-05-2026 19:03 ·
+        - generic [ref=e24]: proposed
+    - generic [ref=e25]:
+      - generic [ref=e26]: Automated Priority Scoring
+      - generic [ref=e27]:
+        - text: 08-05-2026 19:01 ·
+        - generic [ref=e28]: proposed
+    - generic [ref=e29]:
+      - generic [ref=e30]: Telegram-gebasede Improvement Approval
+      - generic [ref=e31]:
+        - text: 08-05-2026 17:01 ·
+        - generic [ref=e32]: proposed
+    - generic [ref=e33]:
+      - generic [ref=e34]: Telegram Approval Interface
+      - generic [ref=e35]:
+        - text: 08-05-2026 16:00 ·
+        - generic [ref=e36]: proposed
+    - generic [ref=e37]:
+      - generic [ref=e38]: Demo Agent Schedule Cleanup
+      - generic [ref=e39]:
+        - text: 08-05-2026 15:01 ·
+        - generic [ref=e40]: proposed
+    - generic [ref=e41]:
+      - generic [ref=e42]: Run Cost & Failure Analytics Dashboard
+      - generic [ref=e43]:
+        - text: 08-05-2026 14:02 ·
+        - generic [ref=e44]: proposed
+    - generic [ref=e45]:
+      - generic [ref=e46]: Agent Run Failure Alerting via Telegram
+      - generic [ref=e47]:
+        - text: 08-05-2026 13:00 ·
+        - generic [ref=e48]: proposed
+    - generic [ref=e49]:
+      - generic [ref=e50]: Direct SQL Approval Procedure
+      - generic [ref=e51]:
+        - text: 08-05-2026 12:01 ·
+        - generic [ref=e52]: proposed
+    - generic [ref=e53]:
+      - generic [ref=e54]: Global Run Failure Classifier
+      - generic [ref=e55]:
+        - text: 08-05-2026 11:01 ·
+        - generic [ref=e56]: proposed
+    - generic [ref=e57]:
+      - generic [ref=e58]: App-Manager Restart Loop Root Cause Fix
+      - generic [ref=e59]:
+        - text: 08-05-2026 11:01 ·
+        - generic [ref=e60]: proposed
+  - generic [ref=e61]:
+    - heading "Gebouwd" [level=2] [ref=e62]
+    - generic [ref=e63]:
+      - generic [ref=e64]: Voer 059_self_improving.sql migratie uit op Supabase
+      - generic [ref=e65]:
+        - text: 03-05-2026 ·
+        - generic [ref=e66]: built
+        - text: · door self-improving-agent

@@ -1,0 +1,25 @@
+- main [ref=e2]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e5]: "0"
+      - generic [ref=e6]: Voorgesteld
+    - generic [ref=e7]:
+      - generic [ref=e8]: "0"
+      - generic [ref=e9]: Goedgekeurd
+    - generic [ref=e10]:
+      - generic [ref=e11]: "0"
+      - generic [ref=e12]: Gebouwd
+  - generic [ref=e13]:
+    - img [ref=e14]
+    - text: Approval Gate — Volgende om te bouwen
+  - generic [ref=e18]: Geen goedgekeurde items — de agent mag 1 voorstel indienen.
+  - separator [ref=e19]
+  - generic [ref=e20]:
+    - img [ref=e21]
+    - text: Voorgesteld
+  - generic [ref=e24]: Geen openstaande voorstellen.
+  - separator [ref=e25]
+  - generic [ref=e26]:
+    - img [ref=e27]
+    - text: Gebouwd
+  - generic [ref=e30]: Nog niets gebouwd.
