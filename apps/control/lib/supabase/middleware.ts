@@ -61,6 +61,7 @@ export async function updateSession(request: NextRequest) {
   const isPublic =
     PUBLIC_PATHS.has(path) ||
     path.startsWith("/_next") ||
+    path.startsWith("/readme/") ||
     path.startsWith("/api/triggers/") ||
     // Public marketplace share pages — no session needed.
     path.startsWith("/share/") ||
