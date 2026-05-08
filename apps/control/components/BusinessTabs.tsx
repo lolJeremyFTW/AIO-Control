@@ -284,9 +284,11 @@ export function BusinessTabs({
         !p.startsWith(`${base}/outreach-pipeline`),
     },
     {
-      href: `${base}/outreach-pipeline`,
-      label: "Pipeline",
-      match: (p) => p.startsWith(`${base}/outreach-pipeline`),
+      href: `${base}/pipelines`,
+      label: "Pipelines",
+      match: (p) =>
+        p.startsWith(`${base}/pipelines`) ||
+        p.startsWith(`${base}/outreach-pipeline`),
     },
     {
       href: `${base}/schedules`,

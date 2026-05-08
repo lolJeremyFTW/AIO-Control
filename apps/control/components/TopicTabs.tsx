@@ -21,7 +21,7 @@ const BUILT_IN_TABS = [
   { label: "Overzicht", suffix: "" },
   { label: "Agents", suffix: "/agents" },
   { label: "Runs", suffix: "/runs" },
-  { label: "Pipeline", suffix: "/pipeline" },
+  { label: "Pipelines", suffix: "/pipelines" },
   { label: "Routines", suffix: "/routines" },
 ] as const;
 

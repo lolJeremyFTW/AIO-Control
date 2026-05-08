@@ -85,6 +85,9 @@ export async function updateOutreachPipelineConfig(
   revalidatePath(
     `/${input.workspace_slug}/business/${input.business_slug}/outreach-pipeline`,
   );
+  revalidatePath(
+    `/${input.workspace_slug}/business/${input.business_slug}/pipelines`,
+  );
   return { ok: true, data: { id: data.id as string } };
 }
 
@@ -113,6 +116,9 @@ export async function runOutreachPipelineNow(input: {
 
   revalidatePath(
     `/${input.workspace_slug}/business/${input.business_slug}/outreach-pipeline`,
+  );
+  revalidatePath(
+    `/${input.workspace_slug}/business/${input.business_slug}/pipelines`,
   );
 
   if (!result.ok && result.status === "failed") {
@@ -185,12 +191,54 @@ function cleanText(value: unknown, fallback: string): string {
 }
 
 function sanitizePipelineBlueprint(value: unknown): {
+  active_pipeline_id: string;
+  pipelines: Array<{
+    pipeline_id: string;
+    pipeline_name: string;
+    orchestrator_agent_id: string | null;
+    learning_enabled: boolean;
+    correction_rules: string[];
+    steps: ReturnType<typeof sanitizePipelineSteps>;
+  }>;
+  pipeline_id: string;
+  pipeline_name: string;
   orchestrator_agent_id: string | null;
   learning_enabled: boolean;
   correction_rules: string[];
   steps: ReturnType<typeof sanitizePipelineSteps>;
 } {
   const row = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const pipelines = Array.isArray(row.pipelines)
+    ? row.pipelines.map((item, index) => sanitizeSingleBlueprint(item, index))
+    : [];
+  const fallback = sanitizeSingleBlueprint(row, 0);
+  const safePipelines = pipelines.length > 0 ? pipelines.slice(0, 20) : [fallback];
+  const activeId =
+    typeof row.active_pipeline_id === "string" &&
+    safePipelines.some((pipeline) => pipeline.pipeline_id === row.active_pipeline_id)
+      ? row.active_pipeline_id
+      : safePipelines[0]?.pipeline_id ?? "pipeline_1";
+  const active = safePipelines.find((pipeline) => pipeline.pipeline_id === activeId) ?? safePipelines[0] ?? fallback;
+  return {
+    active_pipeline_id: active.pipeline_id,
+    pipelines: safePipelines,
+    ...active,
+  };
+}
+
+function sanitizeSingleBlueprint(value: unknown, index: number): {
+  pipeline_id: string;
+  pipeline_name: string;
+  orchestrator_agent_id: string | null;
+  learning_enabled: boolean;
+  correction_rules: string[];
+  steps: ReturnType<typeof sanitizePipelineSteps>;
+} {
+  const row = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const pipelineId = cleanText(row.pipeline_id, `pipeline_${index + 1}`)
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, "_")
+    .slice(0, 48);
   const orchestrator =
     typeof row.orchestrator_agent_id === "string" &&
     /^[0-9a-f-]{20,}$/i.test(row.orchestrator_agent_id)
@@ -222,6 +270,8 @@ function sanitizePipelineBlueprint(value: unknown): {
     };
   });
   return {
+    pipeline_id: pipelineId,
+    pipeline_name: cleanText(row.pipeline_name, index === 0 ? "Main pipeline" : `Pipeline ${index + 1}`).slice(0, 80),
     orchestrator_agent_id: orchestrator,
     learning_enabled: row.learning_enabled !== false,
     correction_rules: rules,

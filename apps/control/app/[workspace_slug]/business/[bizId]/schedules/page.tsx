@@ -193,7 +193,7 @@ export default async function BusinessSchedulesPage({ params }: Props) {
             {pipelineConfig?.total_outreached_count ?? 0} outreached
           </span>
           <Link
-            href={`/${workspace.slug}/business/${biz.slug}/outreach-pipeline`}
+            href={`/${workspace.slug}/business/${biz.slug}/pipelines`}
             style={{
               padding: "9px 14px",
               border: "1.5px solid var(--app-fg)",
@@ -206,7 +206,7 @@ export default async function BusinessSchedulesPage({ params }: Props) {
               whiteSpace: "nowrap",
             }}
           >
-            {pipelineConfig ? "Open pipeline" : "Pipeline aanmaken"}
+            {pipelineConfig ? "Open pipelines" : "Pipeline aanmaken"}
           </Link>
         </div>
       </div>

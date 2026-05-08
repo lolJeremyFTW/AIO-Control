@@ -24,10 +24,17 @@ type PipelineStep = {
 };
 
 type PipelineBlueprint = {
+  pipeline_id: string;
+  pipeline_name: string;
   orchestrator_agent_id: string | null;
   learning_enabled: boolean;
   correction_rules: string[];
   steps: PipelineStep[];
+};
+
+type PipelineSet = {
+  active_pipeline_id: string;
+  pipelines: PipelineBlueprint[];
 };
 
 type Config = {
@@ -132,8 +139,20 @@ export function OutreachPipelineModule({
     initialConfig?.interval_seconds ?? 10,
   );
   const [batchSize, setBatchSize] = useState(initialConfig?.batch_size ?? 3);
-  const [blueprint, setBlueprint] = useState<PipelineBlueprint>(() =>
-    normalizeBlueprint(initialConfig, agents),
+  const initialPipelineSet = useMemo(
+    () => normalizeBlueprintSet(initialConfig, agents),
+    [initialConfig, agents],
+  );
+  const [pipelines, setPipelines] = useState<PipelineBlueprint[]>(
+    initialPipelineSet.pipelines,
+  );
+  const [activePipelineId, setActivePipelineId] = useState(
+    initialPipelineSet.active_pipeline_id,
+  );
+  const [blueprint, setBlueprint] = useState<PipelineBlueprint>(
+    initialPipelineSet.pipelines.find(
+      (pipeline) => pipeline.pipeline_id === initialPipelineSet.active_pipeline_id,
+    ) ?? firstPipeline(initialPipelineSet),
   );
   const [outreached, setOutreached] = useState(stats.moduleOutreached);
   const [info, setInfo] = useState<string | null>(null);
@@ -144,7 +163,13 @@ export function OutreachPipelineModule({
     setConfig(initialConfig);
     setIntervalSeconds(initialConfig?.interval_seconds ?? 10);
     setBatchSize(initialConfig?.batch_size ?? 3);
-    setBlueprint(normalizeBlueprint(initialConfig, agents));
+    const next = normalizeBlueprintSet(initialConfig, agents);
+    setPipelines(next.pipelines);
+    setActivePipelineId(next.active_pipeline_id);
+    setBlueprint(
+      next.pipelines.find((pipeline) => pipeline.pipeline_id === next.active_pipeline_id) ??
+        firstPipeline(next),
+    );
   }, [initialConfig, agents]);
 
   useEffect(() => {
@@ -210,7 +235,11 @@ export function OutreachPipelineModule({
         enabled: patch?.enabled ?? config?.enabled ?? false,
         interval_seconds: intervalSeconds,
         batch_size: batchSize,
-        pipeline_blueprint: blueprint,
+        pipeline_blueprint: serializePipelineSet(
+          activePipelineId,
+          pipelines,
+          blueprint,
+        ),
         pipeline_steps: blueprint.steps,
       });
       if (!res.ok) {
@@ -249,6 +278,44 @@ export function OutreachPipelineModule({
         i === index ? { ...step, ...patch } : step,
       ),
     }));
+  };
+
+  const updateBlueprint = (patch: Partial<PipelineBlueprint>) => {
+    setBlueprint((current) => ({ ...current, ...patch }));
+  };
+
+  const switchPipeline = (pipelineId: string) => {
+    const saved = syncActivePipeline(pipelines, activePipelineId, blueprint);
+    const next = saved.find((pipeline) => pipeline.pipeline_id === pipelineId);
+    if (!next) return;
+    setPipelines(saved);
+    setActivePipelineId(pipelineId);
+    setBlueprint(next);
+  };
+
+  const createPipeline = () => {
+    const saved = syncActivePipeline(pipelines, activePipelineId, blueprint);
+    const next = makeDefaultBlueprint(
+      agents,
+      `Pipeline ${saved.length + 1}`,
+      `pipeline_${Date.now().toString(36)}`,
+    );
+    setPipelines([...saved, next]);
+    setActivePipelineId(next.pipeline_id);
+    setBlueprint(next);
+  };
+
+  const deletePipeline = () => {
+    const saved = syncActivePipeline(pipelines, activePipelineId, blueprint);
+    if (saved.length <= 1) return;
+    const remaining = saved.filter(
+      (pipeline) => pipeline.pipeline_id !== activePipelineId,
+    );
+    const next = remaining[0];
+    if (!next) return;
+    setPipelines(remaining);
+    setActivePipelineId(next.pipeline_id);
+    setBlueprint(next);
   };
 
   const addStep = () => {
@@ -306,7 +373,7 @@ export function OutreachPipelineModule({
       <section style={panelStyle}>
         <div style={topRowStyle}>
           <div>
-            <h2 style={titleStyle}>Pipeline builder - {scopeName}</h2>
+            <h2 style={titleStyle}>Pipelines - {scopeName}</h2>
             <p style={subStyle}>
               {scopeKind === "topic" ? "Topic" : "Business"} pipeline met main
               agent als orchestrator en QA. Subagents krijgen alleen de
@@ -342,7 +409,33 @@ export function OutreachPipelineModule({
           <Metric label="QA errors 24h" value={stats.failedQa24h} accent="#c44d4d" />
         </div>
 
+        <div style={pipelineSwitcherStyle}>
+          {syncActivePipeline(pipelines, activePipelineId, blueprint).map((pipeline) => {
+            const active = pipeline.pipeline_id === activePipelineId;
+            return (
+              <button
+                key={pipeline.pipeline_id}
+                type="button"
+                onClick={() => switchPipeline(pipeline.pipeline_id)}
+                style={active ? activePipelineButtonStyle : pipelineButtonStyle}
+              >
+                {pipeline.pipeline_name}
+              </button>
+            );
+          })}
+          <button type="button" onClick={createPipeline} style={secondaryButtonStyle(false)}>
+            + Pipeline
+          </button>
+        </div>
+
         <div style={settingsGridStyle}>
+          <Field label="Pipeline naam">
+            <input
+              value={blueprint.pipeline_name}
+              onChange={(e) => updateBlueprint({ pipeline_name: e.target.value })}
+              style={inputStyle}
+            />
+          </Field>
           <Field label="Loop interval">
             <input
               type="number"
@@ -367,10 +460,7 @@ export function OutreachPipelineModule({
             <select
               value={blueprint.orchestrator_agent_id ?? ""}
               onChange={(e) =>
-                setBlueprint((current) => ({
-                  ...current,
-                  orchestrator_agent_id: e.target.value || null,
-                }))
+                updateBlueprint({ orchestrator_agent_id: e.target.value || null })
               }
               style={inputStyle}
             >
@@ -390,6 +480,14 @@ export function OutreachPipelineModule({
               style={secondaryButtonStyle(pending)}
             >
               Opslaan
+            </button>
+            <button
+              type="button"
+              disabled={pipelines.length <= 1}
+              onClick={deletePipeline}
+              style={dangerButtonStyle(pending)}
+            >
+              Verwijder
             </button>
             <span style={subStyle}>
               Status:{" "}
@@ -413,7 +511,7 @@ export function OutreachPipelineModule({
       <section style={panelStyle}>
         <div style={topRowStyle}>
           <div>
-            <h2 style={titleStyle}>n8n-style handoff visualizer</h2>
+            <h2 style={titleStyle}>{blueprint.pipeline_name}</h2>
             <p style={subStyle}>
               Orchestrator geeft per node exact mee wat nodig is. Subagents
               starten context-arm; QA en correcties landen terug bij de main agent.
@@ -763,32 +861,63 @@ function Field({
   );
 }
 
-function normalizeBlueprint(config: Config | null, agents: AgentOption[]): PipelineBlueprint {
+function normalizeBlueprintSet(config: Config | null, agents: AgentOption[]): PipelineSet {
   const raw = config?.pipeline_blueprint;
   if (raw && typeof raw === "object" && !Array.isArray(raw)) {
-    const obj = raw as Partial<PipelineBlueprint>;
-    const steps = Array.isArray(obj.steps) && obj.steps.length > 0
-      ? obj.steps.map(normalizeStep)
+    const obj = raw as Partial<PipelineBlueprint> & Partial<PipelineSet>;
+    if (Array.isArray(obj.pipelines) && obj.pipelines.length > 0) {
+      const pipelines = obj.pipelines.map((pipeline, index) =>
+        normalizeBlueprint(pipeline, agents, index),
+      );
+      const active =
+        typeof obj.active_pipeline_id === "string" &&
+        pipelines.some((pipeline) => pipeline.pipeline_id === obj.active_pipeline_id)
+          ? obj.active_pipeline_id
+          : pipelines[0]?.pipeline_id;
+      return {
+        active_pipeline_id: active ?? firstPipeline({ active_pipeline_id: "", pipelines }).pipeline_id,
+        pipelines,
+      };
+    }
+    const legacy = normalizeBlueprint(obj, agents, 0);
+    return {
+      active_pipeline_id: legacy.pipeline_id,
+      pipelines: [legacy],
+    };
+  }
+  const fallback = makeDefaultBlueprint(agents, "Main pipeline", "main_pipeline");
+  return {
+    active_pipeline_id: fallback.pipeline_id,
+    pipelines: [fallback],
+  };
+}
+
+function firstPipeline(set: PipelineSet): PipelineBlueprint {
+  return set.pipelines[0] ?? makeDefaultBlueprint([], "Main pipeline", "main_pipeline");
+}
+
+function normalizeBlueprint(
+  raw: Partial<PipelineBlueprint>,
+  agents: AgentOption[],
+  index: number,
+): PipelineBlueprint {
+    const steps = Array.isArray(raw.steps) && raw.steps.length > 0
+      ? raw.steps.map(normalizeStep)
       : defaultSteps();
     return {
+      pipeline_id: raw.pipeline_id || (index === 0 ? "main_pipeline" : `pipeline_${index + 1}`),
+      pipeline_name: raw.pipeline_name || (index === 0 ? "Main pipeline" : `Pipeline ${index + 1}`),
       orchestrator_agent_id:
-        typeof obj.orchestrator_agent_id === "string"
-          ? obj.orchestrator_agent_id
+        typeof raw.orchestrator_agent_id === "string"
+          ? raw.orchestrator_agent_id
           : defaultOrchestrator(agents),
-      learning_enabled: obj.learning_enabled !== false,
+      learning_enabled: raw.learning_enabled !== false,
       correction_rules:
-        Array.isArray(obj.correction_rules) && obj.correction_rules.length > 0
-          ? obj.correction_rules.filter((rule): rule is string => typeof rule === "string")
+        Array.isArray(raw.correction_rules) && raw.correction_rules.length > 0
+          ? raw.correction_rules.filter((rule): rule is string => typeof rule === "string")
           : defaultRules(),
       steps,
     };
-  }
-  return {
-    orchestrator_agent_id: defaultOrchestrator(agents),
-    learning_enabled: true,
-    correction_rules: defaultRules(),
-    steps: defaultSteps(),
-  };
 }
 
 function normalizeStep(raw: Partial<PipelineStep>): PipelineStep {
@@ -814,6 +943,47 @@ function defaultOrchestrator(agents: AgentOption[]): string | null {
     agents[0]?.id ??
     null
   );
+}
+
+function makeDefaultBlueprint(
+  agents: AgentOption[],
+  name: string,
+  id: string,
+): PipelineBlueprint {
+  return {
+    pipeline_id: id,
+    pipeline_name: name,
+    orchestrator_agent_id: defaultOrchestrator(agents),
+    learning_enabled: true,
+    correction_rules: defaultRules(),
+    steps: defaultSteps(),
+  };
+}
+
+function syncActivePipeline(
+  pipelines: PipelineBlueprint[],
+  activePipelineId: string,
+  active: PipelineBlueprint,
+): PipelineBlueprint[] {
+  const next = pipelines.map((pipeline) =>
+    pipeline.pipeline_id === activePipelineId ? active : pipeline,
+  );
+  return next.some((pipeline) => pipeline.pipeline_id === activePipelineId)
+    ? next
+    : [active, ...next];
+}
+
+function serializePipelineSet(
+  activePipelineId: string,
+  pipelines: PipelineBlueprint[],
+  active: PipelineBlueprint,
+) {
+  const synced = syncActivePipeline(pipelines, activePipelineId, active);
+  return {
+    active_pipeline_id: activePipelineId,
+    pipelines: synced,
+    ...active,
+  };
 }
 
 function defaultSteps(): PipelineStep[] {
@@ -906,10 +1076,38 @@ const metricsGridStyle: React.CSSProperties = {
 
 const settingsGridStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "150px 140px minmax(220px, 1fr) auto",
+  gridTemplateColumns: "minmax(180px, 1fr) 130px 120px minmax(220px, 1fr) auto",
   gap: 10,
   alignItems: "end",
   marginTop: 14,
+};
+
+const pipelineSwitcherStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  flexWrap: "wrap",
+  marginTop: 14,
+  paddingTop: 14,
+  borderTop: "1px solid var(--app-border-2)",
+};
+
+const pipelineButtonStyle: React.CSSProperties = {
+  border: "1px solid var(--app-border)",
+  background: "var(--app-card-2)",
+  color: "var(--app-fg-2)",
+  borderRadius: 8,
+  padding: "7px 10px",
+  fontSize: 12,
+  fontWeight: 800,
+  cursor: "pointer",
+};
+
+const activePipelineButtonStyle: React.CSSProperties = {
+  ...pipelineButtonStyle,
+  border: "1.5px solid var(--tt-green)",
+  background: "rgba(57,178,85,.1)",
+  color: "var(--app-fg)",
 };
 
 const stepFormGridStyle: React.CSSProperties = {

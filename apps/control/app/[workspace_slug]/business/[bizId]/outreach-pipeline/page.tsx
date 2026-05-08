@@ -124,9 +124,9 @@ export default async function OutreachPipelinePage({ params }: Props) {
   return (
     <div className="content">
       <div className="page-title-row">
-        <h1>Outreach Pipeline - {biz.name}</h1>
+        <h1>Pipelines - {biz.name}</h1>
         <span className="sub">
-          Silent loop naast cron jobs. Duplicate-safe via local Supabase.
+          Meerdere custom pipelines per business. Local outbox, geen fake sends.
         </span>
       </div>
 

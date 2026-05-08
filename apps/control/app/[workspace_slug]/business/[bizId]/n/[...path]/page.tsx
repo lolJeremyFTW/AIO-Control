@@ -56,7 +56,7 @@ import { TopicTabs } from "../../../../../../components/TopicTabs";
 import { getModuleDashboard } from "../../../../../../lib/queries/dashboards";
 import { createSupabaseServerClient } from "../../../../../../lib/supabase/server";
 
-const TOPIC_SUBROUTES = ["agents", "runs", "pipeline", "routines"] as const;
+const TOPIC_SUBROUTES = ["agents", "runs", "pipeline", "pipelines", "routines"] as const;
 type TopicSubroute = (typeof TOPIC_SUBROUTES)[number];
 
 type Props = {
@@ -277,7 +277,7 @@ export default async function NavNodePage({ params, searchParams }: Props) {
   }
 
   // ── Overview (default) ──────────────────────────────────────────────
-  if (subRoute === "pipeline") {
+  if (subRoute === "pipeline" || subRoute === "pipelines") {
     const supabase = await createSupabaseServerClient();
     const since24h = new Date(Date.now() - 24 * 60 * 60_000).toISOString();
     const topicAgents = allAgents.filter(
@@ -384,7 +384,7 @@ export default async function NavNodePage({ params, searchParams }: Props) {
         />
         <div className="content">
           <div className="page-title-row">
-            <h1>Pipeline - {current.name}</h1>
+            <h1>Pipelines - {current.name}</h1>
             <span className="sub">
               Main topic-agent orchestreert, subagents werken context-arm.
             </span>
