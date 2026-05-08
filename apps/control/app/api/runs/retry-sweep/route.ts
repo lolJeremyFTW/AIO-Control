@@ -19,6 +19,10 @@ import { getServiceRoleSupabase } from "../../../../lib/supabase/service";
 
 export const dynamic = "force-dynamic";
 
+const RETRY_SAME_AGENT_DELAY_MS = Number(
+  process.env.RETRY_SAME_AGENT_DELAY_MS ?? String(5 * 60_000),
+);
+
 export async function POST(req: Request) {
   const expected = process.env.RETRY_SWEEP_SECRET;
   if (!expected) {
@@ -54,6 +58,30 @@ export async function POST(req: Request) {
       scheduleId: (original?.schedule_id as string | null) ?? null,
       input: original?.input ?? null,
     });
+    if (schedule?.enabled === false) {
+      await supabase
+        .from("runs")
+        .update({ next_retry_at: null })
+        .eq("id", r.id);
+      continue;
+    }
+    if (
+      await hasActiveAgentRun(
+        supabase,
+        r.workspace_id as string,
+        r.agent_id as string,
+      )
+    ) {
+      await supabase
+        .from("runs")
+        .update({
+          next_retry_at: new Date(
+            Date.now() + RETRY_SAME_AGENT_DELAY_MS,
+          ).toISOString(),
+        })
+        .eq("id", r.id);
+      continue;
+    }
     const retryInput = mergeScheduleSnapshotIntoInput(
       original?.input ?? null,
       schedule,
@@ -104,14 +132,14 @@ async function resolveRetryScheduleContext(
     scheduleId: string | null;
     input: unknown;
   },
-): Promise<ScheduleLabelSource | null> {
+): Promise<(ScheduleLabelSource & { enabled?: boolean | null }) | null> {
   if (opts.scheduleId) {
     const { data } = await supabase
       .from("schedules")
-      .select("id, title, kind, cron_expr, nav_node_id")
+      .select("id, title, kind, cron_expr, nav_node_id, enabled")
       .eq("id", opts.scheduleId)
       .maybeSingle();
-    if (data) return data as ScheduleLabelSource;
+    if (data) return data as ScheduleLabelSource & { enabled?: boolean | null };
   }
 
   const prompt = readRunPrompt(opts.input);
@@ -119,7 +147,7 @@ async function resolveRetryScheduleContext(
 
   let query = supabase
     .from("schedules")
-    .select("id, title, kind, cron_expr, nav_node_id")
+    .select("id, title, kind, cron_expr, nav_node_id, enabled")
     .eq("workspace_id", opts.workspaceId)
     .eq("agent_id", opts.agentId)
     .eq("instructions", prompt)
@@ -129,5 +157,22 @@ async function resolveRetryScheduleContext(
     : query.is("business_id", null);
 
   const { data } = await query;
-  return data && data.length === 1 ? (data[0] as ScheduleLabelSource) : null;
+  return data && data.length === 1
+    ? (data[0] as ScheduleLabelSource & { enabled?: boolean | null })
+    : null;
+}
+
+async function hasActiveAgentRun(
+  supabase: ReturnType<typeof getServiceRoleSupabase>,
+  workspaceId: string,
+  agentId: string,
+): Promise<boolean> {
+  const { count, error } = await supabase
+    .from("runs")
+    .select("id", { count: "exact", head: true })
+    .eq("workspace_id", workspaceId)
+    .eq("agent_id", agentId)
+    .eq("status", "running");
+  if (error) return true;
+  return Boolean(count && count > 0);
 }

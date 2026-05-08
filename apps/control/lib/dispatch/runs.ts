@@ -69,6 +69,16 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
   if (run.status === "done" || run.status === "failed") {
     return { ok: true, status: run.status as "done" | "failed" };
   }
+  if (run.status === "running") {
+    return { ok: true, status: "deferred", error: "Run is already running" };
+  }
+  if (run.status !== "queued") {
+    return {
+      ok: true,
+      status: "deferred",
+      error: `Run is not dispatchable from status ${run.status}`,
+    };
+  }
 
   type AgentRow = {
     id: string;
@@ -126,12 +136,45 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
     }
   }
 
+  // Guard the expensive provider/MCP path: one automated run per agent at
+  // a time. Without this, a retry and a due cron can spawn duplicate MCP
+  // stacks (browser/filesystem/bash) and make the live app sluggish.
+  const { count: activeSameAgent, error: activeErr } = await supabase
+    .from("runs")
+    .select("id", { count: "exact", head: true })
+    .eq("workspace_id", run.workspace_id)
+    .eq("agent_id", run.agent_id)
+    .eq("status", "running")
+    .neq("id", runId);
+  if (activeErr) {
+    return await markFailed(runId, activeErr.message);
+  }
+  if (activeSameAgent && activeSameAgent > 0) {
+    return await markFailed(
+      runId,
+      "Skipped because this agent already has an active run",
+    );
+  }
+
   // Promote to running so concurrent dispatchers don't double-execute.
   const startedAt = new Date().toISOString();
-  await supabase
+  const { data: claimed, error: claimErr } = await supabase
     .from("runs")
     .update({ status: "running", started_at: startedAt })
-    .eq("id", runId);
+    .eq("id", runId)
+    .eq("status", "queued")
+    .select("id")
+    .maybeSingle();
+  if (claimErr) {
+    return await markFailed(runId, claimErr.message);
+  }
+  if (!claimed) {
+    return {
+      ok: true,
+      status: "deferred",
+      error: "Run was already claimed by another dispatcher",
+    };
+  }
 
   // Build the message list. The webhook payload shape and the manual
   // "Run now" payload both come through run.input — accept both shapes.

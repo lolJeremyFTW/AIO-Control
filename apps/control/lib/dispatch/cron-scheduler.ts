@@ -35,17 +35,17 @@ import { getServiceRoleSupabase } from "../supabase/service";
 let started = false;
 let task: cron.ScheduledTask | null = null;
 
-// Per-workspace dispatch queue. Up to WORKSPACE_CONCURRENCY (default 2)
-// runs execute in parallel per workspace, so different agent types can
-// run side-by-side (e.g. Outreach + self-improving) without blocking
-// each other while still sharing a single API key safely. Different
-// workspaces always run fully in parallel.
+// Per-workspace dispatch queue. Up to WORKSPACE_CONCURRENCY (default 1)
+// runs execute in parallel per workspace. The default is deliberately
+// conservative: MCP-heavy agents can spawn browsers/filesystem/bash
+// servers, and parallel cron + retry runs make the interactive app feel
+// slow on the same VPS.
 //
 // Each queue entry carries an enqueue timestamp so we can drop stale
 // retries that piled up while the workspace was unhealthy: better to
 // run TODAY's find-leads than yesterday's failed retry.
 const WORKSPACE_CONCURRENCY = Number(
-  process.env.WORKSPACE_CONCURRENCY ?? "2",
+  process.env.WORKSPACE_CONCURRENCY ?? "1",
 );
 
 type QueueEntry = {
@@ -73,6 +73,9 @@ const MAX_QUEUE_PER_WORKSPACE = Number(
 const QUEUE_MAX_AGE_MS = Number(
   process.env.CRON_QUEUE_MAX_AGE_MS ?? String(60 * 60_000),
 );
+const RETRY_SAME_AGENT_DELAY_MS = Number(
+  process.env.RETRY_SAME_AGENT_DELAY_MS ?? String(5 * 60_000),
+);
 
 async function markQueueRejected(runId: string, reason: string): Promise<void> {
   const admin = getServiceRoleSupabase();
@@ -85,6 +88,24 @@ async function markQueueRejected(runId: string, reason: string): Promise<void> {
     })
     .eq("id", runId)
     .eq("status", "queued");
+}
+
+async function hasActiveAgentRun(
+  admin: ReturnType<typeof getServiceRoleSupabase>,
+  workspaceId: string,
+  agentId: string,
+): Promise<boolean> {
+  const { count, error } = await admin
+    .from("runs")
+    .select("id", { count: "exact", head: true })
+    .eq("workspace_id", workspaceId)
+    .eq("agent_id", agentId)
+    .eq("status", "running");
+  if (error) {
+    console.error("[cron-scheduler] active agent guard failed", error);
+    return true;
+  }
+  return Boolean(count && count > 0);
 }
 
 function enqueueDispatch(workspaceId: string, runId: string): void {
@@ -302,6 +323,35 @@ async function runRetrySweep(): Promise<void> {
       scheduleId: (original?.schedule_id as string | null) ?? null,
       input: original?.input ?? null,
     });
+    if (schedule?.enabled === false) {
+      await admin
+        .from("runs")
+        .update({ next_retry_at: null })
+        .eq("id", r.id as string);
+      console.log(
+        `[cron-scheduler] skipped retry ${r.id} because schedule ${schedule.id} is disabled`,
+      );
+      continue;
+    }
+    if (
+      await hasActiveAgentRun(
+        admin,
+        r.workspace_id as string,
+        r.agent_id as string,
+      )
+    ) {
+      const nextRetryAt = new Date(
+        Date.now() + RETRY_SAME_AGENT_DELAY_MS,
+      ).toISOString();
+      await admin
+        .from("runs")
+        .update({ next_retry_at: nextRetryAt })
+        .eq("id", r.id as string);
+      console.log(
+        `[cron-scheduler] delayed retry ${r.id} because agent ${r.agent_id} is already running`,
+      );
+      continue;
+    }
     const retryInput = mergeScheduleSnapshotIntoInput(
       original?.input ?? null,
       schedule,
@@ -353,14 +403,14 @@ async function resolveRetryScheduleContext(
     scheduleId: string | null;
     input: unknown;
   },
-): Promise<ScheduleLabelSource | null> {
+): Promise<(ScheduleLabelSource & { enabled?: boolean | null }) | null> {
   if (opts.scheduleId) {
     const { data } = await admin
       .from("schedules")
-      .select("id, title, kind, cron_expr, nav_node_id")
+      .select("id, title, kind, cron_expr, nav_node_id, enabled")
       .eq("id", opts.scheduleId)
       .maybeSingle();
-    if (data) return data as ScheduleLabelSource;
+    if (data) return data as ScheduleLabelSource & { enabled?: boolean | null };
   }
 
   const prompt = readRunPrompt(opts.input);
@@ -368,7 +418,7 @@ async function resolveRetryScheduleContext(
 
   let query = admin
     .from("schedules")
-    .select("id, title, kind, cron_expr, nav_node_id")
+    .select("id, title, kind, cron_expr, nav_node_id, enabled")
     .eq("workspace_id", opts.workspaceId)
     .eq("agent_id", opts.agentId)
     .eq("instructions", prompt)
@@ -378,7 +428,9 @@ async function resolveRetryScheduleContext(
     : query.is("business_id", null);
 
   const { data } = await query;
-  return data && data.length === 1 ? (data[0] as ScheduleLabelSource) : null;
+  return data && data.length === 1
+    ? (data[0] as ScheduleLabelSource & { enabled?: boolean | null })
+    : null;
 }
 
 export function stopCronScheduler(): void {
@@ -490,6 +542,12 @@ async function tick(): Promise<void> {
       if (activeCount && activeCount > 0) {
         console.log(
           `[cron-scheduler] schedule ${sched.id} already has a running run — skipping`,
+        );
+        continue;
+      }
+      if (await hasActiveAgentRun(admin, sched.workspace_id, sched.agent_id)) {
+        console.log(
+          `[cron-scheduler] agent ${sched.agent_id} already has a running run — skipping schedule ${sched.id}`,
         );
         continue;
       }
