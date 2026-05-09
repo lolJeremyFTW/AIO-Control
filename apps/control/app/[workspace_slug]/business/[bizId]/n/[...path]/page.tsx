@@ -308,7 +308,12 @@ export default async function NavNodePage({ params, searchParams }: Props) {
             (a) => a.business_id === biz.id || a.business_id === null,
           );
 
-    const [{ data: config }, { data: recentRuns }, { data: recentEvents }] =
+    const [
+      { data: config },
+      { data: recentRuns },
+      { data: recentEvents },
+      pipelineSkills,
+    ] =
       await Promise.all([
         supabase
           .from("outreach_pipeline_configs")
@@ -339,6 +344,7 @@ export default async function NavNodePage({ params, searchParams }: Props) {
           .eq("nav_node_id", current.id)
           .order("created_at", { ascending: false })
           .limit(80),
+        listSkillsForWorkspace(workspace.id),
       ]);
 
     return (
@@ -386,6 +392,17 @@ export default async function NavNodePage({ params, searchParams }: Props) {
               provider: agent.provider,
               model: agent.model,
               kind: agent.kind,
+              mcp_servers: Array.isArray(agent.config?.mcpServers)
+                ? agent.config.mcpServers.filter(
+                    (item): item is string => typeof item === "string",
+                  )
+                : [],
+              skill_ids: agent.allowed_skills ?? [],
+            }))}
+            skills={pipelineSkills.map((skill) => ({
+              id: skill.id,
+              name: skill.name,
+              description: skill.description,
             }))}
           />
         </div>

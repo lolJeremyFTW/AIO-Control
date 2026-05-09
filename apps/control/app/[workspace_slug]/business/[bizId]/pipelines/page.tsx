@@ -9,6 +9,7 @@ import {
   listBusinesses,
 } from "../../../../../lib/queries/businesses";
 import { listAgentsForWorkspace } from "../../../../../lib/queries/agents";
+import { listSkillsForWorkspace } from "../../../../../lib/queries/skills";
 import { getServiceRoleSupabase } from "../../../../../lib/supabase/service";
 import { OutreachPipelineModule } from "../../../../../components/OutreachPipelineModule";
 
@@ -26,9 +27,10 @@ export default async function BusinessPipelinesPage({ params }: Props) {
   const workspace = await getWorkspaceBySlug(workspace_slug);
   if (!workspace) notFound();
 
-  const [businesses, agents] = await Promise.all([
+  const [businesses, agents, skills] = await Promise.all([
     listBusinesses(workspace.id),
     listAgentsForWorkspace(workspace.id),
+    listSkillsForWorkspace(workspace.id),
   ]);
   const biz = findBusiness(businesses, bizId);
   if (!biz) notFound();
@@ -105,6 +107,17 @@ export default async function BusinessPipelinesPage({ params }: Props) {
           provider: agent.provider,
           model: agent.model,
           kind: agent.kind,
+          mcp_servers: Array.isArray(agent.config?.mcpServers)
+            ? agent.config.mcpServers.filter(
+                (item): item is string => typeof item === "string",
+              )
+            : [],
+          skill_ids: agent.allowed_skills ?? [],
+        }))}
+        skills={skills.map((skill) => ({
+          id: skill.id,
+          name: skill.name,
+          description: skill.description,
         }))}
       />
     </div>

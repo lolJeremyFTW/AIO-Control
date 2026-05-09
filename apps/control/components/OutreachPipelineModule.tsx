@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 
+import { MCP_SERVER_CATALOG } from "@aio/ai/mcp/registry";
+
 import {
   generateOutreachPipelineBlueprint,
   generateOutreachPipelineStep,
@@ -25,6 +27,8 @@ type PipelineStep = {
   qa_rule: string;
   positive_prompt: string;
   negative_prompt: string;
+  mcp_servers: string[];
+  skill_ids: string[];
 };
 
 type PipelineBlueprint = {
@@ -93,6 +97,14 @@ type AgentOption = {
   provider: string;
   model: string | null;
   kind: string;
+  mcp_servers?: string[];
+  skill_ids?: string[];
+};
+
+type SkillOption = {
+  id: string;
+  name: string;
+  description: string;
 };
 
 type Props = {
@@ -110,6 +122,7 @@ type Props = {
   recentRuns: RunRow[];
   recentEvents: EventRow[];
   agents: AgentOption[];
+  skills?: SkillOption[];
 };
 
 const PROVIDERS = [
@@ -124,6 +137,11 @@ const PROVIDERS = [
   "codex",
 ] as const;
 
+const MCP_OPTIONS = MCP_SERVER_CATALOG.map((item) => ({
+  id: item.id,
+  label: item.title,
+}));
+
 export function OutreachPipelineModule({
   workspaceSlug,
   businessSlug,
@@ -137,6 +155,7 @@ export function OutreachPipelineModule({
   recentRuns,
   recentEvents,
   agents,
+  skills = [],
 }: Props) {
   const [config, setConfig] = useState<Config | null>(initialConfig);
   const [events, setEvents] = useState<EventRow[]>(recentEvents);
@@ -457,6 +476,8 @@ export function OutreachPipelineModule({
           handoff: "Geef alleen resultaat, bronnen en onzekerheden terug.",
           provider: "openai_codex",
           model: "",
+          mcp_servers: [],
+          skill_ids: [],
           agent_id: null,
           context_policy: "handoff_only",
           needs: "Alleen de instructie van de orchestrator.",
@@ -878,6 +899,8 @@ export function OutreachPipelineModule({
                         provider: selected?.provider ?? step.provider,
                         model: selected?.model ?? step.model,
                         agent: selected?.name ?? step.agent,
+                        mcp_servers: selected?.mcp_servers ?? step.mcp_servers,
+                        skill_ids: selected?.skill_ids ?? step.skill_ids,
                       });
                     }}
                     style={inputStyle}
@@ -912,51 +935,49 @@ export function OutreachPipelineModule({
                   />
                 </Field>
               </div>
-              <div style={wideStepGridStyle}>
-                <Field label="Wat de orchestrator doorgeeft">
-                  <textarea
-                    value={step.needs}
-                    onChange={(e) => updateStep(index, { needs: e.target.value })}
-                    style={textareaStyle}
-                  />
-                </Field>
-                <Field label="Taak van deze subagent">
+              <div style={simpleAccessGridStyle}>
+                <ChecklistField
+                  label="MCPs"
+                  emptyLabel="Geen MCPs nodig"
+                  options={MCP_OPTIONS}
+                  value={step.mcp_servers}
+                  onToggle={(id) =>
+                    updateStep(index, {
+                      mcp_servers: toggleListValue(step.mcp_servers, id),
+                    })
+                  }
+                />
+                <ChecklistField
+                  label="Skills"
+                  emptyLabel="Geen skills beschikbaar"
+                  options={skills}
+                  value={step.skill_ids}
+                  onToggle={(id) =>
+                    updateStep(index, {
+                      skill_ids: toggleListValue(step.skill_ids, id),
+                    })
+                  }
+                />
+              </div>
+              <div style={{ marginTop: 10 }}>
+                <Field
+                  label="Prompt"
+                  help="Schrijf hier gewoon wat deze subagent moet doen. De orchestrator geeft alleen de noodzakelijke handoff mee."
+                >
                   <textarea
                     value={step.task}
-                    onChange={(e) => updateStep(index, { task: e.target.value })}
-                    style={textareaStyle}
-                  />
-                </Field>
-                <Field label="Output / handoff terug">
-                  <textarea
-                    value={step.handoff}
-                    onChange={(e) => updateStep(index, { handoff: e.target.value })}
-                    style={textareaStyle}
-                  />
-                </Field>
-                <Field label="QA regel door orchestrator">
-                  <textarea
-                    value={step.qa_rule}
-                    onChange={(e) => updateStep(index, { qa_rule: e.target.value })}
-                    style={textareaStyle}
-                  />
-                </Field>
-                <Field label="Positive prompt">
-                  <textarea
-                    value={step.positive_prompt}
-                    onChange={(e) =>
-                      updateStep(index, { positive_prompt: e.target.value })
-                    }
-                    style={textareaStyle}
-                  />
-                </Field>
-                <Field label="Negative prompt">
-                  <textarea
-                    value={step.negative_prompt}
-                    onChange={(e) =>
-                      updateStep(index, { negative_prompt: e.target.value })
-                    }
-                    style={textareaStyle}
+                    onChange={(e) => {
+                      const task = e.target.value;
+                      updateStep(index, {
+                        task,
+                        needs: task,
+                        handoff: "Geef resultaat, bronnen, beperkingen en onzekerheden terug.",
+                        qa_rule: "Orchestrator controleert of de output de prompt volledig uitvoert.",
+                        positive_prompt: task,
+                      });
+                    }}
+                    placeholder="Bijv. scrape alle Google Maps leads voor {stad} en {branche}, inclusief paginatie, dedupe, bronnen en onzekerheden."
+                    style={{ ...textareaStyle, minHeight: 132 }}
                   />
                 </Field>
               </div>
@@ -1303,6 +1324,45 @@ function Field({
   );
 }
 
+function ChecklistField({
+  label,
+  emptyLabel,
+  options,
+  value,
+  onToggle,
+}: {
+  label: string;
+  emptyLabel: string;
+  options: Array<{ id: string; name?: string; label?: string; description?: string }>;
+  value: string[];
+  onToggle: (id: string) => void;
+}) {
+  return (
+    <div>
+      <span style={{ color: "var(--app-fg-3)", display: "block", marginBottom: 4, fontSize: 11.5, fontWeight: 700 }}>
+        {label}
+      </span>
+      <div style={checklistBoxStyle}>
+        {options.length === 0 ? (
+          <span style={mutedTinyStyle}>{emptyLabel}</span>
+        ) : (
+          options.map((option) => (
+            <label key={option.id} title={option.description} style={checkChipStyle(value.includes(option.id))}>
+              <input
+                type="checkbox"
+                checked={value.includes(option.id)}
+                onChange={() => onToggle(option.id)}
+                style={{ accentColor: "var(--tt-green)" }}
+              />
+              <span>{option.label ?? option.name ?? option.id}</span>
+            </label>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 function normalizeBlueprintSet(config: Config | null, agents: AgentOption[]): PipelineSet {
   const raw = config?.pipeline_blueprint;
   if (raw && typeof raw === "object" && !Array.isArray(raw)) {
@@ -1386,7 +1446,19 @@ function normalizeStep(raw: Partial<PipelineStep>): PipelineStep {
     negative_prompt:
       raw.negative_prompt ||
       "Geen aannames, geen brede context ophalen, geen externe actie uitvoeren.",
+    mcp_servers: Array.isArray(raw.mcp_servers)
+      ? raw.mcp_servers.filter((item): item is string => typeof item === "string")
+      : [],
+    skill_ids: Array.isArray(raw.skill_ids)
+      ? raw.skill_ids.filter((item): item is string => typeof item === "string")
+      : [],
   };
+}
+
+function toggleListValue(values: string[], id: string): string[] {
+  return values.includes(id)
+    ? values.filter((value) => value !== id)
+    : [...values, id];
 }
 
 function defaultOrchestrator(agents: AgentOption[]): string | null {
@@ -1633,10 +1705,42 @@ const stepFormGridStyle: React.CSSProperties = {
   gap: 10,
 };
 
-const wideStepGridStyle: React.CSSProperties = {
+const simpleAccessGridStyle: React.CSSProperties = {
   display: "grid",
   gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
   gap: 10,
+  marginTop: 10,
+};
+
+const checklistBoxStyle: React.CSSProperties = {
+  minHeight: 46,
+  background: "var(--app-card-2)",
+  border: "1.5px solid var(--app-border)",
+  borderRadius: 8,
+  padding: 8,
+  display: "flex",
+  gap: 6,
+  flexWrap: "wrap",
+  alignContent: "flex-start",
+};
+
+const checkChipStyle = (active: boolean): React.CSSProperties => ({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 5,
+  border: active ? "1.5px solid var(--tt-green)" : "1px solid var(--app-border)",
+  background: active ? "rgba(57,178,85,.1)" : "var(--app-bg-soft)",
+  borderRadius: 8,
+  padding: "5px 7px",
+  fontSize: 11.5,
+  fontWeight: 800,
+  cursor: "pointer",
+});
+
+const mutedTinyStyle: React.CSSProperties = {
+  color: "var(--app-fg-3)",
+  fontSize: 11.5,
+  alignSelf: "center",
 };
 
 const metricStyle: React.CSSProperties = {

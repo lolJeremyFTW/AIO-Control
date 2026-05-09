@@ -59,6 +59,8 @@ type PipelineStepInput = {
   qa_rule?: string;
   positive_prompt?: string;
   negative_prompt?: string;
+  mcp_servers?: string[];
+  skill_ids?: string[];
   context_policy?: "handoff_only" | "none";
 };
 
@@ -429,6 +431,8 @@ function sanitizePipelineStep(value: unknown): {
   qa_rule: string;
   positive_prompt: string;
   negative_prompt: string;
+  mcp_servers: string[];
+  skill_ids: string[];
 } {
   const row = value && typeof value === "object" ? value as Record<string, unknown> : {};
   const id = cleanText(row.id, "step")
@@ -469,12 +473,26 @@ function sanitizePipelineStep(value: unknown): {
       row.negative_prompt,
       "Geen aannames, geen brede context ophalen, geen externe actie uitvoeren.",
     ).slice(0, 1200),
+    mcp_servers: sanitizeStringList(row.mcp_servers, 24, 80),
+    skill_ids: sanitizeStringList(row.skill_ids, 24, 80),
   };
 }
 
 function cleanText(value: unknown, fallback: string): string {
   const text = typeof value === "string" ? value.trim() : "";
   return text || fallback;
+}
+
+function sanitizeStringList(value: unknown, maxItems: number, maxLength: number): string[] {
+  if (!Array.isArray(value)) return [];
+  return [
+    ...new Set(
+      value
+        .map((item) => cleanText(item, ""))
+        .filter(Boolean)
+        .map((item) => item.slice(0, maxLength)),
+    ),
+  ].slice(0, maxItems);
 }
 
 function sanitizePipelineBlueprint(value: unknown): {
@@ -586,6 +604,8 @@ function sanitizeSingleBlueprint(value: unknown, index: number): {
         obj.negative_prompt,
         "Geen aannames, geen brede context ophalen, geen externe actie uitvoeren.",
       ).slice(0, 500),
+      mcp_servers: sanitizeStringList(obj.mcp_servers, 24, 80),
+      skill_ids: sanitizeStringList(obj.skill_ids, 24, 80),
     };
   });
   return {
