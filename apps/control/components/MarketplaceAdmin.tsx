@@ -45,6 +45,7 @@ export function MarketplaceAdmin({ sources, items }: Props) {
   const [previewSource, setPreviewSource] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [importingSlug, setImportingSlug] = useState<string | null>(null);
   const [busy, startTransition] = useTransition();
 
   const fetchPreview = async (sourceId: string) => {
@@ -55,6 +56,7 @@ export function MarketplaceAdmin({ sources, items }: Props) {
     const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
     const res = await fetch(
       `${base}/api/admin/marketplace/preview?source=${sourceId}`,
+      { cache: "no-store" },
     );
     if (!res.ok) {
       setError(`Preview faalde (HTTP ${res.status}).`);
@@ -76,6 +78,21 @@ export function MarketplaceAdmin({ sources, items }: Props) {
         setPreview(null);
         setPreviewSource(null);
       }
+    });
+  };
+
+  const importOne = (item: ImportItem) => {
+    setError(null);
+    setInfo(null);
+    setImportingSlug(item.slug);
+    startTransition(async () => {
+      const res = await importMarketplaceItems([item]);
+      setImportingSlug(null);
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      setInfo(`${item.name} toegevoegd/bijgewerkt.`);
     });
   };
 
@@ -207,30 +224,54 @@ export function MarketplaceAdmin({ sources, items }: Props) {
                   <div
                     key={p.slug}
                     style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr auto",
+                      gap: 10,
+                      alignItems: "center",
                       padding: "6px 10px",
                       fontSize: 12,
                       borderBottom: "1px solid var(--app-border-2)",
                     }}
                   >
-                    <strong>{p.name}</strong>
-                    <span
-                      style={{
-                        marginLeft: 6,
-                        color: "var(--app-fg-3)",
-                        fontSize: 11,
-                      }}
-                    >
-                      [{p.marketplace_kind}]
-                    </span>
-                    <div
-                      style={{
-                        color: "var(--app-fg-3)",
-                        fontSize: 11,
-                        marginTop: 2,
-                      }}
-                    >
-                      {p.tagline}
+                    <div style={{ minWidth: 0 }}>
+                      <strong>{p.name}</strong>
+                      <span
+                        style={{
+                          marginLeft: 6,
+                          color: "var(--app-fg-3)",
+                          fontSize: 11,
+                        }}
+                      >
+                        [{p.marketplace_kind}]
+                      </span>
+                      <div
+                        style={{
+                          color: "var(--app-fg-3)",
+                          fontSize: 11,
+                          marginTop: 2,
+                        }}
+                      >
+                        {p.tagline}
+                      </div>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => importOne(p)}
+                      disabled={busy}
+                      style={{
+                        padding: "5px 9px",
+                        border: "1.5px solid var(--app-border)",
+                        background: "var(--app-card-2)",
+                        color: "var(--app-fg)",
+                        borderRadius: 8,
+                        fontWeight: 700,
+                        fontSize: 11,
+                        cursor: busy ? "wait" : "pointer",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {importingSlug === p.slug ? "Bezig..." : "Importeer"}
+                    </button>
                   </div>
                 ))}
               </div>

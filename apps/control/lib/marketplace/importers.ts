@@ -1,10 +1,6 @@
-// Catalog importers — pull marketplace items from public sources and
-// normalise them into the ImportItem shape. Each importer fetches a
-// well-known endpoint (GitHub raw README, JSON manifest, etc.) and
-// scrapes/parses what it can.
-//
-// All fetches happen server-side so user IPs aren't leaked to the
-// catalog hosts and we can cache responses cheaply.
+// Catalog importers: pull marketplace items from public sources and normalize
+// them into the ImportItem shape. Fetching happens server-side so catalog hosts
+// do not see user IPs and Next can cache responses cheaply.
 
 import "server-only";
 
@@ -18,98 +14,212 @@ export type Source = {
   fetcher: () => Promise<ImportItem[]>;
 };
 
-// ─── modelcontextprotocol/servers (official MCP catalog) ────────────────────
-async function fetchOfficialMcp(): Promise<ImportItem[]> {
-  // The official MCP repo lists servers in its README. We hit the raw
-  // README and pull out the "## Server" entries.
-  const url =
-    "https://raw.githubusercontent.com/modelcontextprotocol/servers/main/README.md";
-  const res = await fetch(url, { next: { revalidate: 86400 } });
-  if (!res.ok) return [];
-  const text = await res.text();
+type RegistryResponse = {
+  servers?: {
+    server?: {
+      name?: string;
+      title?: string;
+      description?: string;
+      version?: string;
+      repository?: { url?: string; source?: string; id?: string };
+      websiteUrl?: string;
+      remotes?: { type?: string; url?: string }[];
+      packages?: { registry_name?: string; name?: string; version?: string }[];
+    };
+    _meta?: {
+      "io.modelcontextprotocol.registry/official"?: {
+        status?: string;
+        isLatest?: boolean;
+      };
+    };
+  }[];
+  metadata?: { nextCursor?: string };
+};
 
-  // Find sections like:
-  //   ### **[Filesystem](src/filesystem)** – Secure file operations…
-  // or
-  //   - **[GitHub](src/github)** – Repository management
+async function fetchOfficialMcp(): Promise<ImportItem[]> {
+  const registryItems = await fetchOfficialMcpRegistry();
+  if (registryItems.length > 0) return registryItems;
+
+  const text = await fetchText(
+    "https://raw.githubusercontent.com/modelcontextprotocol/servers/main/README.md",
+  );
+  if (!text) return [];
+  return parseMarkdownMcpList({
+    text,
+    slugPrefix: "mcp-official",
+    sourceProvider: "modelcontextprotocol/servers",
+    sourceBase: "https://github.com/modelcontextprotocol/servers/tree/main",
+    maxItems: 80,
+  });
+}
+
+async function fetchOfficialMcpRegistry(): Promise<ImportItem[]> {
   const items: ImportItem[] = [];
-  const re = /-\s*\*\*\[([^\]]+)\]\(([^)]+)\)\*\*\s*[-–—]\s*([^\n]+)/g;
-  let match: RegExpExecArray | null;
-  while ((match = re.exec(text)) !== null) {
-    const name = match[1]!.trim();
-    const href = match[2]!.trim();
-    const desc = match[3]!.trim();
-    const slug = `mcp-${slugify(name)}`;
-    const sourceUrl = href.startsWith("http")
-      ? href
-      : `https://github.com/modelcontextprotocol/servers/tree/main/${href}`;
-    items.push({
-      slug,
-      name,
-      tagline: desc.slice(0, 120),
-      description: desc,
-      marketplace_kind: "mcp_server",
-      provider: "claude",
-      kind: "router",
-      category: "mcp",
-      config: {
-        mcp: {
-          name: slugify(name),
-          source: sourceUrl,
+  const seen = new Set<string>();
+  let cursor: string | undefined;
+
+  for (let page = 0; page < 4 && items.length < 120; page++) {
+    const url = new URL("https://registry.modelcontextprotocol.io/v0/servers");
+    url.searchParams.set("limit", "100");
+    if (cursor) url.searchParams.set("cursor", cursor);
+
+    const res = await fetch(url.toString(), { cache: "no-store" });
+    if (!res.ok) break;
+    const json = (await res.json()) as RegistryResponse;
+
+    for (const entry of json.servers ?? []) {
+      const server = entry.server;
+      if (!server?.name) continue;
+      const official = entry._meta?.["io.modelcontextprotocol.registry/official"];
+      if (official?.status && official.status !== "active") continue;
+      if (official?.isLatest === false) continue;
+      if (seen.has(server.name)) continue;
+      seen.add(server.name);
+
+      const displayName = server.title?.trim() || server.name;
+      const description = cleanText(
+        server.description || `MCP server ${server.name}`,
+      );
+      const sourceUrl =
+        server.repository?.url ||
+        server.websiteUrl ||
+        server.remotes?.find((remote) => remote.url)?.url ||
+        `https://registry.modelcontextprotocol.io/server/${encodeURIComponent(
+          server.name,
+        )}`;
+
+      items.push({
+        slug: `mcp-official-${slugify(server.name)}`,
+        name: displayName,
+        tagline: description.slice(0, 120),
+        description,
+        marketplace_kind: "mcp_server",
+        provider: "claude",
+        kind: "router",
+        category: "official",
+        config: {
+          mcp: {
+            name: server.name,
+            title: server.title ?? null,
+            version: server.version ?? null,
+            source: sourceUrl,
+            repository: server.repository ?? null,
+            remotes: server.remotes ?? [],
+            packages: server.packages ?? [],
+          },
         },
-      },
-      source_url: sourceUrl,
-      source_provider: "modelcontextprotocol/servers",
-    });
-    if (items.length > 60) break; // sanity cap
+        source_url: sourceUrl,
+        source_provider: "registry.modelcontextprotocol.io",
+      });
+    }
+
+    cursor = json.metadata?.nextCursor;
+    if (!cursor) break;
   }
+
   return items;
 }
 
-// ─── msitarzewski/agency-agents (OpenAI Agents) ─────────────────────────────
-async function fetchAgencyAgents(): Promise<ImportItem[]> {
-  // The repo has a top-level agents/ folder with one .yaml or .json
-  // per agent. We use the GitHub trees API to list them.
-  const treeUrl =
-    "https://api.github.com/repos/msitarzewski/agency-agents/git/trees/main?recursive=1";
-  const res = await fetch(treeUrl, {
-    next: { revalidate: 86400 },
-    headers: { accept: "application/vnd.github+json" },
+async function fetchMcpServersOrg(): Promise<ImportItem[]> {
+  const text = await fetchText(
+    "https://raw.githubusercontent.com/wong2/awesome-mcp-servers/main/README.md",
+  );
+  if (!text) return [];
+  return parseMarkdownMcpList({
+    text,
+    slugPrefix: "mcpservers",
+    sourceProvider: "mcpservers.org",
+    sourceBase: "https://github.com/wong2/awesome-mcp-servers/blob/main",
+    maxItems: 120,
   });
-  if (!res.ok) return [];
-  const tree = (await res.json()) as {
-    tree?: { path: string; type: string }[];
-  };
+}
+
+async function fetchMcpSo(): Promise<ImportItem[]> {
+  const pages = await Promise.all([
+    fetchText("https://mcp.so"),
+    fetchText("https://mcp.so/servers?tag=featured"),
+    fetchText("https://mcp.so/servers?tag=official"),
+  ]);
   const items: ImportItem[] = [];
-  for (const entry of tree.tree ?? []) {
+  const seen = new Set<string>();
+
+  for (const html of pages) {
+    if (!html) continue;
+    for (const match of html.matchAll(
+      /https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+/g,
+    )) {
+      const sourceUrl = match[0]!;
+      if (
+        sourceUrl.includes("/issues") ||
+        sourceUrl.includes("/actions") ||
+        sourceUrl.includes("/user-attachments") ||
+        seen.has(sourceUrl)
+      ) {
+        continue;
+      }
+
+      seen.add(sourceUrl);
+      const repo = sourceUrl.replace("https://github.com/", "");
+      const name = repo.split("/").at(-1)!.replace(/[-_]/g, " ");
+      items.push({
+        slug: `mcp-so-${slugify(repo)}`,
+        name,
+        tagline: `MCP server uit mcp.so (${repo})`,
+        description:
+          "Gevonden in de gerenderde mcp.so directory. Open de source-link voor installatie en configuratie.",
+        marketplace_kind: "mcp_server",
+        provider: "claude",
+        kind: "router",
+        category: "mcp-so",
+        config: {
+          mcp: {
+            name: slugify(name),
+            source: sourceUrl,
+          },
+        },
+        source_url: sourceUrl,
+        source_provider: "mcp.so",
+      });
+      if (items.length >= 80) return items;
+    }
+  }
+
+  return items;
+}
+
+async function fetchAgencyAgents(): Promise<ImportItem[]> {
+  const tree = await fetchGitHubTree("msitarzewski/agency-agents");
+  const items: ImportItem[] = [];
+
+  for (const entry of tree) {
     if (entry.type !== "blob") continue;
-    if (!/^agents\/.+\.(yaml|yml|json|md)$/i.test(entry.path)) continue;
-    const name = entry.path
-      .replace(/^agents\//, "")
-      .replace(/\.[^.]+$/, "")
-      .replace(/[-_]/g, " ");
+    if (!/^[a-z0-9-]+\/[a-z0-9-]+\.md$/i.test(entry.path)) continue;
+    if (entry.path.startsWith(".github/")) continue;
+
+    const [category = "agency", file = entry.path] = entry.path.split("/");
+    const name = file.replace(/\.[^.]+$/, "").replace(/[-_]/g, " ");
     const slug = `agency-${slugify(name)}`;
     const sourceUrl = `https://github.com/msitarzewski/agency-agents/blob/main/${entry.path}`;
     items.push({
       slug,
       name,
       tagline: `Agent uit msitarzewski/agency-agents`,
-      description: `Geïmporteerd uit ${entry.path}. Open de source-link voor de volledige spec.`,
+      description: `Geimporteerd uit ${entry.path}. Open de source-link voor de volledige spec.`,
       marketplace_kind: "agent",
       provider: "openrouter",
       model: "openrouter/auto",
       kind: "worker",
-      category: "agency",
+      category,
       config: {},
       source_url: sourceUrl,
       source_provider: "msitarzewski/agency-agents",
     });
-    if (items.length > 80) break;
+    if (items.length >= 120) break;
   }
+
   return items;
 }
 
-// ─── forrestchang/andrej-karpathy-skills ────────────────────────────────────
 async function fetchKarpathySkills(): Promise<ImportItem[]> {
   return fetchSkillRepoTree(
     "forrestchang/andrej-karpathy-skills",
@@ -118,7 +228,6 @@ async function fetchKarpathySkills(): Promise<ImportItem[]> {
   );
 }
 
-// ─── mattpocock/skills ──────────────────────────────────────────────────────
 async function fetchMattPocockSkills(): Promise<ImportItem[]> {
   return fetchSkillRepoTree(
     "mattpocock/skills",
@@ -127,60 +236,106 @@ async function fetchMattPocockSkills(): Promise<ImportItem[]> {
   );
 }
 
-// Generic skill-repo importer: walks the tree for SKILL.md / *.md files
-// in skills/<name>/SKILL.md or top-level *.md.
 async function fetchSkillRepoTree(
   repo: string,
   catPrefix: string,
   taglinePrefix: string,
 ): Promise<ImportItem[]> {
-  const treeUrl = `https://api.github.com/repos/${repo}/git/trees/main?recursive=1`;
-  const res = await fetch(treeUrl, {
-    next: { revalidate: 86400 },
-    headers: { accept: "application/vnd.github+json" },
-  });
-  if (!res.ok) return [];
-  const tree = (await res.json()) as {
-    tree?: { path: string; type: string }[];
-  };
+  const tree = await fetchGitHubTree(repo);
   const items: ImportItem[] = [];
-  for (const entry of tree.tree ?? []) {
+
+  for (const entry of tree) {
     if (entry.type !== "blob") continue;
-    // Either skills/<name>/SKILL.md or skills/<name>.md
-    const m = entry.path.match(/^skills\/([^/]+)(?:\/SKILL\.md)?$/i);
-    const m2 = entry.path.match(/^skills\/([^/]+)\.md$/i);
-    const m3 = entry.path.match(/^([^/]+)\/SKILL\.md$/i);
-    const name = (m?.[1] ?? m2?.[1] ?? m3?.[1] ?? "")
-      .replace(/[-_]/g, " ")
-      .trim();
+    if (!/(^|\/)SKILL\.md$/i.test(entry.path)) continue;
+
+    const parts = entry.path.split("/");
+    const skillDir = parts.at(-2);
+    const name = (skillDir ?? "").replace(/[-_]/g, " ").trim();
     if (!name) continue;
+
+    const category = parts[1] && parts[1] !== skillDir ? parts[1] : catPrefix;
     const slug = `${catPrefix}-${slugify(name)}`;
     const sourceUrl = `https://github.com/${repo}/blob/main/${entry.path}`;
     items.push({
       slug,
       name,
-      tagline: `${taglinePrefix}`,
-      description: `Geïmporteerd uit ${repo}. Klik de source-link voor het volledige skill-bestand.`,
+      tagline: taglinePrefix,
+      description: `Geimporteerd uit ${repo}. Klik de source-link voor het volledige skill-bestand.`,
       marketplace_kind: "skill",
       provider: "claude",
       kind: "generator",
-      category: catPrefix,
+      category,
       config: { source: sourceUrl },
       source_url: sourceUrl,
       source_provider: repo,
     });
-    if (items.length > 50) break;
+    if (items.length >= 80) break;
   }
+
   return items;
 }
 
-// ─── Sources registry ───────────────────────────────────────────────────────
+function parseMarkdownMcpList(input: {
+  text: string;
+  slugPrefix: string;
+  sourceProvider: string;
+  sourceBase?: string;
+  maxItems: number;
+}): ImportItem[] {
+  const items: ImportItem[] = [];
+  let category = "mcp";
+
+  for (const rawLine of input.text.split(/\r?\n/)) {
+    const heading = rawLine.match(/^##\s+(.+)$/);
+    if (heading) {
+      category = slugify(heading[1]!) || "mcp";
+      continue;
+    }
+    if (category === "clients" || category === "frameworks") continue;
+
+    const match = rawLine.match(
+      /^[-*]\s+(?:.*?)\*\*\[([^\]]+)]\(([^)]+)\)\*\*\s*(?:[-:\u2013\u2014]\s*)?(.+)$/,
+    );
+    if (!match) continue;
+
+    const name = cleanText(match[1]!);
+    const href = match[2]!.trim();
+    const desc = cleanText(match[3]!).slice(0, 500);
+    if (!name || !href || href.startsWith("#")) continue;
+
+    const sourceUrl = href.startsWith("http")
+      ? href
+      : `${input.sourceBase ?? ""}/${href.replace(/^\.?\//, "")}`;
+    items.push({
+      slug: `${input.slugPrefix}-${slugify(name)}`,
+      name,
+      tagline: desc.slice(0, 120),
+      description: desc,
+      marketplace_kind: "mcp_server",
+      provider: "claude",
+      kind: "router",
+      category,
+      config: {
+        mcp: {
+          name: slugify(name),
+          source: sourceUrl,
+        },
+      },
+      source_url: sourceUrl,
+      source_provider: input.sourceProvider,
+    });
+    if (items.length >= input.maxItems) break;
+  }
+
+  return items;
+}
+
 export const SOURCES: Source[] = [
   {
     id: "mcp-official",
     label: "Official MCP servers",
-    description: "modelcontextprotocol/servers — de officiële catalogus",
-    url: "https://github.com/modelcontextprotocol/servers",
+    description: "registry.modelcontextprotocol.io - de officiele catalogus",
+    url: "https://registry.modelcontextprotocol.io",
     fetcher: fetchOfficialMcp,
   },
   {
@@ -188,14 +343,14 @@ export const SOURCES: Source[] = [
     label: "mcp.so directory",
     description: "Community-curated MCP server directory",
     url: "https://mcp.so",
-    fetcher: async () => [], // placeholder — needs scraping HTML
+    fetcher: fetchMcpSo,
   },
   {
     id: "mcp-servers-org",
     label: "mcpservers.org",
     description: "MCP server marketplace",
     url: "https://mcpservers.org",
-    fetcher: async () => [], // placeholder — needs scraping HTML
+    fetcher: fetchMcpServersOrg,
   },
   {
     id: "agency-agents",
@@ -231,10 +386,45 @@ export async function getSourceItems(sourceId: string): Promise<ImportItem[]> {
   }
 }
 
+async function fetchGitHubTree(
+  repo: string,
+): Promise<{ path: string; type: string }[]> {
+  const res = await fetch(
+    `https://api.github.com/repos/${repo}/git/trees/main?recursive=1`,
+    {
+      cache: "no-store",
+      headers: { accept: "application/vnd.github+json" },
+    },
+  );
+  if (!res.ok) return [];
+  const json = (await res.json()) as {
+    tree?: { path: string; type: string }[];
+  };
+  return json.tree ?? [];
+}
+
+async function fetchText(url: string): Promise<string | null> {
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) return null;
+  return res.text();
+}
+
+function cleanText(text: string): string {
+  return text
+    .replace(/<[^>]+>/g, "")
+    .replace(/!\[[^\]]*]\([^)]+\)/g, "")
+    .replace(/\[([^\]]+)]\([^)]+\)/g, "$1")
+    .replace(/[`*_~]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function slugify(s: string): string {
   return s
     .toLowerCase()
     .trim()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
     .slice(0, 60);
