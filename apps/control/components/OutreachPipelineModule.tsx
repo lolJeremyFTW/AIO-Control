@@ -611,7 +611,10 @@ export function OutreachPipelineModule({
               style={inputStyle}
             />
           </Field>
-          <Field label="Loop interval">
+          <Field
+            label="Cycle interval (seconden)"
+            help="Hoe lang deze pipeline wacht voordat hij opnieuw mag starten. De scanner kijkt regelmatig; dit getal voorkomt dat dezelfde pipeline continu blijft lopen."
+          >
             <input
               type="number"
               min={5}
@@ -1200,9 +1203,11 @@ function Metric({
 
 function Field({
   label,
+  help,
   children,
 }: {
   label: string;
+  help?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -1211,6 +1216,20 @@ function Field({
         {label}
       </span>
       {children}
+      {help && (
+        <span
+          style={{
+            display: "block",
+            marginTop: 5,
+            color: "var(--app-fg-3)",
+            fontSize: 11,
+            fontWeight: 500,
+            lineHeight: 1.35,
+          }}
+        >
+          {help}
+        </span>
+      )}
     </label>
   );
 }
