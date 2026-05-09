@@ -51,6 +51,7 @@ const DEFER_REASONS = {
 const MAX_RUN_MS = Number(
   process.env.AGENT_RUN_TIMEOUT_MS ?? String(20 * 60_000),
 );
+const BACKGROUND_RUN_TRIGGERS = ["cron", "manual", "webhook", "retry", "chain"];
 
 export async function dispatchRun(runId: string): Promise<DispatchResult> {
   const supabase = getServiceRoleSupabase();
@@ -160,6 +161,7 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
     .eq("workspace_id", run.workspace_id)
     .eq("agent_id", run.agent_id)
     .eq("status", "running")
+    .in("triggered_by", BACKGROUND_RUN_TRIGGERS)
     .neq("id", runId);
   if (activeErr) {
     return await markFailed(runId, activeErr.message);

@@ -22,6 +22,7 @@ export const dynamic = "force-dynamic";
 const RETRY_SAME_AGENT_DELAY_MS = Number(
   process.env.RETRY_SAME_AGENT_DELAY_MS ?? String(5 * 60_000),
 );
+const BACKGROUND_RUN_TRIGGERS = ["cron", "manual", "webhook", "retry", "chain"];
 
 export async function POST(req: Request) {
   const expected = process.env.RETRY_SWEEP_SECRET;
@@ -172,7 +173,8 @@ async function hasActiveAgentRun(
     .select("id", { count: "exact", head: true })
     .eq("workspace_id", workspaceId)
     .eq("agent_id", agentId)
-    .eq("status", "running");
+    .eq("status", "running")
+    .in("triggered_by", BACKGROUND_RUN_TRIGGERS);
   if (error) return true;
   return Boolean(count && count > 0);
 }

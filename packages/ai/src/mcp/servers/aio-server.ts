@@ -40,6 +40,7 @@ const CANONICAL_DASHBOARD_ORIGIN = "https://aio.tromptech.life";
 const STATUS_MARKER = "aio:schedule-status:v1";
 const MAX_STATUS_ENTRIES = 3;
 const MAX_RESOURCE_PROMPT_CHARS = 1200;
+const BACKGROUND_RUN_TRIGGERS = ["cron", "manual", "webhook", "retry", "chain"];
 const PRODUCTION_SCHEDULE_MEMORY_ROOT =
   "/home/jeremy/aio-control/.aio/schedule-memory";
 const LOCAL_SCHEDULE_MEMORY_ROOT =
@@ -1833,7 +1834,8 @@ async function runScheduleNowMcp(args: unknown): Promise<string> {
     .select("id", { count: "exact", head: true })
     .eq("workspace_id", WORKSPACE_ID)
     .eq("agent_id", sched.agent_id)
-    .eq("status", "running");
+    .eq("status", "running")
+    .in("triggered_by", BACKGROUND_RUN_TRIGGERS);
   if (activeErr) {
     return JSON.stringify({ error: "db_error", message: activeErr.message });
   }
