@@ -472,10 +472,12 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
     ),
   );
 
+  let timedOut = false;
   try {
     await Promise.race([runLoop, timeoutRace]);
   } catch (err) {
     errorText = err instanceof Error ? err.message : "dispatch error";
+    timedOut = errorText.includes("exceeded timeout");
     history.push({
       kind: "error",
       message: errorText,
@@ -502,7 +504,7 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
   // "missing key" / "invalid model" failures get no retry because
   // they'll just fail again.
   let nextRetryAt: string | null = null;
-  if (errorText && isTransientError(errorText)) {
+  if (errorText && !timedOut && isTransientError(errorText)) {
     const { data: row } = await supabase
       .from("runs")
       .select("attempt, max_attempts")

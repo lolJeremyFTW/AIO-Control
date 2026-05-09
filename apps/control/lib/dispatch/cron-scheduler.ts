@@ -44,9 +44,7 @@ let task: cron.ScheduledTask | null = null;
 // Each queue entry carries an enqueue timestamp so we can drop stale
 // retries that piled up while the workspace was unhealthy: better to
 // run TODAY's find-leads than yesterday's failed retry.
-const WORKSPACE_CONCURRENCY = Number(
-  process.env.WORKSPACE_CONCURRENCY ?? "1",
-);
+const WORKSPACE_CONCURRENCY = Number(process.env.WORKSPACE_CONCURRENCY ?? "1");
 
 type QueueEntry = {
   runId: string;
@@ -75,6 +73,9 @@ const QUEUE_MAX_AGE_MS = Number(
 );
 const RETRY_SAME_AGENT_DELAY_MS = Number(
   process.env.RETRY_SAME_AGENT_DELAY_MS ?? String(5 * 60_000),
+);
+const STARTUP_ORPHAN_GRACE_MS = Number(
+  process.env.STARTUP_ORPHAN_GRACE_MS ?? "90000",
 );
 
 async function markQueueRejected(runId: string, reason: string): Promise<void> {
@@ -147,7 +148,10 @@ function enqueueDispatch(workspaceId: string, runId: string): void {
   if (q.runningCount < WORKSPACE_CONCURRENCY) {
     q.runningCount++;
     void drainWorkspaceQueue(workspaceId).catch((err) =>
-      console.error(`[cron-queue] drain failed for workspace ${workspaceId}`, err),
+      console.error(
+        `[cron-queue] drain failed for workspace ${workspaceId}`,
+        err,
+      ),
     );
   }
 }
@@ -271,6 +275,9 @@ async function cleanupZombieRuns(): Promise<void> {
 async function reapStartupOrphans(): Promise<void> {
   const admin = getServiceRoleSupabase();
   const nowIso = new Date().toISOString();
+  const graceCutoff = new Date(
+    Date.now() - STARTUP_ORPHAN_GRACE_MS,
+  ).toISOString();
   const { count, error } = await admin
     .from("runs")
     .update(
@@ -285,11 +292,14 @@ async function reapStartupOrphans(): Promise<void> {
       },
       { count: "exact" },
     )
-    .eq("status", "running");
+    .eq("status", "running")
+    .lt("started_at", graceCutoff);
   if (error) {
     console.error("[cron-scheduler] startup orphan reap failed", error);
   } else if (count && count > 0) {
-    console.log(`[cron-scheduler] reaped ${count} orphan runs — queued for retry`);
+    console.log(
+      `[cron-scheduler] reaped ${count} orphan runs — queued for retry`,
+    );
   }
 }
 
@@ -467,7 +477,9 @@ async function dispatchQueuedOrphans(): Promise<void> {
     // Enqueue sequentially per workspace — never burst all at once.
     enqueueDispatch(run.workspace_id as string, run.id as string);
   }
-  console.log(`[cron-scheduler] re-queued ${data.length} orphaned queued run(s) via workspace queue`);
+  console.log(
+    `[cron-scheduler] re-queued ${data.length} orphaned queued run(s) via workspace queue`,
+  );
 }
 
 /** One scan: find due cron schedules and dispatch a run for each. */

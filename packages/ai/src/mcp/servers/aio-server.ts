@@ -1828,6 +1828,22 @@ async function runScheduleNowMcp(args: unknown): Promise<string> {
         "Schedule is disabled. Enable it first or pass toggle_schedule enabled=true.",
     });
   }
+  const { count: activeCount, error: activeErr } = await supabaseAio
+    .from("runs")
+    .select("id", { count: "exact", head: true })
+    .eq("workspace_id", WORKSPACE_ID)
+    .eq("agent_id", sched.agent_id)
+    .eq("status", "running");
+  if (activeErr) {
+    return JSON.stringify({ error: "db_error", message: activeErr.message });
+  }
+  if (activeCount && activeCount > 0) {
+    return JSON.stringify({
+      error: "already_running",
+      message:
+        "Agent already has an active run. Wait for it to finish before triggering again.",
+    });
+  }
   const prompt =
     parsed.data.prompt?.trim() ||
     ((sched.instructions as string | null | undefined) ?? "").trim() ||
