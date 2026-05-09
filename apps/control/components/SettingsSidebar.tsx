@@ -7,6 +7,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 
 import { translate, type Locale } from "../lib/i18n/dict";
 import {
@@ -25,7 +26,31 @@ type Props = {
 
 export function SettingsSidebar({ workspaceSlug, locale }: Props) {
   const pathname = usePathname() ?? "";
+  const [hash, setHash] = useState("");
   const t = (k: string) => translate(locale, k);
+
+  useEffect(() => {
+    const syncHash = () => setHash(window.location.hash.replace(/^#/, ""));
+    syncHash();
+    window.addEventListener("hashchange", syncHash);
+    window.addEventListener("popstate", syncHash);
+    return () => {
+      window.removeEventListener("hashchange", syncHash);
+      window.removeEventListener("popstate", syncHash);
+    };
+  }, []);
+
+  const routeHashes = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const s of SETTINGS_SECTIONS) {
+      if (!s.hash) continue;
+      const route = `/${workspaceSlug}/settings/${s.path}`;
+      const hashes = map.get(route) ?? new Set<string>();
+      hashes.add(s.hash);
+      map.set(route, hashes);
+    }
+    return map;
+  }, [workspaceSlug]);
 
   // Build a stable group → sections map so we can render a group header
   // before each block. Sections within a group keep their declaration
@@ -65,9 +90,13 @@ export function SettingsSidebar({ workspaceSlug, locale }: Props) {
               {SETTINGS_GROUP_LABELS[group]}
             </div>
             {sections.map((s) => {
-              const href = `/${workspaceSlug}/settings/${s.id}`;
-              const active =
-                pathname === href || pathname.startsWith(href + "/");
+              const route = `/${workspaceSlug}/settings/${s.path}`;
+              const href = s.hash ? `${route}#${s.hash}` : route;
+              const routeActive =
+                pathname === route || pathname.startsWith(route + "/");
+              const active = s.hash
+                ? routeActive && hash === s.hash
+                : routeActive && !routeHashes.get(route)?.has(hash);
               return (
                 <Link
                   key={s.id}
