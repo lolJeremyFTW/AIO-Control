@@ -7,8 +7,14 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { updateSchedule } from "../app/actions/schedules";
-import type { ScheduleRow } from "../lib/queries/schedules";
+import {
+  replaceScheduleReferences,
+  updateSchedule,
+} from "../app/actions/schedules";
+import type {
+  ScheduleReferenceRow,
+  ScheduleRow,
+} from "../lib/queries/schedules";
 import {
   NotificationBindingsField,
   type NotificationTargetChoice,
@@ -29,6 +35,7 @@ type Target = { id: string; name: string };
 type AgentChoice = { id: string; name: string; provider: string };
 
 type NavNodeChoice = { id: string; name: string; depth: number };
+type ReferenceDraft = { path: string; content: string; sort_order: number };
 
 type Props = {
   workspaceSlug: string;
@@ -43,6 +50,7 @@ type Props = {
   /** Topics / modules for this business — pins the schedule (and its
    *  run notifications) to a specific nav_node. */
   navNodes?: NavNodeChoice[];
+  references?: ScheduleReferenceRow[];
   onClose: () => void;
 };
 
@@ -55,6 +63,7 @@ export function EditScheduleDialog({
   selectedNotificationTargetIds = [],
   agents = [],
   navNodes = [],
+  references = [],
   onClose,
 }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -90,12 +99,29 @@ export function EditScheduleDialog({
   const [enabled, setEnabled] = useState(schedule.enabled);
   const [agentId, setAgentId] = useState(schedule.agent_id);
   const [navNodeId, setNavNodeId] = useState(schedule.nav_node_id ?? "");
+  const [referenceDrafts, setReferenceDrafts] = useState<ReferenceDraft[]>(() =>
+    references.map((ref, index) => ({
+      path: ref.path,
+      content: ref.content,
+      sort_order: ref.sort_order ?? (index + 1) * 10,
+    })),
+  );
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
   useEffect(() => {
     ref.current?.showModal();
   }, []);
+
+  useEffect(() => {
+    setReferenceDrafts(
+      references.map((ref, index) => ({
+        path: ref.path,
+        content: ref.content,
+        sort_order: ref.sort_order ?? (index + 1) * 10,
+      })),
+    );
+  }, [references, schedule.id]);
 
   const cronExpr = useMemo(
     () =>
@@ -130,12 +156,44 @@ export function EditScheduleDialog({
         enabled,
       },
     });
-    setPending(false);
     if (!res.ok) {
       setError(res.error);
+      setPending(false);
+      return;
+    }
+    const refs = await replaceScheduleReferences({
+      workspace_slug: workspaceSlug,
+      workspace_id: schedule.workspace_id,
+      schedule_id: schedule.id,
+      references: referenceDrafts,
+    });
+    setPending(false);
+    if (!refs.ok) {
+      setError(refs.error);
       return;
     }
     onClose();
+  };
+
+  const addReference = () => {
+    setReferenceDrafts((current) => [
+      ...current,
+      {
+        path: "references/new-reference.md",
+        content: "",
+        sort_order: (current.length + 1) * 10,
+      },
+    ]);
+  };
+
+  const updateReference = (index: number, patch: Partial<ReferenceDraft>) => {
+    setReferenceDrafts((current) =>
+      current.map((ref, i) => (i === index ? { ...ref, ...patch } : ref)),
+    );
+  };
+
+  const removeReference = (index: number) => {
+    setReferenceDrafts((current) => current.filter((_, i) => i !== index));
   };
 
   return (
@@ -231,6 +289,97 @@ export function EditScheduleDialog({
             style={{ ...inp, resize: "vertical" }}
           />
         </Field>
+
+        <div
+          style={{
+            border: "1.5px solid var(--app-border-2)",
+            borderRadius: 12,
+            padding: 12,
+            background: "var(--app-card-2)",
+            marginBottom: 12,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 8,
+              marginBottom: 8,
+            }}
+          >
+            <div>
+              <div style={{ fontSize: 11.5, fontWeight: 800 }}>
+                Reference files
+              </div>
+              <div style={{ color: "var(--app-fg-3)", fontSize: 11 }}>
+                Markdown-bestanden die automatisch aan deze routine-run worden
+                toegevoegd.
+              </div>
+            </div>
+            <button type="button" onClick={addReference} style={btnSecondary}>
+              + Bestand
+            </button>
+          </div>
+          {referenceDrafts.length === 0 ? (
+            <p style={{ margin: 0, color: "var(--app-fg-3)", fontSize: 12 }}>
+              Nog geen reference files.
+            </p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {referenceDrafts.map((ref, index) => (
+                <div
+                  key={`${ref.path}-${index}`}
+                  style={{
+                    border: "1px solid var(--app-border)",
+                    borderRadius: 10,
+                    padding: 10,
+                    background: "var(--app-card)",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr auto",
+                      gap: 8,
+                      marginBottom: 8,
+                    }}
+                  >
+                    <input
+                      value={ref.path}
+                      onChange={(e) =>
+                        updateReference(index, { path: e.target.value })
+                      }
+                      placeholder="references/search-queries.md"
+                      style={inp}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeReference(index)}
+                      style={{ ...btnSecondary, color: "var(--rose)" }}
+                    >
+                      Verwijder
+                    </button>
+                  </div>
+                  <textarea
+                    value={ref.content}
+                    onChange={(e) =>
+                      updateReference(index, { content: e.target.value })
+                    }
+                    rows={6}
+                    placeholder="Markdown inhoud..."
+                    style={{
+                      ...inp,
+                      resize: "vertical",
+                      fontFamily: "ui-monospace, Menlo, monospace",
+                      fontSize: 12,
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         {schedule.kind === "cron" && (
           <div

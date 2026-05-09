@@ -28,6 +28,16 @@ export type ActionResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: string };
 
+const MAX_SCHEDULE_REFERENCES = 12;
+const MAX_REFERENCE_CONTENT_CHARS = 20_000;
+const MAX_TOTAL_REFERENCE_CHARS = 60_000;
+
+export type ScheduleReferenceInput = {
+  path: string;
+  content: string;
+  sort_order?: number;
+};
+
 function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
@@ -35,6 +45,65 @@ function sha256(value: string): string {
 function mintWebhookSecret(): string {
   // 32 random bytes → 43-char base64url, plenty of entropy + URL-safe.
   return randomBytes(32).toString("base64url");
+}
+
+function normalizeReferencePath(value: string): string | null {
+  const clean = value.trim().replace(/\\/g, "/").replace(/^\/+/, "");
+  if (!clean) return null;
+  if (clean.includes("..")) return null;
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._/-]{0,159}$/.test(clean)) return null;
+  return clean.startsWith("references/") ? clean : `references/${clean}`;
+}
+
+function normalizeScheduleReferences(
+  refs: ScheduleReferenceInput[],
+): ActionResult<Array<{ path: string; content: string; sort_order: number }>> {
+  if (refs.length > MAX_SCHEDULE_REFERENCES) {
+    return {
+      ok: false,
+      error: `Maximaal ${MAX_SCHEDULE_REFERENCES} reference files per schedule.`,
+    };
+  }
+  const seen = new Set<string>();
+  let totalChars = 0;
+  const normalized: Array<{
+    path: string;
+    content: string;
+    sort_order: number;
+  }> = [];
+
+  for (const [index, ref] of refs.entries()) {
+    const path = normalizeReferencePath(ref.path);
+    const content = ref.content.trim();
+    if (!path || !content) continue;
+    if (seen.has(path)) {
+      return { ok: false, error: `Dubbele reference path: ${path}` };
+    }
+    if (content.length > MAX_REFERENCE_CONTENT_CHARS) {
+      return {
+        ok: false,
+        error: `${path} is te lang; max ${MAX_REFERENCE_CONTENT_CHARS} tekens.`,
+      };
+    }
+    totalChars += content.length;
+    if (totalChars > MAX_TOTAL_REFERENCE_CHARS) {
+      return {
+        ok: false,
+        error: `Reference files zijn samen te lang; max ${MAX_TOTAL_REFERENCE_CHARS} tekens.`,
+      };
+    }
+    seen.add(path);
+    normalized.push({
+      path,
+      content,
+      sort_order:
+        typeof ref.sort_order === "number" && Number.isFinite(ref.sort_order)
+          ? Math.round(ref.sort_order)
+          : (index + 1) * 10,
+    });
+  }
+
+  return { ok: true, data: normalized };
 }
 
 export async function createCronSchedule(input: {
@@ -543,6 +612,59 @@ export async function updateSchedule(input: {
       cron_expr: (memorySchedule.cron_expr as string | null) ?? null,
     }).catch((err) => console.warn("[schedule-memory] update failed", err));
   }
+  revalidatePath(`/${input.workspace_slug}`);
+  return { ok: true, data: null };
+}
+
+export async function replaceScheduleReferences(input: {
+  workspace_slug: string;
+  workspace_id: string;
+  schedule_id: string;
+  references: ScheduleReferenceInput[];
+}): Promise<ActionResult<null>> {
+  const normalized = normalizeScheduleReferences(input.references);
+  if (!normalized.ok) return normalized;
+
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Unauthorized" };
+
+  const { data: schedule, error: scheduleError } = await supabase
+    .from("schedules")
+    .select("id, workspace_id")
+    .eq("id", input.schedule_id)
+    .maybeSingle();
+  if (scheduleError || !schedule) {
+    return { ok: false, error: "Schedule niet gevonden." };
+  }
+  if ((schedule.workspace_id as string) !== input.workspace_id) {
+    return { ok: false, error: "Schedule hoort niet bij deze workspace." };
+  }
+
+  const { error: deleteError } = await supabase
+    .from("schedule_references")
+    .delete()
+    .eq("schedule_id", input.schedule_id);
+  if (deleteError) return { ok: false, error: deleteError.message };
+
+  if (normalized.data.length > 0) {
+    const { error: insertError } = await supabase
+      .from("schedule_references")
+      .insert(
+        normalized.data.map((ref) => ({
+          workspace_id: input.workspace_id,
+          schedule_id: input.schedule_id,
+          path: ref.path,
+          content: ref.content,
+          sort_order: ref.sort_order,
+          created_by: user.id,
+        })),
+      );
+    if (insertError) return { ok: false, error: insertError.message };
+  }
+
   revalidatePath(`/${input.workspace_slug}`);
   return { ok: true, data: null };
 }

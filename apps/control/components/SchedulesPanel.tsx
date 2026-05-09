@@ -9,7 +9,10 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 
 import type { AgentRow } from "../lib/queries/agents";
-import type { ScheduleRow } from "../lib/queries/schedules";
+import type {
+  ScheduleReferenceRow,
+  ScheduleRow,
+} from "../lib/queries/schedules";
 import { CronBuilder } from "./CronBuilder";
 import { EditScheduleDialog } from "./EditScheduleDialog";
 import type { NotificationTargetChoice } from "./NotificationBindingsField";
@@ -36,6 +39,7 @@ type Props = {
   customIntegrations?: Target[];
   notificationTargets?: NotificationTargetChoice[];
   notificationTargetBindings?: Record<string, string[]>;
+  scheduleReferences?: Record<string, ScheduleReferenceRow[]>;
   /** When true, the panel only renders the "Bestaande schedules" list
    *  (and edit/delete/run-now actions per card) — the inline create
    *  form at the top is suppressed. Used by /business/[id]/schedules
@@ -56,6 +60,7 @@ export function SchedulesPanel({
   customIntegrations = [],
   notificationTargets = [],
   notificationTargetBindings = {},
+  scheduleReferences = {},
   hideCreateForm = false,
 }: Props) {
   const router = useRouter();
@@ -597,6 +602,18 @@ export function SchedulesPanel({
                       {new Date(s.last_fired_at).toLocaleString("nl-NL")}
                     </span>
                   )}
+                  {(scheduleReferences[s.id]?.length ?? 0) > 0 && (
+                    <span
+                      style={{
+                        display: "block",
+                        marginTop: 6,
+                        fontSize: 11,
+                        color: "var(--app-fg-3)",
+                      }}
+                    >
+                      {scheduleReferences[s.id]?.length} reference file(s)
+                    </span>
+                  )}
                   {(() => {
                     const cardAgent = agents.find((a) => a.id === s.agent_id);
                     const cardIsSubscription =
@@ -679,6 +696,7 @@ export function SchedulesPanel({
           selectedNotificationTargetIds={
             notificationTargetBindings[editingSchedule.id] ?? []
           }
+          references={scheduleReferences[editingSchedule.id] ?? []}
           onClose={closeEditingSchedule}
         />
       )}

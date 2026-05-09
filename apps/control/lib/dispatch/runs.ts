@@ -224,6 +224,13 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
       messages = prependScheduleMemory(messages, memoryBlock);
     }
   }
+  const scheduleReferenceBlock = await loadScheduleReferenceBlock(
+    supabase,
+    (run.schedule_id as string | null) ?? null,
+  );
+  if (scheduleReferenceBlock) {
+    messages = appendScheduleReferenceBlock(messages, scheduleReferenceBlock);
+  }
 
   const config = withDefaultAioMcpConfig(
     (agent.config ?? {}) as AgentConfig,
@@ -774,6 +781,52 @@ function withDefaultAioMcpConfig(
   if (existing.includes("aio")) return { ...next, mcpServers: existing };
 
   return { ...next, mcpServers: ["aio", ...existing] };
+}
+
+async function loadScheduleReferenceBlock(
+  supabase: ReturnType<typeof getServiceRoleSupabase>,
+  scheduleId: string | null,
+): Promise<string | null> {
+  if (!scheduleId) return null;
+  const { data, error } = await supabase
+    .from("schedule_references")
+    .select("path, content")
+    .eq("schedule_id", scheduleId)
+    .order("sort_order", { ascending: true })
+    .order("path", { ascending: true });
+  if (error) {
+    if (error.code !== "42P01" && error.code !== "PGRST205") {
+      console.warn("[schedule-references] read failed", error);
+    }
+    return null;
+  }
+  const rows = (data ?? []) as Array<{ path: string; content: string }>;
+  if (rows.length === 0) return null;
+  return [
+    "## Routine reference files",
+    "Use these attached reference files as supporting material for this schedule. They override stale inline examples when they are more specific.",
+    ...rows.map(
+      (row) => `\n### ${row.path}\n\n${row.content.trim().slice(0, 20_000)}`,
+    ),
+  ].join("\n");
+}
+
+function appendScheduleReferenceBlock(
+  messages: ChatMessage[],
+  referenceBlock: string,
+): ChatMessage[] {
+  const next = [...messages];
+  for (let i = next.length - 1; i >= 0; i--) {
+    const msg = next[i];
+    if (msg?.role === "user") {
+      next[i] = {
+        ...msg,
+        content: `${msg.content}\n\n${referenceBlock}`,
+      };
+      return next;
+    }
+  }
+  return [...next, { role: "user", content: referenceBlock }];
 }
 
 function supportsNativeMcp(provider: ProviderId): boolean {

@@ -27,6 +27,48 @@ export type ScheduleRow = {
   nav_node_id: string | null;
 };
 
+export type ScheduleReferenceRow = {
+  id: string;
+  workspace_id: string;
+  schedule_id: string;
+  path: string;
+  content: string;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export async function listScheduleReferencesForSchedules(
+  scheduleIds: string[],
+): Promise<ScheduleReferenceRow[]> {
+  if (scheduleIds.length === 0) return [];
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("schedule_references")
+    .select(
+      "id, workspace_id, schedule_id, path, content, sort_order, created_at, updated_at",
+    )
+    .in("schedule_id", scheduleIds)
+    .order("sort_order", { ascending: true })
+    .order("path", { ascending: true });
+  if (error) {
+    console.error("listScheduleReferencesForSchedules failed", error);
+    return [];
+  }
+  return (data ?? []) as ScheduleReferenceRow[];
+}
+
+export function groupScheduleReferences(
+  rows: ScheduleReferenceRow[],
+): Record<string, ScheduleReferenceRow[]> {
+  return rows.reduce<Record<string, ScheduleReferenceRow[]>>((acc, row) => {
+    const current = acc[row.schedule_id] ?? [];
+    current.push(row);
+    acc[row.schedule_id] = current;
+    return acc;
+  }, {});
+}
+
 export async function listSchedulesForBusiness(
   businessId: string,
 ): Promise<ScheduleRow[]> {

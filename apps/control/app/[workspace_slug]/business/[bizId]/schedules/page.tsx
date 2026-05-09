@@ -16,6 +16,8 @@ import {
   findBusiness,
 } from "../../../../../lib/queries/businesses";
 import {
+  groupScheduleReferences,
+  listScheduleReferencesForSchedules,
   listSchedulesForBusiness,
   listRecentRunsForBusiness,
 } from "../../../../../lib/queries/schedules";
@@ -98,6 +100,11 @@ export default async function BusinessSchedulesPage({ params }: Props) {
       owner_type: "schedule",
       owner_id: schedule.id,
     })),
+  );
+  const scheduleReferences = groupScheduleReferences(
+    await listScheduleReferencesForSchedules(
+      schedules.map((schedule) => schedule.id),
+    ),
   );
 
   // Build the public origin webhook URLs should resolve under. In production
@@ -223,6 +230,7 @@ export default async function BusinessSchedulesPage({ params }: Props) {
         customIntegrations={customIntegrations}
         notificationTargets={notificationTargets}
         notificationTargetBindings={notificationTargetBindings}
+        scheduleReferences={scheduleReferences}
         hideCreateForm={agents.length > 0}
       />
 

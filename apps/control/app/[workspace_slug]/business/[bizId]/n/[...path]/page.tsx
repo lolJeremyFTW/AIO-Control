@@ -41,6 +41,10 @@ import type {
   RunRow,
   ScheduleRow,
 } from "../../../../../../lib/queries/schedules";
+import {
+  groupScheduleReferences,
+  listScheduleReferencesForSchedules,
+} from "../../../../../../lib/queries/schedules";
 import { AgentsList } from "../../../../../../components/AgentsList";
 import { GenerateDashboardCard } from "../../../../../../components/GenerateDashboardCard";
 import { NewNavNodeButton } from "../../../../../../components/NewNavNodeButton";
@@ -441,6 +445,11 @@ export default async function NavNodePage({ params, searchParams }: Props) {
         owner_id: schedule.id,
       })),
     );
+    const scheduleReferences = groupScheduleReferences(
+      await listScheduleReferencesForSchedules(
+        schedules.map((schedule) => schedule.id),
+      ),
+    );
     const proto = hdrs.get("x-forwarded-proto") ?? "http";
     const host =
       hdrs.get("x-forwarded-host") ?? hdrs.get("host") ?? "localhost:3010";
@@ -496,6 +505,7 @@ export default async function NavNodePage({ params, searchParams }: Props) {
             }
             notificationTargets={notificationTargets}
             notificationTargetBindings={notificationTargetBindings}
+            scheduleReferences={scheduleReferences}
             hideCreateForm={agents.length > 0}
           />
           <section style={{ marginTop: 28 }}>
