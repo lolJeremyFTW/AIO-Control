@@ -77,6 +77,7 @@ const RETRY_SAME_AGENT_DELAY_MS = Number(
 const STARTUP_ORPHAN_GRACE_MS = Number(
   process.env.STARTUP_ORPHAN_GRACE_MS ?? "90000",
 );
+const BACKGROUND_RUN_TRIGGERS = ["cron", "manual", "webhook", "retry", "chain"];
 
 async function markQueueRejected(runId: string, reason: string): Promise<void> {
   const admin = getServiceRoleSupabase();
@@ -101,7 +102,8 @@ async function hasActiveAgentRun(
     .select("id", { count: "exact", head: true })
     .eq("workspace_id", workspaceId)
     .eq("agent_id", agentId)
-    .eq("status", "running");
+    .eq("status", "running")
+    .in("triggered_by", BACKGROUND_RUN_TRIGGERS);
   if (error) {
     console.error("[cron-scheduler] active agent guard failed", error);
     return true;
@@ -550,7 +552,8 @@ async function tick(): Promise<void> {
         .from("runs")
         .select("id", { count: "exact", head: true })
         .eq("schedule_id", sched.id)
-        .eq("status", "running");
+        .eq("status", "running")
+        .in("triggered_by", BACKGROUND_RUN_TRIGGERS);
       if (activeCount && activeCount > 0) {
         console.log(
           `[cron-scheduler] schedule ${sched.id} already has a running run — skipping`,
