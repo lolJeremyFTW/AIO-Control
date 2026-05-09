@@ -589,6 +589,14 @@ export function OutreachPipelineModule({
             >
               Run fast cycle
             </button>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => save()}
+              style={secondaryButtonStyle(pending)}
+            >
+              Opslaan
+            </button>
           </div>
         </div>
 
@@ -787,9 +795,19 @@ export function OutreachPipelineModule({
               onderbouwen.
             </p>
           </div>
-          <button type="button" onClick={addStep} style={secondaryButtonStyle(false)}>
-            + Stap
-          </button>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button type="button" onClick={addStep} style={secondaryButtonStyle(false)}>
+              + Stap
+            </button>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => save()}
+              style={primaryButtonStyle(pending)}
+            >
+              Opslaan
+            </button>
+          </div>
         </div>
 
         <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
@@ -1025,6 +1043,14 @@ export function OutreachPipelineModule({
             />
             Self-learning actief
           </label>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => save()}
+            style={primaryButtonStyle(pending)}
+          >
+            Opslaan
+          </button>
         </div>
         <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
           {blueprint.correction_rules.map((rule, index) => (
