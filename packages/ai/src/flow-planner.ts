@@ -62,6 +62,10 @@ export type PipelineBlueprintPlan = {
   explanation: string;
 };
 
+export type PipelineStepDraftPlan = PipelineStepPlan & {
+  explanation: string;
+};
+
 export type BlueprintSkillPlan = SkillPlan & {
   key: string;
 };
@@ -364,6 +368,52 @@ const PIPELINE_BLUEPRINT_TOOL: Anthropic.Tool = {
             },
           },
         },
+      },
+    },
+  },
+};
+
+const PIPELINE_STEP_TOOL: Anthropic.Tool = {
+  name: "create_pipeline_step",
+  description:
+    "Maak of verbeter precies 1 AIO pipeline subagent stap met heldere handoff, taak, QA en promptregels.",
+  input_schema: {
+    type: "object" as const,
+    required: [
+      "id",
+      "label",
+      "agent",
+      "provider",
+      "model",
+      "needs",
+      "task",
+      "handoff",
+      "qa_rule",
+      "positive_prompt",
+      "negative_prompt",
+      "context_policy",
+      "explanation",
+    ],
+    properties: {
+      id: { type: "string" },
+      label: { type: "string" },
+      agent: { type: "string" },
+      provider: { type: "string" },
+      model: { type: "string" },
+      needs: { type: "string" },
+      task: { type: "string" },
+      handoff: { type: "string" },
+      qa_rule: { type: "string" },
+      positive_prompt: { type: "string" },
+      negative_prompt: { type: "string" },
+      context_policy: {
+        type: "string",
+        enum: ["handoff_only", "none"],
+      },
+      explanation: {
+        type: "string",
+        description:
+          "Korte uitleg waarom deze stap zo is opgebouwd en welke risico's zijn afgedekt.",
       },
     },
   },
@@ -787,6 +837,52 @@ function normalizePipelineBlueprintPlan(
   };
 }
 
+function normalizePipelineStepDraftPlan(
+  input: Partial<PipelineStepDraftPlan>,
+  fallback?: Partial<PipelineStepPlan>,
+): PipelineStepDraftPlan {
+  const label = input.label?.trim() || fallback?.label?.trim() || "Nieuwe stap";
+  return {
+    id: slugifyPipelineId(input.id || fallback?.id || label, "step"),
+    label,
+    agent: input.agent?.trim() || fallback?.agent?.trim() || "Subagent",
+    provider:
+      input.provider?.trim() || fallback?.provider?.trim() || "openai_codex",
+    model: input.model?.trim() || fallback?.model?.trim() || "",
+    needs:
+      input.needs?.trim() ||
+      fallback?.needs?.trim() ||
+      "Alleen de expliciete opdracht, scope, vereiste inputvelden en vorige stap-output van de orchestrator.",
+    task:
+      input.task?.trim() ||
+      fallback?.task?.trim() ||
+      "Voer deze stap afgebakend uit en stop zodra het gevraagde resultaat klaar is.",
+    handoff:
+      input.handoff?.trim() ||
+      fallback?.handoff?.trim() ||
+      "Geef resultaat, bewijs, onzekerheden, skips en aanbevolen vervolgactie terug.",
+    qa_rule:
+      input.qa_rule?.trim() ||
+      fallback?.qa_rule?.trim() ||
+      "Orchestrator controleert volledigheid, dedupe, risico, bronkwaliteit en bruikbaarheid voor de volgende stap.",
+    positive_prompt:
+      input.positive_prompt?.trim() ||
+      fallback?.positive_prompt?.trim() ||
+      "Werk strikt binnen de meegegeven scope, valideer output en lever compact bewijs.",
+    negative_prompt:
+      input.negative_prompt?.trim() ||
+      fallback?.negative_prompt?.trim() ||
+      "Geen aannames, geen brede context ophalen, geen externe actie buiten de taak uitvoeren en geen stille failures.",
+    context_policy: (
+      input.context_policy === "none" ||
+      fallback?.context_policy === "none"
+        ? "none"
+        : "handoff_only"
+    ) as PipelineStepPlan["context_policy"],
+    explanation: input.explanation?.trim() ?? "",
+  };
+}
+
 function normalizeTopicSuggestionsPlan(
   input: Partial<BusinessTopicSuggestionsPlan>,
 ): BusinessTopicSuggestionsPlan {
@@ -988,6 +1084,96 @@ Regels:
 
   return normalizePipelineBlueprintPlan(
     toolBlock.input as Partial<PipelineBlueprintPlan>,
+  );
+}
+
+export async function generatePipelineStepDraftPlan(
+  input: {
+    request?: string;
+    scopeName?: string;
+    pipelineName?: string;
+    stepIndex?: number;
+    currentStep?: Partial<PipelineStepPlan>;
+    previousSteps?: PipelineStepPlan[];
+    nextSteps?: PipelineStepPlan[];
+    availableAgents?: Array<{
+      id: string;
+      name: string;
+      kind?: string;
+      provider?: string;
+      model?: string | null;
+    }>;
+  },
+  apiKey: string,
+  provider: FlowPlanProvider = "claude",
+): Promise<PipelineStepDraftPlan> {
+  const clientOpts: ConstructorParameters<typeof Anthropic>[0] = { apiKey };
+  if (provider === "minimax") {
+    clientOpts.baseURL = minimaxAnthropicBase();
+    clientOpts.defaultHeaders = { Authorization: `Bearer ${apiKey}` };
+  }
+
+  const model = provider === "minimax" ? MINIMAX_MODEL : "claude-sonnet-4-6";
+  const client = new Anthropic(clientOpts);
+  const system = `Je bent een senior AIO Control pipeline architect.
+Je ontwerpt precies 1 subagent stap, niet de hele pipeline.
+
+Doel:
+- Maak de stap concreet genoeg dat een subagent hem kan uitvoeren zonder brede context.
+- Beschrijf exact wat de orchestrator moet doorgeven in "needs".
+- Beschrijf exact wat de subagent doet in "task".
+- Beschrijf exact welke output terug moet in "handoff".
+- Schrijf een QA-regel die echte risico's vangt: scope, dedupe, bronkwaliteit, permissions, rate limits, schema/velden, evidence en onzekerheden.
+- Positive prompt = gewenst gedrag/outputcriteria.
+- Negative prompt = verboden gedrag/failure modes.
+- Kies provider/model conservatief. Behoud bestaande provider/model tenzij duidelijk onlogisch.
+- Geen fake externe acties. Als een API/integratie niet zeker beschikbaar is, laat de stap een draft/check/handmatige review opleveren.
+- Gebruik dezelfde taal als de gebruiker.`;
+
+  const msg = await client.messages.create({
+    model,
+    max_tokens: 4096,
+    system,
+    tools: [PIPELINE_STEP_TOOL],
+    tool_choice: { type: "tool", name: "create_pipeline_step" },
+    messages: [
+      {
+        role: "user",
+        content:
+          "Maak of verbeter precies deze ene pipeline-stap. Gebruik verplicht de create_pipeline_step tool. Als de provider geen tool-call kan teruggeven, antwoord dan uitsluitend met JSON volgens hetzelfde schema.\n\n" +
+          JSON.stringify(
+            {
+              scope_name: input.scopeName ?? "",
+              pipeline_name: input.pipelineName ?? "",
+              step_index: input.stepIndex ?? null,
+              request: input.request ?? "",
+              current_step: input.currentStep ?? null,
+              previous_steps: input.previousSteps ?? [],
+              next_steps: input.nextSteps ?? [],
+              available_agents: input.availableAgents ?? [],
+            },
+            null,
+            2,
+          ),
+      },
+    ],
+  });
+
+  const toolBlock = msg.content.find((block) => block.type === "tool_use");
+  if (!toolBlock || toolBlock.type !== "tool_use") {
+    const parsed =
+      parseJsonObjectFromText<Partial<PipelineStepDraftPlan>>(
+        textFromMessage(msg),
+      );
+    if (parsed) return normalizePipelineStepDraftPlan(parsed, input.currentStep);
+    throw new Error(
+      "AI gaf geen bruikbare stap terug. Probeer opnieuw met een concretere stapbeschrijving.",
+    );
+  }
+
+  return normalizePipelineStepDraftPlan(
+    toolBlock.input as Partial<PipelineStepDraftPlan>,
+    input.currentStep,
   );
 }
 

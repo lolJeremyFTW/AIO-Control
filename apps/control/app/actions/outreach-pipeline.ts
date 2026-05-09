@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import {
   generatePipelineBlueprintPlan,
+  generatePipelineStepDraftPlan,
   type FlowPlanProvider,
 } from "@aio/ai/flow-planner";
 
@@ -44,6 +45,21 @@ type PipelineAgentOption = {
   kind?: string;
   provider?: string;
   model?: string | null;
+};
+
+type PipelineStepInput = {
+  id?: string;
+  label?: string;
+  agent?: string;
+  provider?: string;
+  model?: string;
+  needs?: string;
+  task?: string;
+  handoff?: string;
+  qa_rule?: string;
+  positive_prompt?: string;
+  negative_prompt?: string;
+  context_policy?: "handoff_only" | "none";
 };
 
 export async function updateOutreachPipelineConfig(
@@ -251,6 +267,124 @@ export async function generateOutreachPipelineBlueprint(input: {
   }
 }
 
+export async function generateOutreachPipelineStep(input: {
+  workspace_id: string;
+  business_id: string;
+  nav_node_id?: string | null;
+  scope_name?: string;
+  pipeline_name?: string;
+  step_index?: number;
+  request?: string;
+  current_step?: PipelineStepInput;
+  previous_steps?: PipelineStepInput[];
+  next_steps?: PipelineStepInput[];
+  agents?: PipelineAgentOption[];
+}): Promise<
+  OutreachPipelineActionResult<
+    ReturnType<typeof sanitizePipelineStep> & { explanation: string }
+  >
+> {
+  const currentStep = input.current_step ?? {};
+  const request = cleanText(
+    input.request,
+    [
+      currentStep.label,
+      currentStep.agent,
+      currentStep.needs,
+      currentStep.task,
+      currentStep.handoff,
+      currentStep.qa_rule,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  );
+  if (!request) {
+    return {
+      ok: false,
+      error: "Beschrijf kort wat deze stap moet doen of vul alvast velden in.",
+    };
+  }
+
+  const credential = await resolvePipelineAiCredential(
+    input.workspace_id,
+    input.business_id,
+  );
+  if (!credential.apiKey) {
+    return {
+      ok: false,
+      error:
+        "Geen Claude of MiniMax API key gevonden. Voeg een key toe via Settings -> API Keys.",
+    };
+  }
+
+  try {
+    const step = await generatePipelineStepDraftPlan(
+      {
+        request,
+        scopeName: input.scope_name,
+        pipelineName: input.pipeline_name,
+        stepIndex: input.step_index,
+        currentStep,
+        previousSteps: (input.previous_steps ?? []).map((item) =>
+          sanitizePipelineStep(item),
+        ),
+        nextSteps: (input.next_steps ?? []).map((item) =>
+          sanitizePipelineStep(item),
+        ),
+        availableAgents: input.agents ?? [],
+      },
+      credential.apiKey,
+      credential.provider,
+    );
+    return {
+      ok: true,
+      data: {
+        ...sanitizePipelineStep(step),
+        explanation: cleanText(step.explanation, ""),
+      },
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      error:
+        err instanceof Error ? err.message : "Pipeline-stap genereren mislukt.",
+    };
+  }
+}
+
+async function resolvePipelineAiCredential(
+  workspaceId: string,
+  businessId: string,
+): Promise<{ apiKey: string | null; provider: FlowPlanProvider }> {
+  const supabase = await createSupabaseServerClient();
+  const { data: auth } = await supabase.auth.getUser();
+  const userId = auth.user?.id;
+
+  let apiKey: string | null = null;
+  let provider: FlowPlanProvider = "claude";
+  if (userId) {
+    apiKey = await resolveApiKey("claude", {
+      workspaceId,
+      businessId,
+      credentialOwnerUserId: userId,
+    });
+  }
+  if (!apiKey) apiKey = resolveApiKeyEnvFallback("claude");
+  if (!apiKey) {
+    if (userId) {
+      apiKey = await resolveApiKey("minimax", {
+        workspaceId,
+        businessId,
+        credentialOwnerUserId: userId,
+      });
+    }
+    if (!apiKey) apiKey = resolveApiKeyEnvFallback("minimax");
+    if (apiKey) provider = "minimax";
+  }
+
+  return { apiKey, provider };
+}
+
 function clampInt(value: number, min: number, max: number): number {
   const n = Math.floor(Number(value));
   if (!Number.isFinite(n)) return min;
@@ -279,6 +413,63 @@ function sanitizePipelineSteps(value: unknown): Array<{
       handoff: cleanText(row.handoff, "Output doorgeven").slice(0, 180),
     };
   });
+}
+
+function sanitizePipelineStep(value: unknown): {
+  id: string;
+  label: string;
+  agent: string;
+  task: string;
+  handoff: string;
+  provider: string;
+  model: string;
+  agent_id: string | null;
+  context_policy: "handoff_only" | "none";
+  needs: string;
+  qa_rule: string;
+  positive_prompt: string;
+  negative_prompt: string;
+} {
+  const row = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const id = cleanText(row.id, "step")
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, "_")
+    .slice(0, 48);
+  const task = cleanText(row.task, "Voer deze pipeline-stap afgebakend uit.");
+  return {
+    id: id || "step",
+    label: cleanText(row.label, "Stap").slice(0, 80),
+    agent: cleanText(row.agent, "Subagent").slice(0, 80),
+    task: task.slice(0, 1200),
+    handoff: cleanText(
+      row.handoff,
+      "Geef resultaat, bewijs, onzekerheden en aanbevolen vervolgactie terug.",
+    ).slice(0, 1200),
+    provider: cleanText(row.provider, "openai_codex").slice(0, 40),
+    model: cleanText(row.model, "").slice(0, 120),
+    agent_id:
+      typeof row.agent_id === "string" && /^[0-9a-f-]{20,}$/i.test(row.agent_id)
+        ? row.agent_id
+        : null,
+    context_policy:
+      row.context_policy === "none" ? "none" : "handoff_only",
+    needs: cleanText(
+      row.needs,
+      "Alleen de expliciete instructie en vorige output van de orchestrator.",
+    ).slice(0, 1200),
+    qa_rule: cleanText(
+      row.qa_rule,
+      "Orchestrator controleert output op volledigheid, risico en bruikbaarheid.",
+    ).slice(0, 1200),
+    positive_prompt: cleanText(
+      row.positive_prompt,
+      "Doe precies wat de orchestrator vraagt en lever compact bewijs.",
+    ).slice(0, 1200),
+    negative_prompt: cleanText(
+      row.negative_prompt,
+      "Geen aannames, geen brede context ophalen, geen externe actie uitvoeren.",
+    ).slice(0, 1200),
+  };
 }
 
 function cleanText(value: unknown, fallback: string): string {

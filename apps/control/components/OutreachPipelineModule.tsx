@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 
 import {
   generateOutreachPipelineBlueprint,
+  generateOutreachPipelineStep,
   runOutreachPipelineNow,
   updateOutreachPipelineConfig,
 } from "../app/actions/outreach-pipeline";
@@ -163,6 +164,8 @@ export function OutreachPipelineModule({
   const [info, setInfo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [aiPrompt, setAiPrompt] = useState("");
+  const [stepAiPrompts, setStepAiPrompts] = useState<Record<string, string>>({});
+  const [generatingStepKey, setGeneratingStepKey] = useState<string | null>(null);
   const [collapsedStepIds, setCollapsedStepIds] = useState<Set<string>>(
     () => new Set(),
   );
@@ -400,6 +403,44 @@ export function OutreachPipelineModule({
       setBlueprint(next);
       setCollapsedStepIds(new Set());
       setInfo("AI pipeline aangemaakt. Controleer hem en klik Opslaan.");
+    });
+  };
+
+  const generateStepWithAi = (index: number, stepKey: string) => {
+    const step = blueprint.steps[index];
+    if (!step) return;
+    setError(null);
+    setInfo(null);
+    setGeneratingStepKey(stepKey);
+    startTransition(async () => {
+      const res = await generateOutreachPipelineStep({
+        workspace_id: workspaceId,
+        business_id: businessId,
+        nav_node_id: navNodeId,
+        scope_name: scopeName,
+        pipeline_name: blueprint.pipeline_name,
+        step_index: index + 1,
+        request: stepAiPrompts[stepKey] ?? "",
+        current_step: step,
+        previous_steps: blueprint.steps.slice(0, index),
+        next_steps: blueprint.steps.slice(index + 1),
+        agents,
+      });
+      setGeneratingStepKey(null);
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      const { explanation: _explanation, ...nextStep } = res.data;
+      updateStep(index, {
+        ...nextStep,
+        id: nextStep.id || step.id,
+      });
+      setInfo(
+        _explanation
+          ? `Stap ${index + 1} door AI uitgewerkt: ${_explanation}`
+          : `Stap ${index + 1} door AI uitgewerkt. Controleer hem en klik Opslaan.`,
+      );
     });
   };
 
@@ -720,7 +761,9 @@ export function OutreachPipelineModule({
             <h2 style={titleStyle}>Subagent stappen</h2>
             <p style={subStyle}>
               Elke stap mag een eigen provider/model hebben. Context blijft
-              beperkt tot de handoff van de orchestrator.
+              beperkt tot de handoff van de orchestrator. Gebruik per stap
+              <strong>AI verbeter stap</strong> om alleen die ene subagent te
+              onderbouwen.
             </p>
           </div>
           <button type="button" onClick={addStep} style={secondaryButtonStyle(false)}>
@@ -783,6 +826,14 @@ export function OutreachPipelineModule({
                 </button>
                 <button
                   type="button"
+                  onClick={() => generateStepWithAi(index, stepKey)}
+                  disabled={pending || generatingStepKey === stepKey}
+                  style={secondaryButtonStyle(pending || generatingStepKey === stepKey)}
+                >
+                  {generatingStepKey === stepKey ? "AI denkt..." : "AI verbeter stap"}
+                </button>
+                <button
+                  type="button"
                   onClick={() => removeStep(index)}
                   style={dangerButtonStyle(false)}
                 >
@@ -791,6 +842,24 @@ export function OutreachPipelineModule({
               </div>
               {!collapsed && (
               <>
+              <div style={{ marginTop: 10 }}>
+                <Field
+                  label="AI wens voor deze stap"
+                  help="Optioneel. Beschrijf wat je wilt aanscherpen; leeg laten gebruikt de huidige velden als input."
+                >
+                  <textarea
+                    value={stepAiPrompts[stepKey] ?? ""}
+                    onChange={(e) =>
+                      setStepAiPrompts((current) => ({
+                        ...current,
+                        [stepKey]: e.target.value,
+                      }))
+                    }
+                    placeholder="Bijv. maak deze scrape-stap productieproof: dedupe, Google Places velden, Supabase schema, rate limits en QA."
+                    style={{ ...textareaStyle, minHeight: 58 }}
+                  />
+                </Field>
+              </div>
               <div style={stepFormGridStyle}>
                 <Field label="Subagent naam">
                   <input
