@@ -38,7 +38,7 @@ type Props = {
 
 type UIMessage = {
   id: string;
-  role: "user" | "assistant" | "error" | "system";
+  role: "user" | "assistant" | "error" | "system" | "thinking";
   text: string;
   originalText?: string;
   pending?: boolean;
@@ -106,6 +106,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
   const [threads, setThreads] = useState<ThreadRow[]>([]);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(false);
+  const [showThinking, setShowThinking] = useState(true);
   const [unreadPingCount, setUnreadPingCount] = useState(0);
   const [storageLoaded, setStorageLoaded] = useState(false);
   const [commands, setCommands] = useState<CommandItem[]>([]);
@@ -207,6 +208,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
         open?: boolean;
         agentId?: string | null;
         threadId?: string | null;
+        showThinking?: boolean;
       };
       if (saved.agentId && agents.some((a) => a.id === saved.agentId)) {
         setAgentId(saved.agentId);
@@ -215,6 +217,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
         restoredThreadRef.current = true;
         setActiveThreadId(saved.threadId);
       }
+      if (saved.showThinking === false) setShowThinking(false);
       if (saved.open) setOpen(true);
     } catch {
       // Ignore stale localStorage from older panel versions.
@@ -228,12 +231,25 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
     try {
       window.localStorage.setItem(
         storageKey,
-        JSON.stringify({ open, agentId, threadId: activeThreadId }),
+        JSON.stringify({
+          open,
+          agentId,
+          threadId: activeThreadId,
+          showThinking,
+        }),
       );
     } catch {
       // Non-critical; DB persistence still keeps the actual chat history.
     }
-  }, [activeThreadId, agentId, mounted, open, storageKey, storageLoaded]);
+  }, [
+    activeThreadId,
+    agentId,
+    mounted,
+    open,
+    showThinking,
+    storageKey,
+    storageLoaded,
+  ]);
 
   const startNewThread = useCallback(() => {
     restoredThreadRef.current = false;
@@ -466,7 +482,12 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
       const userId = crypto.randomUUID();
       const assistantId = crypto.randomUUID();
       const history: ChatMessage[] = messages
-        .filter((m) => m.role !== "error")
+        .filter(
+          (m) =>
+            m.role !== "error" &&
+            m.role !== "thinking" &&
+            m.role !== "system",
+        )
         .map((m) => ({
           role: m.role === "assistant" ? "assistant" : "user",
           content: m.originalText ?? m.text,
@@ -590,6 +611,17 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
               if (!line.startsWith("data:")) continue;
               try {
                 const event = JSON.parse(line.slice(5).trim()) as AGUIEvent;
+                if (event.type === "thinking") {
+                  setMessages((m) => [
+                    ...m,
+                    {
+                      id: `${assistantId}:thinking:${crypto.randomUUID()}`,
+                      role: "thinking",
+                      text: event.text,
+                      createdAt: new Date(),
+                    },
+                  ]);
+                }
                 if (event.type === "token") {
                   setMessages((m) =>
                     m.map((mm) =>
@@ -780,6 +812,10 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
     return mounted ? createPortal(emptyBubble, document.body) : null;
   }
 
+  const visibleMessages = showThinking
+    ? messages
+    : messages.filter((m) => m.role !== "thinking");
+
   const chatPanel = (
     <>
       <div
@@ -893,6 +929,28 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
                 </option>
               ))}
             </select>
+            <button
+              type="button"
+              onClick={() => setShowThinking((v) => !v)}
+              title={showThinking ? "Verberg thinking blocks" : "Toon thinking blocks"}
+              style={{
+                border: `1.5px solid ${showThinking ? "var(--tt-green)" : "var(--app-border)"}`,
+                background: showThinking
+                  ? "rgba(57,178,85,0.10)"
+                  : "transparent",
+                color: showThinking ? "var(--tt-green)" : "var(--app-fg-2)",
+                borderRadius: 8,
+                height: 30,
+                padding: "0 8px",
+                fontSize: 10.5,
+                fontWeight: 800,
+                cursor: "pointer",
+                flexShrink: 0,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {showThinking ? "Think ✓" : "Think"}
+            </button>
             <button
               type="button"
               onClick={startNewThread}
@@ -1069,7 +1127,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
               fontSize: 13,
             }}
           >
-            {messages.length === 0 && (
+            {visibleMessages.length === 0 && (
               <p
                 style={{
                   color: "var(--app-fg-3)",
@@ -1080,7 +1138,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
                 {t("chat.emptyPrompt")}
               </p>
             )}
-            {messages.map((m) => (
+            {visibleMessages.map((m) => (
               <div
                 key={m.id}
                 style={{
@@ -1107,17 +1165,23 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
                       background:
                         m.role === "user"
                           ? "var(--tt-green)"
+                          : m.role === "thinking"
+                            ? "rgba(57,178,85,0.08)"
                           : m.role === "error"
                             ? "rgba(230,82,107,0.10)"
                             : "var(--app-card-2)",
                       color:
                         m.role === "user"
                           ? "#fff"
+                          : m.role === "thinking"
+                            ? "var(--app-fg-3)"
                           : m.role === "error"
                             ? "var(--rose)"
                             : "var(--app-fg)",
                       border:
-                        m.role === "error"
+                        m.role === "thinking"
+                          ? "1px dashed rgba(57,178,85,0.45)"
+                          : m.role === "error"
                           ? "1px solid rgba(230,82,107,0.4)"
                           : "1px solid var(--app-border-2)",
                       borderRadius: 12,
@@ -1129,7 +1193,28 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
                       overflowWrap: "anywhere",
                     }}
                   >
-                    {m.role === "assistant" && m.text ? (
+                    {m.role === "thinking" ? (
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          gap: 6,
+                          alignItems: "baseline",
+                          fontSize: 11.5,
+                        }}
+                      >
+                        <strong
+                          style={{
+                            color: "var(--tt-green)",
+                            fontSize: 10,
+                            letterSpacing: "0.12em",
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          Thinking
+                        </strong>
+                        <span>{m.text}</span>
+                      </span>
+                    ) : m.role === "assistant" && m.text ? (
                       <MarkdownText text={m.text} />
                     ) : (
                       m.text || (m.pending ? "…" : "")

@@ -68,11 +68,17 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
   // Tools-filter preference persists per browser via localStorage so a
   // user's choice survives page reload. Defaults to "show".
   const [showTools, setShowTools] = useState(true);
+  const [showThinking, setShowThinking] = useState(true);
   useEffect(() => {
     try {
       const v = window.localStorage.getItem("aio-run-drawer-show-tools");
       if (v === "0") setShowTools(false);
       else if (v === "1") setShowTools(true);
+      const thinking = window.localStorage.getItem(
+        "aio-run-drawer-show-thinking",
+      );
+      if (thinking === "0") setShowThinking(false);
+      else if (thinking === "1") setShowThinking(true);
     } catch {
       // SSR or storage blocked — keep default
     }
@@ -87,6 +93,16 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
       // ignore
     }
   }, [showTools]);
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        "aio-run-drawer-show-thinking",
+        showThinking ? "1" : "0",
+      );
+    } catch {
+      // ignore
+    }
+  }, [showThinking]);
 
   // Re-fetch counter. Live runs poll the compact detail endpoint below.
   const [tick, setTick] = useState(0);
@@ -390,6 +406,30 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
           </button>
           <button
             type="button"
+            onClick={() => setShowThinking((v) => !v)}
+            title={
+              showThinking
+                ? "Verberg thinking blocks"
+                : "Toon thinking blocks"
+            }
+            style={{
+              padding: "6px 10px",
+              border: `1.5px solid ${showThinking ? "var(--tt-green)" : "var(--app-border)"}`,
+              background: showThinking
+                ? "rgba(57,178,85,0.10)"
+                : "transparent",
+              color: showThinking ? "var(--tt-green)" : "var(--app-fg-3)",
+              borderRadius: 8,
+              fontWeight: 700,
+              fontSize: 12,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {showThinking ? "Thinking ✓" : "Thinking"}
+          </button>
+          <button
+            type="button"
             onClick={onClose}
             aria-label="Sluiten"
             style={{
@@ -441,7 +481,13 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
               {error}
             </p>
           )}
-          {run && <RunBody run={run} showTools={showTools} />}
+          {run && (
+            <RunBody
+              run={run}
+              showTools={showTools}
+              showThinking={showThinking}
+            />
+          )}
           <div ref={bottomRef} />
         </div>
 
@@ -528,11 +574,21 @@ export function RunDetailDrawer({ runId, onClose }: Props) {
   );
 }
 
-function RunBody({ run, showTools }: { run: RunDetail; showTools: boolean }) {
+function RunBody({
+  run,
+  showTools,
+  showThinking,
+}: {
+  run: RunDetail;
+  showTools: boolean;
+  showThinking: boolean;
+}) {
   const allSteps = stepsFor(run);
-  const steps = showTools
-    ? allSteps
-    : allSteps.filter((s) => s.kind !== "tool_call");
+  const steps = allSteps.filter(
+    (s) =>
+      (showTools || s.kind !== "tool_call") &&
+      (showThinking || s.kind !== "thinking"),
+  );
   const isLive = run.status === "queued" || run.status === "running";
   const publishedDashboard = findPublishedDashboard(allSteps);
 
@@ -552,6 +608,8 @@ function RunBody({ run, showTools }: { run: RunDetail; showTools: boolean }) {
   if (isLive) {
     if (last?.kind === "tool_call") {
       thinking = `Roept tool ${last.name} aan…`;
+    } else if (last?.kind === "thinking") {
+      thinking = last.text;
     } else if (last?.kind === "assistant") {
       const len = last.text.length;
       thinking = len > 0 ? `Schrijft antwoord (${len} tekens)…` : null;
@@ -779,6 +837,9 @@ function StepBubble({ step }: { step: RunStep }) {
   if (step.kind === "tool_call") {
     return <ToolCallCard step={step} />;
   }
+  if (step.kind === "thinking") {
+    return <ThinkingCard step={step} />;
+  }
   return (
     <div
       style={{
@@ -917,6 +978,60 @@ function Bubble({
         )}
       </div>
       {children}
+    </div>
+  );
+}
+
+function ThinkingCard({
+  step,
+}: {
+  step: RunStep & { kind: "thinking" };
+}) {
+  return (
+    <div
+      style={{
+        alignSelf: "stretch",
+        background: "rgba(57,178,85,0.08)",
+        border: "1.5px dashed rgba(57,178,85,0.45)",
+        color: "var(--app-fg-3)",
+        borderRadius: 12,
+        padding: "8px 11px",
+        fontSize: 12,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "baseline",
+          gap: 8,
+        }}
+      >
+        <span
+          style={{
+            fontSize: 9.5,
+            fontWeight: 800,
+            letterSpacing: "0.16em",
+            textTransform: "uppercase",
+            color: "var(--tt-green)",
+          }}
+        >
+          Thinking
+        </span>
+        <span style={{ flex: 1, minWidth: 0 }}>{step.text}</span>
+        {step.at && (
+          <span
+            style={{
+              fontSize: 10,
+              color: "var(--app-fg-3)",
+              fontFamily: "ui-monospace, Menlo, monospace",
+              opacity: 0.7,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {fmtTime(step.at)}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

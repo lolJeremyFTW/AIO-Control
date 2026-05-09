@@ -263,6 +263,8 @@ export async function POST(
   let usage: { input: number; output: number; cost: number } | null = null;
   let scheduledPingViaTool = false;
   let runErrorText: string | null = null;
+  let sawProviderEvent = false;
+  let sawAnyMessageEnd = false;
 
   // Resolve which AIO Control tools this agent is allowed to use.
   // null in the DB = use the kind defaults; explicit array = allow-list.
@@ -296,6 +298,13 @@ export async function POST(
       const noteRunError = (message: string) => {
         if (!runErrorText) runErrorText = message;
       };
+      const sendThinking = (
+        text: string,
+        stage?: Extract<AGUIEvent, { type: "thinking" }>["stage"],
+      ) => {
+        send({ type: "thinking", text, stage });
+      };
+      sendThinking("Context voorbereid; chat-run gestart.", "start");
 
       // Multi-turn dispatch loop. We accumulate tool_use blocks the
       // model emits during the stream, execute READ + META tools
@@ -306,6 +315,7 @@ export async function POST(
       const HOPS_MAX = 5;
       const messages: ChatMessage[] = [...body.messages];
       let deferred = false;
+      let completed = false;
 
       // ── approve_tool short-circuit ─────────────────────────────────
       // When the panel sends approve_tool, we don't go to Claude
@@ -399,6 +409,8 @@ export async function POST(
 
       try {
         for (let hop = 0; hop < HOPS_MAX && !deferred && !runErrorText; hop++) {
+          let hopSawProviderEvent = false;
+          let hopSawMessageEnd = false;
           const toolUses: Array<{
             id: string;
             name: string;
@@ -431,18 +443,26 @@ export async function POST(
             sessionId: threadId ?? undefined,
             tools,
           })) {
+            sawProviderEvent = true;
+            hopSawProviderEvent = true;
             if (event.type === "error") {
               noteRunError(`${event.code}: ${event.message}`);
               send(event);
               break;
             }
+            if (event.type === "message_start") {
+              sendThinking("Agent formuleert een antwoord.", "message");
+            }
             if (event.type === "token") assistantText += event.delta;
             if (event.type === "message_end") {
+              sawAnyMessageEnd = true;
+              hopSawMessageEnd = true;
               usage = {
                 input: event.usage.input_tokens,
                 output: event.usage.output_tokens,
                 cost: event.usage.cost_cents,
               };
+              sendThinking("Antwoord afgerond.", "final");
             }
             if (event.type === "cost_update") {
               usage = {
@@ -452,6 +472,7 @@ export async function POST(
               };
             }
             if (event.type === "tool_call_start") {
+              sendThinking(`Tool voorbereiden: ${event.name}.`, "tool");
               toolUses.push({
                 id: event.tool_call_id,
                 name: event.name,
@@ -460,10 +481,33 @@ export async function POST(
             }
             if (event.type === "tool_call_result") {
               providerHandledIds.add(event.tool_call_id);
+              sendThinking("Toolresultaat ontvangen.", "result");
             }
             send(event);
           }
           if (runErrorText) break;
+          if (!hopSawProviderEvent) {
+            noteRunError("Provider stream ended without any events.");
+            send({
+              type: "error",
+              code: "provider_empty_stream",
+              message: runErrorText ?? "Provider stream ended without any events.",
+            });
+            break;
+          }
+          if (!hopSawMessageEnd) {
+            noteRunError(
+              "Provider stream ended before completion signal (message_end).",
+            );
+            send({
+              type: "error",
+              code: "provider_incomplete_stream",
+              message:
+                runErrorText ??
+                "Provider stream ended before completion signal (message_end).",
+            });
+            break;
+          }
 
           // Filter out tool calls already handled by the provider's
           // internal MCP loop — only AIO tools remain for us to run.
@@ -472,7 +516,10 @@ export async function POST(
           );
 
           // No AIO tool_use in this turn → conversation is complete.
-          if (pendingToolUses.length === 0) break;
+          if (pendingToolUses.length === 0) {
+            completed = true;
+            break;
+          }
 
           // Execute each AIO tool. READ tools return data; META tools
           // (ask_followup, …) and WRITE tools return defer events
@@ -530,6 +577,7 @@ export async function POST(
                   id: tu.id,
                   content: JSON.stringify({ navigated: true }),
                 });
+                sendThinking("Toolresultaat ontvangen.", "result");
                 continue;
               } else if (ev.type === "todo_set") {
                 send({ type: "todo_set", items: ev.items });
@@ -537,6 +585,7 @@ export async function POST(
                   id: tu.id,
                   content: JSON.stringify({ ok: true }),
                 });
+                sendThinking("Toolresultaat ontvangen.", "result");
                 continue;
               } else if (ev.type === "chat_ping_scheduled") {
                 scheduledPingViaTool = true;
@@ -552,6 +601,7 @@ export async function POST(
                     delay_minutes: ev.delayMinutes,
                   }),
                 });
+                sendThinking("Toolresultaat ontvangen.", "result");
                 continue;
               }
               deferred = true;
@@ -568,6 +618,7 @@ export async function POST(
               id: tu.id,
               content: JSON.stringify(res.data),
             });
+            sendThinking("Toolresultaat ontvangen.", "result");
           }
 
           if (runErrorText) break;
@@ -600,6 +651,34 @@ export async function POST(
               })),
             ),
           });
+        }
+        if (!deferred && !runErrorText && !completed) {
+          noteRunError(`Tool loop reached ${HOPS_MAX} hops without completion.`);
+          send({
+            type: "error",
+            code: "tool_loop_exhausted",
+            message:
+              runErrorText ??
+              `Tool loop reached ${HOPS_MAX} hops without completion.`,
+          });
+        }
+        if (!deferred && !runErrorText) {
+          if (!sawProviderEvent) {
+            noteRunError("Provider stream ended without any events.");
+          } else if (!sawAnyMessageEnd) {
+            noteRunError(
+              "Provider stream ended before completion signal (message_end).",
+            );
+          } else if (assistantText.trim().length === 0) {
+            noteRunError("Provider completed without assistant output.");
+          }
+          if (runErrorText) {
+            send({
+              type: "error",
+              code: "provider_incomplete_output",
+              message: runErrorText ?? "Provider completed without output.",
+            });
+          }
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : "Unknown error";

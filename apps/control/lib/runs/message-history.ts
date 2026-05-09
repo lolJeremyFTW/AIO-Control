@@ -9,6 +9,12 @@ export type RunStep =
   | { kind: "user"; text: string; at?: string }
   | { kind: "assistant"; text: string; at?: string }
   | {
+      kind: "thinking";
+      text: string;
+      stage?: "start" | "context" | "message" | "tool" | "result" | "final";
+      at?: string;
+    }
+  | {
       kind: "tool_call";
       name: string;
       args: unknown;

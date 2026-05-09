@@ -209,6 +209,7 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
         },
       ];
   const visibleMessages = messages;
+  const contextParts: string[] = [];
   const scheduleMemorySource = await loadScheduleMemorySource(
     supabase,
     (run.schedule_id as string | null) ?? null,
@@ -222,6 +223,7 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
     });
     if (memoryBlock) {
       messages = prependScheduleMemory(messages, memoryBlock);
+      contextParts.push("schedule memory");
     }
   }
   const scheduleReferenceBlock = await loadScheduleReferenceBlock(
@@ -230,6 +232,7 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
   );
   if (scheduleReferenceBlock) {
     messages = appendScheduleReferenceBlock(messages, scheduleReferenceBlock);
+    contextParts.push("reference files");
   }
 
   const config = withDefaultAioMcpConfig(
@@ -271,6 +274,17 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
     text: m.content,
     at: startedAt,
   }));
+  const pushThinking = (
+    text: string,
+    stage?: Extract<RunStep, { kind: "thinking" }>["stage"],
+  ) => {
+    history.push({
+      kind: "thinking",
+      text,
+      stage,
+      at: new Date().toISOString(),
+    });
+  };
   // Track the assistant turn we're currently appending tokens to so
   // multiple message_start blocks (rare; provider re-emits) split into
   // separate bubbles instead of fusing.
@@ -279,6 +293,15 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
     text: "",
     at: startedAt,
   };
+  history.push({
+    kind: "thinking",
+    text:
+      contextParts.length > 0
+        ? `Context voorbereid (${contextParts.join(", ")} geladen); run gestart.`
+        : "Context voorbereid; run gestart.",
+    stage: "start",
+    at: startedAt,
+  });
   history.push(activeAssistant);
   const toolCalls = new Map<string, RunStep & { kind: "tool_call" }>();
 
@@ -389,6 +412,8 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
 
   // Consume the stream with a hard timeout so a hung MCP call or
   // network stall can't hold the run in "running" forever.
+  let sawProviderEvent = false;
+  let sawMessageEnd = false;
   const runLoop = (async () => {
     for await (const event of streamChat({
       provider: agent.provider as ProviderId,
@@ -409,6 +434,7 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
           Object.keys(mcpToolKeys).length > 0 ? mcpToolKeys : undefined,
       },
     })) {
+      sawProviderEvent = true;
       if (event.type === "token") {
         output += event.delta;
         activeAssistant.text += event.delta;
@@ -416,6 +442,7 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
           void flushHistory();
         }
       } else if (event.type === "message_start") {
+        pushThinking("Agent formuleert een antwoord.", "message");
         // New assistant turn begins (provider restarts after tool calls).
         // If the current bubble has no text yet (model went straight to
         // tools), remove it from history so it doesn't float above the
@@ -431,9 +458,12 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
         };
         history.push(activeAssistant);
       } else if (event.type === "message_end") {
+        sawMessageEnd = true;
         cost = event.usage.cost_cents;
         inputTokens = event.usage.input_tokens;
         outputTokens = event.usage.output_tokens;
+        pushThinking("Antwoord afgerond.", "final");
+        void flushHistory();
       } else if (event.type === "cost_update") {
         cost = event.cost_cents;
         inputTokens = event.input_tokens;
@@ -447,6 +477,7 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
           at: new Date().toISOString(),
         };
         toolCalls.set(event.tool_call_id, step);
+        pushThinking(`Tool voorbereiden: ${event.name}.`, "tool");
         history.push(step);
         // Tool calls are visually significant — flush immediately so
         // the user sees "agent is calling X" instead of waiting for
@@ -455,6 +486,7 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
       } else if (event.type === "tool_call_result") {
         const step = toolCalls.get(event.tool_call_id);
         if (step) step.result = event.output;
+        pushThinking("Toolresultaat ontvangen.", "result");
         void flushHistory();
       } else if (event.type === "error") {
         errorText = event.message;
@@ -492,13 +524,32 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
     });
   }
 
-  // Drop the trailing empty assistant placeholder if the run produced
-  // no tokens — it would just render as an empty bubble in the drawer.
-  // Local var so noUncheckedIndexedAccess (strict TS) sees a single
-  // defined narrowing rather than two separate index reads.
-  const tail = history[history.length - 1];
-  if (tail && tail.kind === "assistant" && tail.text === "") {
-    history.pop();
+  // Never mark a provider run "done" when the stream stopped silently.
+  // The UI should show a real failure instead of a blank success.
+  if (!errorText) {
+    if (!sawProviderEvent) {
+      errorText = "Provider stream ended without any events.";
+    } else if (!sawMessageEnd) {
+      errorText = "Provider stream ended before completion signal (message_end).";
+    } else if (output.trim().length === 0) {
+      errorText = "Provider completed without assistant output.";
+    }
+    if (errorText) {
+      history.push({
+        kind: "error",
+        message: errorText,
+        at: new Date().toISOString(),
+      });
+    }
+  }
+
+  // Drop empty assistant placeholders if the model went straight to
+  // tools/status events; they would render as empty bubbles in the drawer.
+  for (let i = history.length - 1; i >= 0; i--) {
+    const step = history[i];
+    if (step?.kind === "assistant" && step.text === "") {
+      history.splice(i, 1);
+    }
   }
 
   const endedAt = new Date();

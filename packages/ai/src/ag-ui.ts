@@ -5,6 +5,13 @@
 export type AGUIEvent =
   | { type: "message_start"; message_id: string; role: "assistant" }
   | { type: "token"; message_id: string; delta: string }
+  // Safe progress/status events for UI filtering; never hidden model reasoning.
+  | {
+      type: "thinking";
+      text: string;
+      stage?: "start" | "context" | "message" | "tool" | "result" | "final";
+      message_id?: string;
+    }
   | {
       type: "tool_call_start";
       tool_call_id: string;

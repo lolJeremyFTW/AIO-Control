@@ -183,6 +183,23 @@ function compactRunStep(value: unknown): RunStep {
       text: clipText(typeof step.text === "string" ? step.text : "", 20_000),
     };
   }
+  if (step.kind === "thinking") {
+    const stage =
+      typeof step.stage === "string"
+        ? {
+            stage: step.stage as Extract<
+              RunStep,
+              { kind: "thinking" }
+            >["stage"],
+          }
+        : {};
+    return {
+      ...step,
+      kind: "thinking",
+      text: clipText(typeof step.text === "string" ? step.text : "", 20_000),
+      ...stage,
+    };
+  }
   if (step.kind === "tool_call") {
     return {
       ...step,
@@ -284,7 +301,11 @@ async function translateRunDetail(
   });
 
   translated.message_history?.forEach((step, index) => {
-    if (step.kind === "user" || step.kind === "assistant") {
+    if (
+      step.kind === "user" ||
+      step.kind === "assistant" ||
+      step.kind === "thinking"
+    ) {
       add(
         "run_message",
         `${translated.id}:${index}`,
