@@ -260,6 +260,14 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
     preamble,
     config.systemPrompt as string | null | undefined,
   );
+  config.systemPrompt = prependPreamble(
+    [
+      `Current AIO run_id: ${runId}.`,
+      "When checking active, running, stale, or zombie runs, always exclude this current run id.",
+      `A row with status='running' and id='${runId}' is this run, not a previous active run.`,
+    ].join("\n"),
+    config.systemPrompt as string | null | undefined,
+  );
 
   let output = "";
   let cost = 0;
