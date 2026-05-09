@@ -150,32 +150,6 @@ export default async function NotificationsSettingsPage({ params }: Props) {
           businesses={businesses}
           navNodes={(navRows ?? []) as NavNode[]}
         />
-      </SettingsSectionCard>
-
-      <SettingsSectionCard id="telegram" title={t("settings.section.telegram")}>
-        <ProviderSetupKit
-          publicOrigin={publicOrigin}
-          workspaceSlug={workspace.slug}
-          initialProvider="telegram"
-          visibleProviders={["telegram"]}
-          setupStatus={{
-            credentials: {
-              telegram: configuredKeys.has("telegram"),
-              telegram_webhook_secret: Boolean(
-                process.env.TELEGRAM_WEBHOOK_SECRET,
-              ),
-              slack_bot_token: configuredKeys.has("slack_bot_token"),
-              slack_signing_secret: configuredKeys.has("slack_signing_secret"),
-              discord_bot_token: configuredKeys.has("discord_bot_token"),
-              discord_public_key: configuredKeys.has("discord_public_key"),
-            },
-            targets: {
-              telegram: telegramTargets.length,
-              slack: 0,
-              discord: 0,
-            },
-          }}
-        />
         <TelegramPanel
           workspaceSlug={workspace.slug}
           workspaceId={workspace.id}

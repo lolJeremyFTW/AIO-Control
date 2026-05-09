@@ -56,8 +56,16 @@ import { TopicTabs } from "../../../../../../components/TopicTabs";
 import { getModuleDashboard } from "../../../../../../lib/queries/dashboards";
 import { createSupabaseServerClient } from "../../../../../../lib/supabase/server";
 
-const TOPIC_SUBROUTES = ["agents", "runs", "pipeline", "pipelines", "routines"] as const;
+const TOPIC_SUBROUTES = [
+  "agents",
+  "runs",
+  "pipeline",
+  "pipelines",
+  "routines",
+] as const;
 type TopicSubroute = (typeof TOPIC_SUBROUTES)[number];
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type Props = {
   params: Promise<{
@@ -288,43 +296,42 @@ export default async function NavNodePage({ params, searchParams }: Props) {
     const fallbackAgents =
       topicAgents.length > 0
         ? topicAgents
-        : allAgents.filter((a) => a.business_id === biz.id || a.business_id === null);
+        : allAgents.filter(
+            (a) => a.business_id === biz.id || a.business_id === null,
+          );
 
-    const [
-      { data: config },
-      { data: recentRuns },
-      { data: recentEvents },
-    ] = await Promise.all([
-      supabase
-        .from("outreach_pipeline_configs")
-        .select(
-          "id, enabled, interval_seconds, batch_size, last_started_at, last_finished_at, last_error, total_cycles, total_outreached_count, total_duplicate_skipped, pipeline_steps, pipeline_blueprint",
-        )
-        .eq("workspace_id", workspace.id)
-        .eq("business_id", biz.id)
-        .eq("nav_node_id", current.id)
-        .maybeSingle(),
-      supabase
-        .from("outreach_pipeline_runs")
-        .select(
-          "id, status, claimed_count, outreached_count, duplicate_skipped_count, error_count, started_at, ended_at",
-        )
-        .eq("workspace_id", workspace.id)
-        .eq("business_id", biz.id)
-        .eq("nav_node_id", current.id)
-        .order("created_at", { ascending: false })
-        .limit(8),
-      supabase
-        .from("outreach_pipeline_events")
-        .select(
-          "id, run_id, stage, agent_name, event_type, message, delta_outreached, created_at",
-        )
-        .eq("workspace_id", workspace.id)
-        .eq("business_id", biz.id)
-        .eq("nav_node_id", current.id)
-        .order("created_at", { ascending: false })
-        .limit(80),
-    ]);
+    const [{ data: config }, { data: recentRuns }, { data: recentEvents }] =
+      await Promise.all([
+        supabase
+          .from("outreach_pipeline_configs")
+          .select(
+            "id, enabled, interval_seconds, batch_size, last_started_at, last_finished_at, last_error, total_cycles, total_outreached_count, total_duplicate_skipped, pipeline_steps, pipeline_blueprint",
+          )
+          .eq("workspace_id", workspace.id)
+          .eq("business_id", biz.id)
+          .eq("nav_node_id", current.id)
+          .maybeSingle(),
+        supabase
+          .from("outreach_pipeline_runs")
+          .select(
+            "id, status, claimed_count, outreached_count, duplicate_skipped_count, error_count, started_at, ended_at",
+          )
+          .eq("workspace_id", workspace.id)
+          .eq("business_id", biz.id)
+          .eq("nav_node_id", current.id)
+          .order("created_at", { ascending: false })
+          .limit(8),
+        supabase
+          .from("outreach_pipeline_events")
+          .select(
+            "id, run_id, stage, agent_name, event_type, message, delta_outreached, created_at",
+          )
+          .eq("workspace_id", workspace.id)
+          .eq("business_id", biz.id)
+          .eq("nav_node_id", current.id)
+          .order("created_at", { ascending: false })
+          .limit(80),
+      ]);
 
     return (
       <>
@@ -350,13 +357,21 @@ export default async function NavNodePage({ params, searchParams }: Props) {
             navNodeId={current.id}
             scopeName={current.name}
             scopeKind="topic"
-            config={(config as Parameters<typeof OutreachPipelineModule>[0]["config"]) ?? null}
-            recentRuns={(recentRuns ?? []) as Parameters<
-              typeof OutreachPipelineModule
-            >[0]["recentRuns"]}
-            recentEvents={(recentEvents ?? []) as Parameters<
-              typeof OutreachPipelineModule
-            >[0]["recentEvents"]}
+            config={
+              (config as Parameters<
+                typeof OutreachPipelineModule
+              >[0]["config"]) ?? null
+            }
+            recentRuns={
+              (recentRuns ?? []) as Parameters<
+                typeof OutreachPipelineModule
+              >[0]["recentRuns"]
+            }
+            recentEvents={
+              (recentEvents ?? []) as Parameters<
+                typeof OutreachPipelineModule
+              >[0]["recentEvents"]
+            }
             agents={fallbackAgents.map((agent) => ({
               id: agent.id,
               name: agent.name,
@@ -534,27 +549,35 @@ export default async function NavNodePage({ params, searchParams }: Props) {
 
   if (customTabId) {
     const supabase = await createSupabaseServerClient();
-    const { data: tab } = await supabase
+    let tabQuery = supabase
       .from("custom_tabs")
-      .select("label, url")
-      .eq("id", customTabId)
-      .eq("business_id", biz.id)
-      .eq("nav_node_id", current.id)
-      .maybeSingle();
+      .select("id, slug, label, url")
+      .eq("nav_node_id", current.id);
+    tabQuery = UUID_RE.test(customTabId)
+      ? tabQuery.eq("id", customTabId)
+      : tabQuery.eq("slug", customTabId);
+    const { data: tab } = await tabQuery.maybeSingle();
 
     if (!tab) {
       const { data: fallbackTab } = await supabase
         .from("custom_tabs")
-        .select("id")
-        .eq("business_id", biz.id)
+        .select("id, slug")
         .eq("nav_node_id", current.id)
         .order("sort_order", { ascending: true })
         .order("created_at", { ascending: true })
         .limit(1)
         .maybeSingle();
 
-      if (fallbackTab?.id) redirect(`${topicBaseHref}/tab/${fallbackTab.id}`);
+      if (fallbackTab?.id) {
+        const fallbackSegment =
+          (fallbackTab.slug as string | null) || (fallbackTab.id as string);
+        redirect(`${topicBaseHref}/tab/${fallbackSegment}`);
+      }
       redirect(topicBaseHref);
+    }
+    const canonicalSegment = (tab.slug as string | null) || (tab.id as string);
+    if (customTabId !== canonicalSegment) {
+      redirect(`${topicBaseHref}/tab/${canonicalSegment}`);
     }
     const tabUrl = normalizeDashboardUrl(tab.url as string);
 

@@ -242,7 +242,7 @@ const UpsertCustomTabSchema = z.object({
   nav_node_id: z.string().uuid().optional(),
   label: z.string().min(1).max(80),
   url: z.string().url(),
-  sort_order: z.coerce.number().int().optional().default(0),
+  sort_order: z.coerce.number().int().optional(),
 });
 
 const ListCustomTabsSchema = z.object({
@@ -276,8 +276,9 @@ const ProposeImprovementSchema = z.object({
 
 const AIO_DASHBOARD_STYLE_GUIDE = `
 Use AIO Control dashboard styling only:
-- Return a dashboard fragment by default: one <main class="aio-dashboard">...</main> with optional scoped <style>. Do not build a standalone marketing page.
-- The dashboard is embedded inside the existing AIO business/topic shell; do not add your own global navigation, browser-sized blank canvas, or unrelated page chrome.
+- html_content must be a fragment only: one <main class="aio-dashboard">...</main> with optional scoped <style>.
+- Do not include <!doctype>, <html>, <head>, <body>, <header>, <nav>, app bars, sidebars, breadcrumbs, or duplicate AIO shell/page chrome.
+- The dashboard is embedded inside the existing AIO business/topic shell; do not build a standalone marketing page, browser-sized blank canvas, or unrelated page chrome.
 - Use CSS variables: --app-bg, --app-fg, --app-fg-2, --app-fg-3, --app-border, --app-border-2, --app-card, --app-card-2, --tt-green, --rose, --amber, --type.
 - Support both body[data-theme="dark"] and body[data-theme="light"].
 - Use compact KPI tiles, 8-12px radii, subtle borders, no unrelated gradients/orbs/stock visuals.
@@ -285,7 +286,7 @@ Use AIO Control dashboard styling only:
 - If you need dashboard icon examples, use simple 16px SVG strokes that inherit currentColor (chart, list, inbox, robot, calendar, external-link). Keep them quiet and consistent with the AIO icon registry style.
 - Do not hardcode a dark-only or light-only palette; prefer var(...) for every surface/text/border.
 - Match the AIO dashboard feel: quiet operator UI, card grid, dense tables, clear status pills.
-- When this is for a topic (for example Outreach), pass nav_node_id or use publish_topic_dashboard so it appears as a topic tab instead of only a separate public URL.
+- When this is for a topic (for example Outreach), pass nav_node_id or use publish_topic_dashboard so the returned URL is the active topic tab path (/n/.../tab/<slug>) instead of only a separate public URL.
 `.trim();
 
 function aioDashboardShell(html: string): string {
@@ -295,7 +296,7 @@ function aioDashboardShell(html: string): string {
 body[data-theme="light"]{color-scheme:light;--app-bg:#f6f4ee;--app-fg:#1a1c1a;--app-fg-2:#3b3d3a;--app-fg-3:#6a6c66;--app-border:#b6b3a6;--app-border-2:#dcd7c8;--app-card:#fff;--app-card-2:#f1eee3}
 *{box-sizing:border-box}body{margin:0;background:var(--app-bg);color:var(--app-fg);font-family:var(--type);font-size:14px;line-height:1.45}main,.aio-dashboard{width:min(1180px,calc(100vw - 32px));margin:0 auto;padding:24px 0}section,.card,.tile,.panel{background:var(--app-card);border:1.5px solid var(--app-border);border-radius:10px}h1,h2,h3,p{margin-top:0}h1{font-size:24px;letter-spacing:0}h2{font-size:17px}h3{font-size:14px}a{color:var(--tt-green)}table{width:100%;border-collapse:collapse;background:var(--app-card);border:1px solid var(--app-border);border-radius:10px;overflow:hidden}th,td{padding:9px 10px;border-bottom:1px solid var(--app-border-2);text-align:left}th{font-size:11px;text-transform:uppercase;color:var(--app-fg-3);letter-spacing:.08em}button,.pill{border-radius:999px;border:1px solid var(--app-border);background:var(--app-card-2);color:var(--app-fg);padding:6px 10px}.muted{color:var(--app-fg-3)}.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.kpi,.tile{padding:12px 14px}.kpi-label{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--app-fg-3);font-weight:700}.kpi-value{font-size:22px;font-weight:750;color:var(--app-fg)}@media(max-width:720px){main,.aio-dashboard{width:min(100vw - 20px,1180px);padding:14px 0}table{font-size:12px}}
 </style>`;
-  const input = html.trim();
+  const input = extractDashboardFragment(html);
   const withStyle = /<\/head>/i.test(input)
     ? input.replace(/<\/head>/i, `${style}</head>`)
     : `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${style}</head><body>${input}</body></html>`;
@@ -305,6 +306,47 @@ body[data-theme="light"]{color-scheme:light;--app-bg:#f6f4ee;--app-fg:#1a1c1a;--
 }
 
 // ── Tool implementations ─────────────────────────────────────────────────────
+
+function extractDashboardFragment(html: string): string {
+  const input = html.trim();
+  const headStyles = extractHeadStyles(input);
+  const mainMatch = input.match(
+    /<main\b(?=[^>]*class=(["'])[^"']*\baio-dashboard\b[^"']*\1)[^>]*>[\s\S]*?<\/main>/i,
+  );
+
+  if (mainMatch?.[0]) {
+    return `${headStyles}${stripDuplicateAppChrome(mainMatch[0])}`.trim();
+  }
+
+  const bodyMatch = input.match(/<body\b[^>]*>([\s\S]*?)<\/body>/i);
+  const bodyOrFragment = bodyMatch?.[1] ?? input;
+  const fragment = stripDuplicateAppChrome(
+    bodyOrFragment
+      .replace(/<!doctype[^>]*>/gi, "")
+      .replace(/<\/?(html|head|body)\b[^>]*>/gi, "")
+      .trim(),
+  );
+
+  return `${headStyles}<main class="aio-dashboard">${fragment}</main>`.trim();
+}
+
+function extractHeadStyles(html: string): string {
+  const head = html.match(/<head\b[^>]*>([\s\S]*?)<\/head>/i)?.[1] ?? "";
+  return Array.from(head.matchAll(/<style\b[^>]*>[\s\S]*?<\/style>/gi))
+    .map((match) => match[0])
+    .join("");
+}
+
+function stripDuplicateAppChrome(fragment: string): string {
+  return fragment
+    .replace(/<header\b[\s\S]*?<\/header>/gi, "")
+    .replace(/<nav\b[\s\S]*?<\/nav>/gi, "")
+    .replace(
+      /<([a-z][\w:-]*)\b(?=[^>]*class=(["'])[^"']*(?:app-shell|workspace-shell|sidebar|side-nav|navbar|topbar|breadcrumb)[^"']*\2)[^>]*>[\s\S]*?<\/\1>/gi,
+      "",
+    )
+    .trim();
+}
 
 function redactedDatabaseUrl(value: string): string | null {
   if (!value) return null;
@@ -1899,6 +1941,52 @@ async function uniqueDashboardSlug(
   return `${cleanBase}-${randomSlug(8)}`;
 }
 
+async function uniqueCustomTabSlug(input: {
+  business_id: string;
+  nav_node_id?: string;
+  label: string;
+  existing_id?: string;
+}): Promise<string> {
+  const cleanBase =
+    slugPart(input.label).slice(0, 80) || `tab-${randomSlug(6)}`;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const slug = attempt === 0 ? cleanBase : `${cleanBase}-${randomSlug(4)}`;
+    let query = supabaseAio
+      .from("custom_tabs")
+      .select("id")
+      .eq("workspace_id", WORKSPACE_ID)
+      .eq("slug", slug);
+    query = input.nav_node_id
+      ? query.eq("nav_node_id", input.nav_node_id)
+      : query.eq("business_id", input.business_id).is("nav_node_id", null);
+    const { data, error } = await query.maybeSingle();
+    if (error) return `${cleanBase}-${randomSlug(6)}`;
+    if (!data || data.id === input.existing_id) return slug;
+  }
+  return `${cleanBase}-${randomSlug(8)}`;
+}
+
+async function nextCustomTabSortOrder(
+  business_id: string,
+  nav_node_id?: string,
+): Promise<number> {
+  let query = supabaseAio
+    .from("custom_tabs")
+    .select("sort_order")
+    .eq("workspace_id", WORKSPACE_ID)
+    .order("sort_order", { ascending: false })
+    .limit(1);
+  query = nav_node_id
+    ? query.eq("nav_node_id", nav_node_id)
+    : query.eq("business_id", business_id).is("nav_node_id", null);
+
+  const { data } = await query;
+  const last = Number(
+    (data?.[0] as { sort_order?: number } | undefined)?.sort_order,
+  );
+  return Number.isFinite(last) ? last + 10 : 10;
+}
+
 async function publishDashboard(args: unknown): Promise<string> {
   const parsed = PublishDashboardSchema.safeParse(args);
   if (!parsed.success) {
@@ -1972,16 +2060,18 @@ async function publishDashboard(args: unknown): Promise<string> {
     }
     return JSON.stringify({
       ok: true,
-      url: topicResult.topic_url,
+      url: topicResult.tab_url ?? topicResult.topic_url,
+      topic_url: topicResult.topic_url,
       public_url: url,
       tab_id: topicResult.tab_id,
+      tab_slug: topicResult.tab_slug,
       slug,
       nav_node_id: navNodeId,
     });
   }
 
   // Upsert the custom_tabs row so the dashboard appears as a nav tab.
-  const tabResult = await upsertCustomTabInner(business_id, label, url, 0);
+  const tabResult = await upsertCustomTabInner(business_id, label, url);
   if (tabResult.error) {
     return JSON.stringify({
       error: "tab_upsert_failed",
@@ -1990,7 +2080,13 @@ async function publishDashboard(args: unknown): Promise<string> {
     });
   }
 
-  return JSON.stringify({ ok: true, url, tab_id: tabResult.tab_id, slug });
+  return JSON.stringify({
+    ok: true,
+    url,
+    tab_id: tabResult.tab_id,
+    tab_slug: tabResult.slug,
+    slug,
+  });
 }
 
 async function publishTopicDashboardByName(args: unknown): Promise<string> {
@@ -2022,7 +2118,13 @@ async function publishTopicDashboard(input: {
   label: string;
   html_content: string;
   public_url: string;
-}): Promise<{ topic_url?: string; tab_id?: string; error?: string }> {
+}): Promise<{
+  topic_url?: string;
+  tab_url?: string;
+  tab_id?: string;
+  tab_slug?: string;
+  error?: string;
+}> {
   const { data: biz, error: bizError } = await supabaseAio
     .from("businesses")
     .select("id, workspace_id, slug")
@@ -2069,11 +2171,17 @@ async function publishTopicDashboard(input: {
     input.business_id,
     input.label,
     input.public_url,
-    0,
+    undefined,
     input.nav_node_id,
   );
   if (tabResult.error) return { error: tabResult.error };
-  return { topic_url: topicUrl, tab_id: tabResult.tab_id };
+  const tabSegment = tabResult.slug ?? tabResult.tab_id;
+  return {
+    topic_url: topicUrl,
+    tab_url: tabSegment ? `${topicUrl}/tab/${tabSegment}` : topicUrl,
+    tab_id: tabResult.tab_id,
+    tab_slug: tabResult.slug,
+  };
 }
 
 async function navNodeSlugChain(
@@ -2140,35 +2248,57 @@ async function upsertCustomTabInner(
   business_id: string,
   label: string,
   url: string,
-  sort_order: number,
+  sort_order?: number,
   nav_node_id?: string,
-): Promise<{ tab_id?: string; error?: string }> {
+): Promise<{ tab_id?: string; slug?: string; error?: string }> {
   const normalizedUrl = normalizeCustomTabUrl(url);
   let existingQuery = supabaseAio
     .from("custom_tabs")
-    .select("id")
+    .select("id, slug")
     .eq("workspace_id", WORKSPACE_ID)
-    .eq("business_id", business_id)
     .eq("label", label);
   existingQuery = nav_node_id
     ? existingQuery.eq("nav_node_id", nav_node_id)
-    : existingQuery.is("nav_node_id", null);
+    : existingQuery.eq("business_id", business_id).is("nav_node_id", null);
 
   const { data: existing } = await existingQuery.maybeSingle();
 
   if (existing) {
+    const slug =
+      (existing.slug as string | null) ||
+      (await uniqueCustomTabSlug({
+        business_id,
+        nav_node_id,
+        label,
+        existing_id: existing.id as string,
+      }));
+    const patch: {
+      business_id: string;
+      url: string;
+      slug: string;
+      nav_node_id: string | null;
+      sort_order?: number;
+    } = {
+      business_id,
+      url: normalizedUrl,
+      slug,
+      nav_node_id: nav_node_id ?? null,
+    };
+    if (typeof sort_order === "number") patch.sort_order = sort_order;
+
     const { error } = await supabaseAio
       .from("custom_tabs")
-      .update({
-        url: normalizedUrl,
-        sort_order,
-        nav_node_id: nav_node_id ?? null,
-      })
+      .update(patch)
       .eq("id", existing.id);
     if (error) return { error: error.message };
-    return { tab_id: existing.id as string };
+    return { tab_id: existing.id as string, slug };
   }
 
+  const slug = await uniqueCustomTabSlug({ business_id, nav_node_id, label });
+  const insertSortOrder =
+    typeof sort_order === "number"
+      ? sort_order
+      : await nextCustomTabSortOrder(business_id, nav_node_id);
   const { data, error } = await supabaseAio
     .from("custom_tabs")
     .insert({
@@ -2176,13 +2306,17 @@ async function upsertCustomTabInner(
       business_id,
       nav_node_id: nav_node_id ?? null,
       label,
+      slug,
       url: normalizedUrl,
-      sort_order,
+      sort_order: insertSortOrder,
     })
-    .select("id")
+    .select("id, slug")
     .single();
   if (error) return { error: error.message };
-  return { tab_id: (data as { id: string }).id };
+  return {
+    tab_id: (data as { id: string }).id,
+    slug: (data as { slug: string }).slug,
+  };
 }
 
 async function upsertCustomTab(args: unknown): Promise<string> {
@@ -2203,7 +2337,7 @@ async function upsertCustomTab(args: unknown): Promise<string> {
   );
   if (result.error)
     return JSON.stringify({ error: "db_error", message: result.error });
-  return JSON.stringify({ ok: true, tab_id: result.tab_id });
+  return JSON.stringify({ ok: true, tab_id: result.tab_id, slug: result.slug });
 }
 
 async function listCustomTabs(args: unknown): Promise<string> {
@@ -2223,9 +2357,12 @@ async function listCustomTabs(args: unknown): Promise<string> {
   }
   let query = supabaseAio
     .from("custom_tabs")
-    .select("id, business_id, nav_node_id, label, url, sort_order, created_at")
+    .select(
+      "id, business_id, nav_node_id, label, slug, url, sort_order, created_at",
+    )
     .eq("workspace_id", WORKSPACE_ID)
-    .order("sort_order", { ascending: true });
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
   if (nav_node_id) query = query.eq("nav_node_id", nav_node_id);
   else if (business_id)
     query = query.eq("business_id", business_id).is("nav_node_id", null);
@@ -2733,7 +2870,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       name: "publish_dashboard",
       description:
         "Sla een AIO-styled HTML-dashboard op en pin het als tab in de BusinessTabs-nav van de business. " +
-        "Geeft {url, tab_id, slug} terug. Zelfde label = update HTML in-place (stabiele URL). " +
+        "Geeft {url, tab_id, tab_slug, slug} terug; voor topics wijst url naar /n/.../tab/<slug>. Zelfde label = update HTML in-place (stabiele URL). " +
         "Gebruik voor rijke visuele samenvattingen, statistieken, KPI-overzichten. " +
         "Voor topic-dashboards MOET nav_node_id mee zodat de tab in de topic-shell verschijnt. " +
         AIO_DASHBOARD_STYLE_GUIDE,
@@ -2761,9 +2898,9 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           html_content: {
             type: "string",
             description:
-              'HTML-fragment heeft voorkeur: <main class="aio-dashboard">...</main> met optioneel scoped <style>. ' +
-              "Een volledige HTML-pagina mag ook, maar de inhoud wordt alsnog in AIO-dashboard styling gewrapt. " +
-              "Geen externe iframes. Gebruik AIO CSS variables en body[data-theme] voor light/dark compatibility.",
+              'Verplicht HTML-fragment: <main class="aio-dashboard">...</main> met optioneel scoped <style>. ' +
+              "Geen <!doctype>, html/head/body, header/nav, app shell, breadcrumbs, sidebars of externe iframes. " +
+              "Gebruik AIO CSS variables en body[data-theme] voor light/dark compatibility.",
           },
         },
         required: ["business_id", "label", "html_content"],
@@ -2773,7 +2910,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: "publish_topic_dashboard",
       description:
-        "Maak of update een AIO-styled HTML-dashboard voor een topic in een business, zonder UUIDs nodig te hebben. Voorbeeld: business='TrompTechDesigns', topic='outreach'. Het dashboard wordt opgeslagen, als tab in de bestaande topic-shell gekoppeld en daarnaast als publiek /d/<slug> dashboard beschikbaar gemaakt. " +
+        "Maak of update een AIO-styled HTML-dashboard voor een topic in een business, zonder UUIDs nodig te hebben. Voorbeeld: business='TrompTechDesigns', topic='outreach'. Het dashboard wordt opgeslagen, als tab in de bestaande topic-shell gekoppeld, retourneert /n/.../tab/<slug>, en is daarnaast als publiek /d/<slug> dashboard beschikbaar. " +
         AIO_DASHBOARD_STYLE_GUIDE,
       inputSchema: {
         type: "object",
@@ -2795,7 +2932,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           html_content: {
             type: "string",
             description:
-              'HTML-fragment heeft voorkeur: <main class="aio-dashboard">...</main> met optioneel scoped <style>. Mag inline CSS en vanilla JS bevatten. Gebruik AIO CSS variables en body[data-theme] voor light/dark compatibility.',
+              'Verplicht HTML-fragment: <main class="aio-dashboard">...</main> met optioneel scoped <style>. Geen html/head/body, header/nav, app shell, breadcrumbs of sidebars. Mag inline CSS en vanilla JS bevatten. Gebruik AIO CSS variables en body[data-theme] voor light/dark compatibility.',
           },
         },
         required: ["business", "topic", "label", "html_content"],
@@ -2834,8 +2971,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           },
           sort_order: {
             type: "number",
-            default: 0,
-            description: "Volgorde t.o.v. andere custom tabs (laag = eerder).",
+            description:
+              "Optionele volgorde t.o.v. andere custom tabs (laag = eerder). Laat leeg om bestaande volgorde te behouden of achteraan toe te voegen.",
           },
         },
         required: ["business_id", "label", "url"],

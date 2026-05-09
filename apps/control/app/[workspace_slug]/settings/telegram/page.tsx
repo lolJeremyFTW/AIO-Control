@@ -4,5 +4,5 @@ type Props = { params: Promise<{ workspace_slug: string }> };
 
 export default async function TelegramSettingsRedirect({ params }: Props) {
   const { workspace_slug } = await params;
-  redirect(`/${workspace_slug}/settings/notifications#telegram`);
+  redirect(`/${workspace_slug}/settings/notifications#channels`);
 }

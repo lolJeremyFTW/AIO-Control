@@ -142,7 +142,10 @@ export async function POST(
     );
   }
 
-  const config = (agent.config ?? {}) as AgentConfig;
+  const config = withDefaultAioMcpConfig(
+    (agent.config ?? {}) as AgentConfig,
+    agent.provider as ProviderId,
+  );
   if (agent.model && !config.model) config.model = agent.model;
   const responseLocale = normalizeLocale(body.locale);
 
@@ -150,19 +153,16 @@ export async function POST(
   // tools / siblings / budget / business / workspace-rules) and
   // prepend it to whatever system prompt the user wrote. One source
   // of truth across chat + cron + webhook + manual triggers.
-  const preamble = await buildAgentSystemPrompt(
-    {
-      id: agent.id,
-      workspace_id: agent.workspace_id,
-      business_id: agent.business_id,
-      nav_node_id: agent.nav_node_id,
-      name: agent.name,
-      kind: agent.kind,
-      provider: agent.provider,
-      model: agent.model,
-    },
-    { includeDefaultAioMcp: false },
-  );
+  const preamble = await buildAgentSystemPrompt({
+    id: agent.id,
+    workspace_id: agent.workspace_id,
+    business_id: agent.business_id,
+    nav_node_id: agent.nav_node_id,
+    name: agent.name,
+    kind: agent.kind,
+    provider: agent.provider,
+    model: agent.model,
+  });
   config.systemPrompt = prependPreamble(preamble, config.systemPrompt);
   if (responseLocale) {
     config.systemPrompt =
@@ -170,6 +170,17 @@ export async function POST(
       `Language: respond to the user in ${TARGET_LANGUAGE[responseLocale]}. ` +
       "Translate natural-language tool results or prior context as needed, but preserve code, URLs, IDs, JSON, cron expressions, placeholders, and proper names.";
   }
+
+  // Resolve workspace runtime metadata once. Interactive dashboard chats
+  // use the workspace owner for owner-scoped credentials, matching
+  // background dispatch instead of depending on the current viewer.
+  const { data: runtimeRow } = await supabase
+    .from("workspaces")
+    .select("owner_id, hermes_agent_name, openclaw_agent_name")
+    .eq("id", agent.workspace_id)
+    .maybeSingle();
+  const credentialOwnerUserId =
+    (runtimeRow?.owner_id as string | null) ?? user.id;
 
   // Resolve the per-tenant API key for this agent's provider. Order
   // is navnode → business → workspace → env-var fallback. Set up once
@@ -179,20 +190,19 @@ export async function POST(
       ? ((
           await resolveCodexCredential({
             workspaceId: agent.workspace_id,
-            ownerUserId: user.id,
+            ownerUserId: credentialOwnerUserId,
           })
         )?.accessToken ?? null)
       : await resolveApiKey(agent.provider, {
           workspaceId: agent.workspace_id,
           businessId: agent.business_id,
           navNodeId: agent.nav_node_id,
-          credentialOwnerUserId: user.id,
+          credentialOwnerUserId,
         });
 
   // Resolve MCP tool keys so interactive chat sessions can use brave/
   // firecrawl without them being in process.env.
-  const chatMcpServers: string[] =
-    (agent as { config?: { mcpServers?: string[] } }).config?.mcpServers ?? [];
+  const chatMcpServers = config.mcpServers ?? [];
   const MCP_TOOL_KEY_MAP: Record<string, { envVar: string; provider: string }> =
     {
       brave: { envVar: "BRAVE_API_KEY", provider: "brave" },
@@ -208,7 +218,7 @@ export async function POST(
         workspaceId: agent.workspace_id,
         businessId: agent.business_id,
         navNodeId: agent.nav_node_id,
-        credentialOwnerUserId: user.id,
+        credentialOwnerUserId,
       });
       if (k) mcpToolKeys[spec.envVar] = k;
     }
@@ -216,7 +226,7 @@ export async function POST(
   if (chatMcpServers.includes("openai-images")) {
     const codexCredential = await resolveCodexCredential({
       workspaceId: agent.workspace_id,
-      ownerUserId: user.id,
+      ownerUserId: credentialOwnerUserId,
     });
     if (codexCredential?.accessToken) {
       mcpToolKeys.OPENAI_CODEX_ACCESS_TOKEN = codexCredential.accessToken;
@@ -233,11 +243,6 @@ export async function POST(
   // onboarding flow (Settings → Providers → Persistent agent), the
   // Hermes / OpenClaw providers spawn the named profile/agent
   // instead of the bare CLI so the runtimes keep long-lived state.
-  const { data: runtimeRow } = await supabase
-    .from("workspaces")
-    .select("hermes_agent_name, openclaw_agent_name")
-    .eq("id", agent.workspace_id)
-    .maybeSingle();
   const { data: businessRuntimeRow } = agent.business_id
     ? await supabase
         .from("businesses")
@@ -257,6 +262,7 @@ export async function POST(
   let assistantText = "";
   let usage: { input: number; output: number; cost: number } | null = null;
   let scheduledPingViaTool = false;
+  let runErrorText: string | null = null;
 
   // Resolve which AIO Control tools this agent is allowed to use.
   // null in the DB = use the kind defaults; explicit array = allow-list.
@@ -287,6 +293,9 @@ export async function POST(
           clientConnected = false;
         }
       };
+      const noteRunError = (message: string) => {
+        if (!runErrorText) runErrorText = message;
+      };
 
       // Multi-turn dispatch loop. We accumulate tool_use blocks the
       // model emits during the stream, execute READ + META tools
@@ -307,6 +316,7 @@ export async function POST(
       if (body.approve_tool) {
         const pending = takePendingApproval(body.approve_tool.tool_call_id);
         if (!pending) {
+          noteRunError("approval_expired: bevestiging verlopen of al verwerkt");
           send({
             type: "error",
             code: "approval_expired",
@@ -330,11 +340,17 @@ export async function POST(
             if (res.kind === "ok") {
               toolResultJson = JSON.stringify(res.data);
             } else if (res.kind === "error") {
+              const toolError = `Tool ${pending.name} failed: ${res.error}`;
+              noteRunError(toolError);
+              send({ type: "error", code: "tool_error", message: toolError });
               toolResultJson = JSON.stringify({ error: res.error });
             } else {
               // executeAioWriteTool shouldn't normally defer (the
               // confirm gate already happened); fall back so the
               // model sees a clear error rather than nothing.
+              const toolError = `Tool ${pending.name} deferred unexpectedly during approval`;
+              noteRunError(toolError);
+              send({ type: "error", code: "tool_error", message: toolError });
               toolResultJson = JSON.stringify({
                 error: "Unexpected defer from write-tool execution.",
               });
@@ -382,7 +398,7 @@ export async function POST(
       }
 
       try {
-        for (let hop = 0; hop < HOPS_MAX && !deferred; hop++) {
+        for (let hop = 0; hop < HOPS_MAX && !deferred && !runErrorText; hop++) {
           const toolUses: Array<{
             id: string;
             name: string;
@@ -415,6 +431,11 @@ export async function POST(
             sessionId: threadId ?? undefined,
             tools,
           })) {
+            if (event.type === "error") {
+              noteRunError(`${event.code}: ${event.message}`);
+              send(event);
+              break;
+            }
             if (event.type === "token") assistantText += event.delta;
             if (event.type === "message_end") {
               usage = {
@@ -442,6 +463,7 @@ export async function POST(
             }
             send(event);
           }
+          if (runErrorText) break;
 
           // Filter out tool calls already handled by the provider's
           // internal MCP loop — only AIO tools remain for us to run.
@@ -536,15 +558,19 @@ export async function POST(
               break;
             }
             // ok / error — JSON-encode for the model.
+            if (res.kind === "error") {
+              const toolError = `Tool ${tu.name} failed: ${res.error}`;
+              noteRunError(toolError);
+              send({ type: "error", code: "tool_error", message: toolError });
+              break;
+            }
             toolResults.push({
               id: tu.id,
-              content:
-                res.kind === "ok"
-                  ? JSON.stringify(res.data)
-                  : JSON.stringify({ error: res.error }),
+              content: JSON.stringify(res.data),
             });
           }
 
+          if (runErrorText) break;
           if (deferred) break;
           if (toolResults.length === 0) break;
 
@@ -576,10 +602,12 @@ export async function POST(
           });
         }
       } catch (err) {
+        const message = err instanceof Error ? err.message : "Unknown error";
+        noteRunError(message);
         send({
           type: "error",
           code: "internal",
-          message: err instanceof Error ? err.message : "Unknown error",
+          message,
         });
       } finally {
         finishedAt.ts = Date.now();
@@ -594,20 +622,27 @@ export async function POST(
         // Best-effort persistence after the stream closes. We use the
         // (RLS-aware) Supabase client the user owns, so writes still
         // respect the editor+ policy.
+        const durationMs = finishedAt.ts ? finishedAt.ts - startedAtMs : null;
+        const finalStatus = runErrorText ? "failed" : "done";
+        const outputPayload = runErrorText
+          ? { text: assistantText, error: runErrorText }
+          : { text: assistantText };
+
         await supabase
           .from("runs")
           .update({
-            status: "done",
+            status: finalStatus,
             ended_at: new Date().toISOString(),
             // Duration = finish-stamp minus the request-entry stamp.
             // Earlier we computed `finishedAt - new Date()` which is
             // a tiny negative number — the right-hand operand was
             // captured AFTER finishedAt, not at request start.
-            duration_ms: finishedAt.ts ? finishedAt.ts - startedAtMs : null,
+            duration_ms: durationMs,
             cost_cents: usage?.cost ?? 0,
             input_tokens: usage?.input ?? 0,
             output_tokens: usage?.output ?? 0,
-            output: { text: assistantText },
+            output: outputPayload,
+            error_text: runErrorText,
           })
           .eq("id", run.id)
           .then(({ error }) => {
@@ -623,20 +658,20 @@ export async function POST(
             business_id: agent.business_id,
             agent_id: agent.id,
             schedule_id: null,
-            status: "done",
+            status: finalStatus,
             cost_cents: usage?.cost ?? 0,
-            duration_ms: 0,
-            output: { text: assistantText },
-            error_text: null,
+            duration_ms: durationMs ?? 0,
+            output: outputPayload,
+            error_text: runErrorText,
           },
-          "done",
+          finalStatus,
         );
 
         // Persist the just-completed turn so the chat sidebar can
         // load it back. Best-effort — we don't fail the response if
         // the insert hiccups.
         if (threadId && lastUserText) {
-          if (!scheduledPingViaTool) {
+          if (!runErrorText && !scheduledPingViaTool) {
             const fallbackPing = inferScheduledChatPing(assistantText);
             if (fallbackPing) {
               scheduleChatPing(
@@ -646,10 +681,15 @@ export async function POST(
               );
             }
           }
+          const persistedAssistantText = runErrorText
+            ? [assistantText.trim(), `Run failed: ${runErrorText}`]
+                .filter(Boolean)
+                .join("\n\n")
+            : assistantText;
           await persistChatTurn({
             thread_id: threadId,
             user_message: lastUserText,
-            assistant_message: assistantText,
+            assistant_message: persistedAssistantText,
             run_id: run.id,
           }).catch((err) => {
             console.error("persistChatTurn failed", err);
@@ -671,6 +711,30 @@ export async function POST(
       "x-aio-run-id": run.id,
     },
   });
+}
+
+function withDefaultAioMcpConfig(
+  config: AgentConfig,
+  provider: ProviderId,
+): AgentConfig {
+  const next: AgentConfig = { ...config };
+  if (!supportsNativeMcp(provider)) return next;
+  if (next.mcpPermissions?.aio === "off") return next;
+
+  const existing = Array.isArray(next.mcpServers) ? next.mcpServers : [];
+  if (existing.includes("aio")) return { ...next, mcpServers: existing };
+
+  return { ...next, mcpServers: ["aio", ...existing] };
+}
+
+function supportsNativeMcp(provider: ProviderId): boolean {
+  return (
+    provider === "claude" ||
+    provider === "minimax" ||
+    provider === "openai_codex" ||
+    provider === "openrouter" ||
+    provider === "ollama"
+  );
 }
 
 function normalizeLocale(value: unknown): Locale | null {

@@ -51,17 +51,12 @@ export type BusinessTabsTopicEntry = {
   label: string;
   /** Custom tab ID — present for user-added iframe tabs, absent for built-in topic entries. */
   id?: string;
+  /** Readable route segment for custom tab links. */
+  slug?: string | null;
   /** Original saved URL. Internal AIO URLs are opened directly; external URLs keep iframe tab routing. */
   url?: string;
   /** Optional icon name from the AppIcon registry. */
-  icon?:
-    | "video"
-    | "chart"
-    | "tools"
-    | "robot"
-    | "list"
-    | "inbox"
-    | "grid";
+  icon?: "video" | "chart" | "tools" | "robot" | "list" | "inbox" | "grid";
 };
 
 type Props = {
@@ -103,13 +98,15 @@ type Props = {
 };
 
 function customTabEntry(
-  tab: { id: string; label: string; url: string },
+  tab: { id: string; label: string; slug?: string | null; url: string },
   workspaceSlug: string,
 ): BusinessTabsTopicEntry {
   const internalPath = internalAioPath(tab.url, workspaceSlug);
+  const segment = tab.slug?.trim() || tab.id;
   return {
     id: tab.id,
-    href: internalPath ?? `/tab/${tab.id}`,
+    slug: tab.slug,
+    href: internalPath ?? `/tab/${segment}`,
     label: tab.label,
     url: tab.url,
   };
@@ -154,7 +151,9 @@ export function BusinessTabs({
   // TopicTabs inside the page renders its own navigation.
   const isTopicPath = path.includes("/n/");
 
-  const [localTopicTabs, setLocalTopicTabs] = useState<BusinessTabsTopicEntry[]>(topicTabs ?? []);
+  const [localTopicTabs, setLocalTopicTabs] = useState<
+    BusinessTabsTopicEntry[]
+  >(topicTabs ?? []);
   const [showAdd, setShowAdd] = useState(false);
   const [addLabel, setAddLabel] = useState("");
   const [addUrl, setAddUrl] = useState("");
@@ -175,11 +174,14 @@ export function BusinessTabs({
       );
       if (!res.ok) return;
       const { tabs } = (await res.json()) as {
-        tabs: Array<{ id: string; label: string; url: string }>;
+        tabs: Array<{
+          id: string;
+          label: string;
+          slug?: string | null;
+          url: string;
+        }>;
       };
-      setLocalTopicTabs(
-        tabs.map((tab) => customTabEntry(tab, workspaceSlug)),
-      );
+      setLocalTopicTabs(tabs.map((tab) => customTabEntry(tab, workspaceSlug)));
     } catch {
       // Silently fail — existing UI stays intact.
     }
@@ -227,6 +229,10 @@ export function BusinessTabs({
   }
 
   async function handleDeleteTab(id: string) {
+    const deletedTab = localTopicTabs.find((tab) => tab.id === id);
+    const deletedHref = deletedTab
+      ? resolvedTabHref(deletedTab, base, workspaceSlug)
+      : `${base}/tab/${id}`;
     setDeleting(id);
     const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
     await fetch(`${basePath}/api/custom-tabs/${id}`, {
@@ -235,7 +241,11 @@ export function BusinessTabs({
     });
     setDeleting(null);
     // If we're currently on this tab's page, navigate back to business root.
-    if (path.includes(`/tab/${id}`)) {
+    if (
+      path === deletedHref ||
+      path.startsWith(`${deletedHref}/`) ||
+      path.includes(`/tab/${id}`)
+    ) {
       window.location.href = base;
     } else {
       await refreshTabs();
@@ -314,7 +324,6 @@ export function BusinessTabs({
     }),
   ];
 
-
   return (
     <>
       <div
@@ -331,7 +340,8 @@ export function BusinessTabs({
           const active = t.match(path);
           // Find matching topicTab entry to get its id for delete button.
           const topicEntry = localTopicTabs.find(
-            (tt) => resolvedTabHref(tt, base, workspaceSlug) === t.href && tt.id,
+            (tt) =>
+              resolvedTabHref(tt, base, workspaceSlug) === t.href && tt.id,
           );
           return (
             <span
@@ -362,42 +372,42 @@ export function BusinessTabs({
                   {t.label}
                 </a>
               ) : (
-              <Link
-                href={t.href}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  padding: "8px 10px 8px 14px",
-                  fontSize: 12.5,
-                  fontWeight: 700,
-                  color: active ? "var(--app-fg)" : "var(--app-fg-3)",
-                  textDecoration: "none",
-                }}
-              >
-                {t.label}
-                {typeof t.badge === "number" && t.badge > 0 && (
-                  <span
-                    style={{
-                      fontSize: 10,
-                      fontWeight: 800,
-                      letterSpacing: 0.4,
-                      padding: "1px 6px",
-                      borderRadius: 999,
-                      background: active
-                        ? "var(--tt-green)"
-                        : "var(--app-card-2)",
-                      color: active ? "#fff" : "var(--app-fg-2)",
-                      border: active
-                        ? "1px solid var(--tt-green)"
-                        : "1px solid var(--app-border)",
-                      fontVariantNumeric: "tabular-nums",
-                    }}
-                  >
-                    {t.badge}
-                  </span>
-                )}
-              </Link>
+                <Link
+                  href={t.href}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "8px 10px 8px 14px",
+                    fontSize: 12.5,
+                    fontWeight: 700,
+                    color: active ? "var(--app-fg)" : "var(--app-fg-3)",
+                    textDecoration: "none",
+                  }}
+                >
+                  {t.label}
+                  {typeof t.badge === "number" && t.badge > 0 && (
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 800,
+                        letterSpacing: 0.4,
+                        padding: "1px 6px",
+                        borderRadius: 999,
+                        background: active
+                          ? "var(--tt-green)"
+                          : "var(--app-card-2)",
+                        color: active ? "#fff" : "var(--app-fg-2)",
+                        border: active
+                          ? "1px solid var(--tt-green)"
+                          : "1px solid var(--app-border)",
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
+                      {t.badge}
+                    </span>
+                  )}
+                </Link>
               )}
               {topicEntry?.id && (
                 <button
@@ -523,7 +533,9 @@ export function BusinessTabs({
                 fontSize: 13,
               }}
             />
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <div
+              style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}
+            >
               <button
                 type="button"
                 onClick={() => setShowAdd(false)}

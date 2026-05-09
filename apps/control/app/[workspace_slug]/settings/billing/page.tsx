@@ -7,7 +7,7 @@ import {
   getProfile,
   getWorkspaceBySlug,
 } from "../../../../lib/auth/workspace";
-import { resolveWorkspaceSubscription } from "../../../../lib/billing/subscription";
+import { getWorkspaceBillingState } from "../../../../lib/billing/state";
 import { createSupabaseServerClient } from "../../../../lib/supabase/server";
 import { getDict } from "../../../../lib/i18n/server";
 import { SettingsSectionCard } from "../../../../components/SettingsSectionCard";
@@ -36,8 +36,19 @@ export default async function BillingSettingsPage({ params }: Props) {
     getProfile(user.id),
     getDict(),
   ]);
-  const subscription = resolveWorkspaceSubscription({
-    isAdmin: Boolean(profile?.is_admin),
+  const billing = await getWorkspaceBillingState({
+    workspaceId: workspace.id,
+    profile: {
+      email: (profile as { email?: string | null } | null)?.email ?? null,
+      display_name:
+        (profile as { display_name?: string | null } | null)?.display_name ??
+        null,
+      company_name:
+        (profile as { company_name?: string | null } | null)?.company_name ??
+        null,
+      tax_id: (profile as { tax_id?: string | null } | null)?.tax_id ?? null,
+    },
+    syncInvoices: true,
   });
 
   return (
@@ -65,8 +76,17 @@ export default async function BillingSettingsPage({ params }: Props) {
 
       <section id="subscription" style={{ scrollMarginTop: 16 }}>
         <SubscriptionPanel
-          subscription={subscription}
-          stripeCustomerId={null}
+          workspaceId={workspace.id}
+          workspaceSlug={workspace.slug}
+          subscription={billing.subscription}
+          customer={billing.customer}
+          billingEmail={billing.billingEmail}
+          taxId={billing.taxId}
+          invoices={billing.invoices}
+          stripe={billing.stripe}
+          schemaReady={billing.schemaReady}
+          invoiceSyncError={billing.invoiceSyncError}
+          isGlobalAdmin={Boolean(profile?.is_admin)}
         />
       </section>
     </>

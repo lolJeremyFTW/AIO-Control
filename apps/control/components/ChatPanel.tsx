@@ -296,7 +296,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
   );
 
   useEffect(() => {
-    if (!mounted || !agentId || !activeThreadId) return;
+    if (!mounted || !agentId || !activeThreadId || sending) return;
     let cancelled = false;
     void Promise.all([
       listThreads(agentId, locale),
@@ -309,7 +309,7 @@ export function ChatPanel({ agents, workspaceSlug, firstBusinessId }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [activeThreadId, agentId, locale, mounted, rowsToMessages]);
+  }, [activeThreadId, agentId, locale, mounted, rowsToMessages, sending]);
 
   useEffect(() => {
     if (open) listRef.current?.scrollTo({ top: 99999 });

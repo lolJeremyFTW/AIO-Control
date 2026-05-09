@@ -13,7 +13,10 @@ import {
   getCurrentUser,
   getWorkspaceBySlug,
 } from "../../../../lib/auth/workspace";
-import { listBusinesses, findBusiness } from "../../../../lib/queries/businesses";
+import {
+  listBusinesses,
+  findBusiness,
+} from "../../../../lib/queries/businesses";
 import { createSupabaseServerClient } from "../../../../lib/supabase/server";
 import { getDict } from "../../../../lib/i18n/server";
 import { BusinessTabs } from "../../../../components/BusinessTabs";
@@ -40,29 +43,33 @@ export default async function BusinessLayout({ children, params }: Props) {
   // Both are RLS-gated so we don't have to re-check membership.
   // Use biz.id (UUID) for all queries — bizId param may now be a slug.
   const supabase = await createSupabaseServerClient();
-  const [{ count: routinesCount }, { data: lastRunRow }, { data: customTabRows }, dict] =
-    await Promise.all([
-      supabase
-        .from("schedules")
-        .select("id", { count: "exact", head: true })
-        .eq("business_id", biz.id)
-        .in("kind", ["cron", "webhook"])
-        .eq("enabled", true),
-      supabase
-        .from("runs")
-        .select("status, ended_at, started_at, created_at")
-        .eq("business_id", biz.id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-      supabase
-        .from("custom_tabs")
-        .select("id, label, url")
-        .eq("business_id", biz.id)
-        .is("nav_node_id", null)
-        .order("sort_order", { ascending: true }),
-      getDict(),
-    ]);
+  const [
+    { count: routinesCount },
+    { data: lastRunRow },
+    { data: customTabRows },
+    dict,
+  ] = await Promise.all([
+    supabase
+      .from("schedules")
+      .select("id", { count: "exact", head: true })
+      .eq("business_id", biz.id)
+      .in("kind", ["cron", "webhook"])
+      .eq("enabled", true),
+    supabase
+      .from("runs")
+      .select("status, ended_at, started_at, created_at")
+      .eq("business_id", biz.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("custom_tabs")
+      .select("id, label, slug, url")
+      .eq("business_id", biz.id)
+      .is("nav_node_id", null)
+      .order("sort_order", { ascending: true }),
+    getDict(),
+  ]);
 
   type RunRow = {
     status: string;
@@ -87,7 +94,13 @@ export default async function BusinessLayout({ children, params }: Props) {
 
   const customTabEntries = (customTabRows ?? []).map((tab) => ({
     id: tab.id as string,
-    href: customTabHref(tab.url as string, workspace_slug, tab.id as string),
+    slug: tab.slug as string | null,
+    href: customTabHref(
+      tab.url as string,
+      workspace_slug,
+      tab.id as string,
+      tab.slug as string | null,
+    ),
     label: tab.label as string,
     url: tab.url as string,
   }));
@@ -118,7 +131,12 @@ export default async function BusinessLayout({ children, params }: Props) {
   );
 }
 
-function customTabHref(url: string, workspaceSlug: string, tabId: string): string {
+function customTabHref(
+  url: string,
+  workspaceSlug: string,
+  tabId: string,
+  slug?: string | null,
+): string {
   if (url.startsWith(`/${workspaceSlug}/`)) return url;
   try {
     const parsed = new URL(url);
@@ -129,5 +147,5 @@ function customTabHref(url: string, workspaceSlug: string, tabId: string): strin
     // Keep malformed legacy rows behind the iframe route, where the
     // page-level lookup can decide whether to render or 404.
   }
-  return `/tab/${tabId}`;
+  return `/tab/${slug?.trim() || tabId}`;
 }

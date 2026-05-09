@@ -225,7 +225,10 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
     }
   }
 
-  const config = (agent.config ?? {}) as AgentConfig;
+  const config = withDefaultAioMcpConfig(
+    (agent.config ?? {}) as AgentConfig,
+    agent.provider as ProviderId,
+  );
   if (agent.model && !config.model) config.model = agent.model;
 
   // Inject the same system-prompt preamble we use for chat — platform
@@ -755,6 +758,30 @@ async function maybeQueueChain(
       console.error("chain dispatchRun failed", err),
     );
   }
+}
+
+function withDefaultAioMcpConfig(
+  config: AgentConfig,
+  provider: ProviderId,
+): AgentConfig {
+  const next: AgentConfig = { ...config };
+  if (!supportsNativeMcp(provider)) return next;
+  if (next.mcpPermissions?.aio === "off") return next;
+
+  const existing = Array.isArray(next.mcpServers) ? next.mcpServers : [];
+  if (existing.includes("aio")) return { ...next, mcpServers: existing };
+
+  return { ...next, mcpServers: ["aio", ...existing] };
+}
+
+function supportsNativeMcp(provider: ProviderId): boolean {
+  return (
+    provider === "claude" ||
+    provider === "minimax" ||
+    provider === "openai_codex" ||
+    provider === "openrouter" ||
+    provider === "ollama"
+  );
 }
 
 // Heuristic: error messages that suggest a transient failure (worth

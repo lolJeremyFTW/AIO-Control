@@ -100,7 +100,7 @@ const TEMPLATES: Template[] = [
   {
     labelKey: "search.tpl.settingsTelegram",
     hintKey: "search.tpl.settingsTelegram.hint",
-    href: "/settings/notifications#telegram",
+    href: "/settings/notifications#channels",
   },
   {
     labelKey: "search.tpl.settingsApiKeys",

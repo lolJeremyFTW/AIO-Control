@@ -184,7 +184,9 @@ export async function buildAgentSystemPrompt(
   const usesNativeMcpHost =
     agent.provider === "claude" ||
     agent.provider === "minimax" ||
-    agent.provider === "openai_codex";
+    agent.provider === "openai_codex" ||
+    agent.provider === "openrouter" ||
+    agent.provider === "ollama";
   const includeDefaultAioMcp = options?.includeDefaultAioMcp ?? true;
   const configuredMcpServers =
     !includeDefaultAioMcp ||
@@ -373,6 +375,14 @@ export async function buildAgentSystemPrompt(
       "systeem, je context hieronder en je tools geven je toegang.",
   );
   lines.push(
+    "- **AIO dashboard/data toegang is standaard.** Voor dashboards, " +
+      "custom tabs, runs, schedules, agents, businesses, topics of " +
+      "Supabase context: gebruik de AIO tools hieronder (meestal " +
+      "`aio__...`). Als een benodigde tool ontbreekt of faalt, " +
+      "rapporteer die concrete tool/config-fout; zeg niet dat je " +
+      "geen dashboard/data toegang hebt.",
+  );
+  lines.push(
     "- **Geen placeholder-tabellen** met verzonnen waarden. Als je " +
       "een concreet getal niet hebt: roep een tool aan, of vraag het " +
       "in één korte directe zin aan de operator.",
@@ -408,6 +418,12 @@ export async function buildAgentSystemPrompt(
         "Gebruik de exacte tool-namen zoals hieronder — roep ze gewoon aan, " +
         'geen aankondiging, geen "zal ik...?".',
     );
+    if (hasAioMcp && !configuredMcpServersRaw.includes("aio")) {
+      lines.push(
+        "AIO MCP is automatisch toegevoegd voor deze provider en is " +
+          "gescoped op de huidige workspace/business/topic.",
+      );
+    }
     for (const serverId of configuredMcpServers) {
       if (serverId === "aio" && mcpPermissions.aio === "off") continue;
       if (serverId === "filesystem" && mcpPermissions.filesystem === "off")

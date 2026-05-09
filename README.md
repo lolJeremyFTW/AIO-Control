@@ -338,6 +338,7 @@ SMTP_FROM=
 VAPID_PUBLIC_KEY=
 VAPID_PRIVATE_KEY=
 VAPID_SUBJECT=
+STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
 MOLLIE_API_KEY=
 ```
@@ -411,7 +412,7 @@ The migration set includes workspaces, profiles, businesses, agents, runs, chat 
 The current migration line reaches:
 
 ```text
-070_improvements_self_healing.sql
+075_billing.sql
 ```
 
 Apply migrations in order. Most migrations are written to be idempotent with `if not exists` guards where possible.

@@ -28,6 +28,14 @@ export type WorkspaceSubscription = {
   managedInternally: boolean;
 };
 
+export type SubscriptionSource = {
+  planId?: string | null;
+  billingCadence?: string | null;
+  discountPercent?: number | null;
+  discountLabel?: string | null;
+  managedInternally?: boolean | null;
+};
+
 export const PLAN_TIERS: PlanTier[] = [
   {
     id: "free",
@@ -120,6 +128,18 @@ export function getPlanTier(planId: PlanId): PlanTier {
   return PLAN_TIERS.find((tier) => tier.id === planId) ?? PLAN_TIERS[0]!;
 }
 
+export function normalizePlanId(planId: string | null | undefined): PlanId {
+  return PLAN_TIERS.some((tier) => tier.id === planId)
+    ? (planId as PlanId)
+    : "free";
+}
+
+export function normalizeBillingCadence(
+  cadence: string | null | undefined,
+): BillingCadence {
+  return cadence === "yearly" ? "yearly" : "monthly";
+}
+
 export function getPlanPriceCents(
   planId: PlanId,
   billingCadence: BillingCadence,
@@ -132,36 +152,49 @@ export function calculateNetPriceCents(
   listPriceCents: number,
   discountPercent: number,
 ) {
-  return Math.max(
-    0,
-    Math.round(listPriceCents * (1 - discountPercent / 100)),
-  );
+  return Math.max(0, Math.round(listPriceCents * (1 - discountPercent / 100)));
 }
 
-export function resolveWorkspaceSubscription(input: {
-  isAdmin: boolean;
-}): WorkspaceSubscription {
-  if (input.isAdmin) {
-    const planId: PlanId = "enterprise";
-    const billingCadence: BillingCadence = "monthly";
-    const listPriceCents = getPlanPriceCents(planId, billingCadence);
-    const discountPercent = 100;
+export function clampDiscountPercent(value: number | null | undefined) {
+  if (typeof value !== "number" || Number.isNaN(value)) return 0;
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+export function resolveWorkspaceSubscription(
+  input: SubscriptionSource = {},
+): WorkspaceSubscription {
+  const planId = normalizePlanId(input.planId);
+  const billingCadence = normalizeBillingCadence(input.billingCadence);
+  const listPriceCents = getPlanPriceCents(planId, billingCadence);
+  const discountPercent = clampDiscountPercent(input.discountPercent);
+  const managedInternally = Boolean(input.managedInternally);
+
+  if (planId !== "free") {
+    const netPriceCents = calculateNetPriceCents(
+      listPriceCents,
+      discountPercent,
+    );
 
     return {
       planId,
       billingCadence,
       listPriceCents,
       discountPercent,
-      netPriceCents: calculateNetPriceCents(listPriceCents, discountPercent),
-      discountLabel: "Admin account korting",
-      invoiceNote: "Enterprise plan van EUR 500 per maand met 100% korting.",
-      managedInternally: true,
+      netPriceCents,
+      discountLabel: input.discountLabel?.trim() || null,
+      invoiceNote:
+        managedInternally && discountPercent === 100
+          ? `${getPlanTier(planId).name} plan wordt intern beheerd met 100% korting.`
+          : discountPercent > 0
+            ? `${discountPercent}% korting wordt toegepast bij de volgende checkout.`
+            : "Stripe verwerkt betaalmethodes en facturen voor dit plan.",
+      managedInternally,
     };
   }
 
   return {
     planId: "free",
-    billingCadence: "monthly",
+    billingCadence,
     listPriceCents: 0,
     discountPercent: 0,
     netPriceCents: 0,

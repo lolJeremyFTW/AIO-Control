@@ -358,6 +358,7 @@ async function sendTelegramRunNotification(
   const res = await sendTelegram({
     workspace_id: run.workspace_id,
     business_id: run.business_id,
+    nav_node_id: run.nav_node_id,
     target,
     text,
     buttons: buttons.length > 0 ? buttons : undefined,

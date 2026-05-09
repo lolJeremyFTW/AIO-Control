@@ -86,6 +86,7 @@ export async function POST(req: Request) {
 
   // Insert a fresh runs row carrying the result. Dispatcher / notify
   // pipeline picks it up like any other run.
+  const finalStatus = body.status ?? (body.error_text ? "failed" : "done");
   const { data: run, error } = await supabase
     .from("runs")
     .insert({
@@ -94,7 +95,7 @@ export async function POST(req: Request) {
       business_id: sched.business_id,
       schedule_id: sched.id,
       triggered_by: "cron",
-      status: body.status ?? "done",
+      status: finalStatus,
       input: mergeScheduleSnapshotIntoInput(null, {
         id: sched.id,
         title: sched.title,
@@ -127,7 +128,7 @@ export async function POST(req: Request) {
 
   void dispatchRunEvent(
     run as Parameters<typeof dispatchRunEvent>[0],
-    run.status === "failed" ? "failed" : "done",
+    finalStatus === "failed" ? "failed" : "done",
   );
   void recordScheduleRunMemory({
     schedule: {
@@ -137,7 +138,7 @@ export async function POST(req: Request) {
       cron_expr: (sched.cron_expr as string | null) ?? null,
     },
     runId: run.id as string,
-    status: (run.status as string | null) ?? "done",
+    status: finalStatus,
     endedAt: new Date().toISOString(),
     durationMs: (run.duration_ms as number | null) ?? null,
     costCents: (run.cost_cents as number | null) ?? null,

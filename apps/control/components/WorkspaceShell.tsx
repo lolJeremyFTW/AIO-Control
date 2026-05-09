@@ -103,6 +103,7 @@ type Profile = {
   displayName: string;
   email?: string;
   avatarUrl?: string | null;
+  isAdmin?: boolean;
 };
 
 type Workspace = {
@@ -1153,6 +1154,19 @@ export function WorkspaceShell({
                 >
                   {t("nav.activity")}
                 </a>
+                {profile.isAdmin && (
+                  <a
+                    role="menuitem"
+                    href={`/${workspace.slug}/admin/users`}
+                    onClick={(e) =>
+                      handleNavLinkClick(e, () =>
+                        router.push(`/${workspace.slug}/admin/users`),
+                      )
+                    }
+                  >
+                    {t("nav.adminUsers")}
+                  </a>
+                )}
                 <a
                   role="menuitem"
                   href={`/${workspace.slug}/cost`}

@@ -149,6 +149,7 @@ export default async function WorkspaceLayout({ children, params }: Props) {
         email: profile.email ?? user.email ?? undefined,
         avatarUrl:
           (profile as { avatar_url?: string | null }).avatar_url ?? null,
+        isAdmin: Boolean(profile.is_admin),
       }}
       workspace={{
         id: workspace.id,

@@ -4,7 +4,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
-type CustomTab = { id: string; label: string; url: string };
+type CustomTab = {
+  id: string;
+  label: string;
+  slug?: string | null;
+  url: string;
+  sort_order?: number;
+};
 
 type Props = {
   /** Base href for the topic, e.g. /ws/business/biz/n/outreach */
@@ -25,6 +31,14 @@ const BUILT_IN_TABS = [
   { label: "Routines", suffix: "/routines" },
 ] as const;
 
+function customTabSegment(tab: CustomTab): string {
+  return tab.slug?.trim() || tab.id;
+}
+
+function customTabHref(baseHref: string, tab: CustomTab): string {
+  return `${baseHref}/tab/${customTabSegment(tab)}`;
+}
+
 export function TopicTabs({
   baseHref,
   topicName,
@@ -40,6 +54,8 @@ export function TopicTabs({
   const [addUrl, setAddUrl] = useState("");
   const [adding, setAdding] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [reordering, setReordering] = useState(false);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
 
   const refreshTabs = useCallback(async () => {
     const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
@@ -107,6 +123,60 @@ export function TopicTabs({
     });
     setDeleting(null);
     await refreshTabs();
+  }
+
+  async function persistTabOrder(nextTabs: CustomTab[]) {
+    const orderedTabs = nextTabs.map((tab, index) => ({
+      ...tab,
+      sort_order: (index + 1) * 10,
+    }));
+    setCustomTabs(orderedTabs);
+    setReordering(true);
+    const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+    try {
+      const results = await Promise.all(
+        orderedTabs.map((tab) =>
+          fetch(`${base}/api/custom-tabs/${tab.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            credentials: "same-origin",
+            body: JSON.stringify({ sort_order: tab.sort_order }),
+          }),
+        ),
+      );
+      if (results.some((res) => !res.ok)) await refreshTabs();
+    } catch {
+      await refreshTabs();
+    } finally {
+      setReordering(false);
+    }
+  }
+
+  function moveTab(id: string, offset: -1 | 1) {
+    const index = customTabs.findIndex((tab) => tab.id === id);
+    const nextIndex = index + offset;
+    if (index < 0 || nextIndex < 0 || nextIndex >= customTabs.length) return;
+    const nextTabs = [...customTabs];
+    const currentTab = nextTabs[index];
+    const swappedTab = nextTabs[nextIndex];
+    if (!currentTab || !swappedTab) return;
+    nextTabs[index] = swappedTab;
+    nextTabs[nextIndex] = currentTab;
+    void persistTabOrder(nextTabs);
+  }
+
+  function dropTab(draggedId: string, targetId: string) {
+    if (!draggedId || draggedId === targetId) return;
+    const draggedTab = customTabs.find((tab) => tab.id === draggedId);
+    if (!draggedTab) return;
+    const withoutDragged = customTabs.filter((tab) => tab.id !== draggedId);
+    const targetIndex = withoutDragged.findIndex((tab) => tab.id === targetId);
+    if (targetIndex < 0) return;
+    void persistTabOrder([
+      ...withoutDragged.slice(0, targetIndex),
+      draggedTab,
+      ...withoutDragged.slice(targetIndex),
+    ]);
   }
 
   return (
@@ -196,12 +266,38 @@ export function TopicTabs({
           );
         })}
 
-        {customTabs.map((tab) => {
-          const href = `${baseHref}/tab/${tab.id}`;
-          const active = path === href || path.startsWith(`${href}/`);
+        {customTabs.map((tab, index) => {
+          const href = customTabHref(baseHref, tab);
+          const legacyHref = `${baseHref}/tab/${tab.id}`;
+          const active =
+            path === href ||
+            path.startsWith(`${href}/`) ||
+            path === legacyHref ||
+            path.startsWith(`${legacyHref}/`);
+          const isDragging = draggingId === tab.id;
           return (
             <span
               key={tab.id}
+              draggable
+              onDragStart={(event) => {
+                setDraggingId(tab.id);
+                event.dataTransfer.effectAllowed = "move";
+                event.dataTransfer.setData("text/plain", tab.id);
+              }}
+              onDragOver={(event) => {
+                if (draggingId && draggingId !== tab.id) {
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "move";
+                }
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                const dragged =
+                  draggingId || event.dataTransfer.getData("text/plain");
+                setDraggingId(null);
+                dropTab(dragged, tab.id);
+              }}
+              onDragEnd={() => setDraggingId(null)}
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -209,8 +305,31 @@ export function TopicTabs({
                 borderBottom: active
                   ? "2px solid var(--tt-green)"
                   : "2px solid transparent",
+                opacity: isDragging ? 0.55 : 1,
               }}
             >
+              {customTabs.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => moveTab(tab.id, -1)}
+                  disabled={index === 0 || reordering}
+                  title="Verplaats naar links"
+                  aria-label={`${tab.label} naar links`}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    cursor:
+                      index === 0 || reordering ? "not-allowed" : "pointer",
+                    padding: "0 2px 0 4px",
+                    color: "var(--app-fg-3)",
+                    fontSize: 11,
+                    lineHeight: 1,
+                    opacity: index === 0 || reordering ? 0.25 : 0.65,
+                  }}
+                >
+                  {"<"}
+                </button>
+              )}
               <Link
                 href={href}
                 style={{
@@ -225,6 +344,33 @@ export function TopicTabs({
               >
                 {tab.label}
               </Link>
+              {customTabs.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => moveTab(tab.id, 1)}
+                  disabled={index === customTabs.length - 1 || reordering}
+                  title="Verplaats naar rechts"
+                  aria-label={`${tab.label} naar rechts`}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    cursor:
+                      index === customTabs.length - 1 || reordering
+                        ? "not-allowed"
+                        : "pointer",
+                    padding: "0 4px 0 0",
+                    color: "var(--app-fg-3)",
+                    fontSize: 11,
+                    lineHeight: 1,
+                    opacity:
+                      index === customTabs.length - 1 || reordering
+                        ? 0.25
+                        : 0.65,
+                  }}
+                >
+                  {">"}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => {
@@ -330,7 +476,9 @@ export function TopicTabs({
                 fontSize: 13,
               }}
             />
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <div
+              style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}
+            >
               <button
                 type="button"
                 onClick={() => setShowAdd(false)}

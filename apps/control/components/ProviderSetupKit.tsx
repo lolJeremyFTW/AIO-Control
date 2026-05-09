@@ -64,8 +64,8 @@ const PROVIDERS: ProviderSpec[] = [
       "BotFather bot, group chat_id, optional forum topics, and inbound webhook commands.",
     dashboardHref: "https://t.me/BotFather",
     dashboardLabel: "Open BotFather",
-    targetHref: "/settings/notifications#telegram",
-    targetLabel: "Open Telegram targets",
+    targetHref: "/settings/notifications#channels",
+    targetLabel: "Open channel targets",
     credentials: [
       { id: "telegram", label: "Telegram bot token" },
       {
@@ -83,7 +83,7 @@ const PROVIDERS: ProviderSpec[] = [
     dashboardHref: "https://api.slack.com/apps?new_app=1",
     dashboardLabel: "Open Slack apps",
     targetHref: "/settings/notifications#channels",
-    targetLabel: "Open Slack targets",
+    targetLabel: "Open channel targets",
     credentials: [
       { id: "slack_bot_token", label: "Slack bot token" },
       { id: "slack_signing_secret", label: "Slack signing secret" },
@@ -97,7 +97,7 @@ const PROVIDERS: ProviderSpec[] = [
     dashboardHref: "https://discord.com/developers/applications",
     dashboardLabel: "Open Discord apps",
     targetHref: "/settings/notifications#channels",
-    targetLabel: "Open Discord targets",
+    targetLabel: "Open channel targets",
     credentials: [
       { id: "discord_bot_token", label: "Discord bot token" },
       { id: "discord_public_key", label: "Discord public key" },

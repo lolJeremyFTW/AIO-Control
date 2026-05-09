@@ -70,10 +70,11 @@ export async function POST(
   }
 
   const supabase = getServiceRoleSupabase();
+  const finalStatus = body.status ?? (body.error_text ? "failed" : "done");
   const { error } = await supabase
     .from("runs")
     .update({
-      status: body.status ?? "done",
+      status: finalStatus,
       ended_at: new Date().toISOString(),
       duration_ms: body.duration_ms,
       cost_cents: body.cost_cents ?? 0,
@@ -98,7 +99,7 @@ export async function POST(
   if (run) {
     void dispatchRunEvent(
       run as Parameters<typeof dispatchRunEvent>[0],
-      run.status === "failed" ? "failed" : "done",
+      finalStatus === "failed" ? "failed" : "done",
     );
     const joinedSchedule = run.schedules as unknown;
     const schedule = (
@@ -108,7 +109,7 @@ export async function POST(
       void recordScheduleRunMemory({
         schedule,
         runId: run.id as string,
-        status: (run.status as string | null) ?? "done",
+        status: finalStatus,
         endedAt: new Date().toISOString(),
         durationMs: (run.duration_ms as number | null) ?? null,
         costCents: (run.cost_cents as number | null) ?? null,
