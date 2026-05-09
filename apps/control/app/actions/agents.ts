@@ -43,6 +43,8 @@ export type AgentInput = {
   telegram_target_id?: string | null;
   custom_integration_id?: string | null;
   notification_target_ids?: string[];
+  /** Optional workspace-scoped writing style injected into every run. */
+  writing_style_id?: string | null;
   /** Chain hooks: when this agent's run finishes, queue the next one. */
   next_agent_on_done?: string | null;
   next_agent_on_fail?: string | null;
@@ -118,6 +120,31 @@ async function getValidAgentTopicIds(
   }
 
   return { ok: true, data: ids };
+}
+
+async function getValidWritingStyleId(
+  supabase: SupabaseServerClient,
+  input: {
+    workspaceId: string;
+    writingStyleId?: string | null;
+  },
+): Promise<ActionResult<string | null>> {
+  if (!input.writingStyleId) return { ok: true, data: null };
+  const { data, error } = await supabase
+    .from("writing_styles")
+    .select("id")
+    .eq("id", input.writingStyleId)
+    .eq("workspace_id", input.workspaceId)
+    .is("archived_at", null)
+    .maybeSingle();
+  if (error) return { ok: false, error: error.message };
+  if (!data?.id) {
+    return {
+      ok: false,
+      error: "Schrijfstijl hoort niet bij deze workspace.",
+    };
+  }
+  return { ok: true, data: data.id as string };
 }
 
 async function replaceAgentTopicLinks(
@@ -215,6 +242,11 @@ export async function createAgent(
     input.notification_target_ids,
   );
   if (!notificationTargetIds.ok) return notificationTargetIds;
+  const writingStyleId = await getValidWritingStyleId(supabase, {
+    workspaceId: input.workspace_id,
+    writingStyleId: input.writing_style_id,
+  });
+  if (!writingStyleId.ok) return writingStyleId;
 
   const { data, error } = await supabase
     .from("agents")
@@ -240,6 +272,7 @@ export async function createAgent(
       },
       telegram_target_id: input.telegram_target_id ?? null,
       custom_integration_id: input.custom_integration_id ?? null,
+      writing_style_id: writingStyleId.data,
       next_agent_on_done: input.next_agent_on_done ?? null,
       next_agent_on_fail: input.next_agent_on_fail ?? null,
       key_source: keySource,
@@ -299,6 +332,7 @@ export async function updateAgent(input: {
     telegram_target_id?: string | null;
     custom_integration_id?: string | null;
     notification_target_ids?: string[] | null;
+    writing_style_id?: string | null;
     next_agent_on_done?: string | null;
     next_agent_on_fail?: string | null;
     notify_email?: string | null;
@@ -361,6 +395,7 @@ export async function updateAgent(input: {
   }
   const hasNotificationBindingPatch =
     input.patch.notification_target_ids !== undefined;
+  const hasWritingStylePatch = input.patch.writing_style_id !== undefined;
   const hasTopicLinkPatch =
     input.patch.nav_node_ids !== undefined ||
     input.patch.nav_node_id !== undefined;
@@ -369,6 +404,7 @@ export async function updateAgent(input: {
     null;
   if (
     hasTopicLinkPatch ||
+    hasWritingStylePatch ||
     (hasNotificationBindingPatch && !input.workspace_id)
   ) {
     const { data: agentRow, error: agentError } = await supabase
@@ -388,6 +424,17 @@ export async function updateAgent(input: {
   const agentWorkspaceId =
     agentScope?.workspace_id ?? input.workspace_id ?? null;
   const agentBusinessId = agentScope?.business_id ?? input.business_id;
+  if (hasWritingStylePatch) {
+    if (!agentWorkspaceId) {
+      return { ok: false, error: "Agent niet gevonden." };
+    }
+    const writingStyleId = await getValidWritingStyleId(supabase, {
+      workspaceId: agentWorkspaceId,
+      writingStyleId: input.patch.writing_style_id,
+    });
+    if (!writingStyleId.ok) return writingStyleId;
+    patch.writing_style_id = writingStyleId.data;
+  }
   let topicIds: string[] | null = null;
   if (hasTopicLinkPatch) {
     if (!agentWorkspaceId) {
@@ -470,6 +517,7 @@ export async function updateAgent(input: {
   if (
     Object.keys(patch).length === 0 &&
     !hasNotificationBindingPatch &&
+    !hasWritingStylePatch &&
     !hasTopicLinkPatch
   ) {
     return { ok: true, data: null };
@@ -518,7 +566,7 @@ export async function duplicateAgent(input: {
   const { data: src } = await supabase
     .from("agents")
     .select(
-      "name, kind, provider, model, config, telegram_target_id, custom_integration_id, nav_node_id",
+      "name, kind, provider, model, config, telegram_target_id, custom_integration_id, writing_style_id, nav_node_id",
     )
     .eq("id", input.source_id)
     .maybeSingle();
@@ -536,6 +584,7 @@ export async function duplicateAgent(input: {
       config: src.config,
       telegram_target_id: src.telegram_target_id,
       custom_integration_id: src.custom_integration_id,
+      writing_style_id: src.writing_style_id ?? null,
       nav_node_id: src.nav_node_id ?? null,
     })
     .select("id")

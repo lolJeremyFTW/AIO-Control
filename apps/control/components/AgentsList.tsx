@@ -13,6 +13,7 @@ import { ChatIcon, EditPenIcon, PlusIcon } from "@aio/ui/icon";
 import { archiveAgent, duplicateAgent } from "../app/actions/agents";
 import { runAgentNow } from "../app/actions/schedules";
 import type { AgentRow } from "../lib/queries/agents";
+import type { WritingStyleRow } from "../lib/queries/writing-styles";
 import { AgentRunsPanel } from "./AgentRunsPanel";
 import { EditAgentDialog } from "./EditAgentDialog";
 import { NewAgentDialog } from "./NewAgentDialog";
@@ -51,6 +52,7 @@ type Props = {
    *  the edit dialog. Empty = no skills defined yet. Pulled from
    *  /[ws]/skills via listSkillsForWorkspace. */
   availableSkills?: { id: string; name: string; description: string }[];
+  writingStyles?: Pick<WritingStyleRow, "id" | "name" | "description">[];
 };
 
 export function AgentsList({
@@ -67,6 +69,7 @@ export function AgentsList({
   navOptions = [],
   contextNavNodeId = null,
   availableSkills = [],
+  writingStyles = [],
 }: Props) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<AgentRow | null>(null);
@@ -233,6 +236,7 @@ export function AgentsList({
           defaults={workspaceDefaults}
           navOptions={navOptions}
           initialTopicIds={contextNavNodeId ? [contextNavNodeId] : []}
+          writingStyles={writingStyles}
           onClose={() => setOpen(false)}
         />
       )}
@@ -252,6 +256,7 @@ export function AgentsList({
           siblingAgents={agents.map((a) => ({ id: a.id, name: a.name }))}
           navOptions={navOptions}
           availableSkills={availableSkills}
+          writingStyles={writingStyles}
           onClose={() => setEditing(null)}
         />
       )}

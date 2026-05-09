@@ -37,6 +37,7 @@ import {
   listSlackDiscordNotificationTargets,
 } from "../../../../../../lib/queries/notification-targets";
 import { listSkillsForWorkspace } from "../../../../../../lib/queries/skills";
+import { listWritingStylesForWorkspace } from "../../../../../../lib/queries/writing-styles";
 import type {
   RunRow,
   ScheduleRow,
@@ -150,6 +151,7 @@ export default async function NavNodePage({ params, searchParams }: Props) {
     const supabase = await createSupabaseServerClient();
     const [
       skills,
+      writingStyles,
       notificationTargets,
       { data: telegramRows },
       { data: customRows },
@@ -158,6 +160,7 @@ export default async function NavNodePage({ params, searchParams }: Props) {
       { t },
     ] = await Promise.all([
       listSkillsForWorkspace(workspace.id),
+      listWritingStylesForWorkspace(workspace.id),
       listSlackDiscordNotificationTargets(workspace.id),
       supabase
         .from("telegram_targets")
@@ -247,6 +250,7 @@ export default async function NavNodePage({ params, searchParams }: Props) {
               name: s.name,
               description: s.description,
             }))}
+            writingStyles={writingStyles}
           />
         </div>
       </>

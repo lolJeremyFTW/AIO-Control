@@ -20,6 +20,7 @@ import { updateAgent } from "../app/actions/agents";
 import type { AgentRow } from "../lib/queries/agents";
 import { translate } from "../lib/i18n/dict";
 import { useLocale } from "../lib/i18n/client";
+import type { WritingStyleRow } from "../lib/queries/writing-styles";
 import { AgentTopicsField } from "./AgentTopicsField";
 import { McpServersField } from "./McpServersField";
 import {
@@ -43,6 +44,7 @@ type Props = {
   agent: AgentRow & {
     telegram_target_id?: string | null;
     custom_integration_id?: string | null;
+    writing_style_id?: string | null;
     next_agent_on_done?: string | null;
     next_agent_on_fail?: string | null;
     notify_email?: string | null;
@@ -56,6 +58,7 @@ type Props = {
   /** Workspace skills available for selection. Empty list collapses
    *  the picker into a "create your first skill" hint. */
   availableSkills?: { id: string; name: string; description: string }[];
+  writingStyles?: Pick<WritingStyleRow, "id" | "name" | "description">[];
   telegramTargets?: Target[];
   customIntegrations?: Target[];
   notificationTargets?: NotificationTargetChoice[];
@@ -119,6 +122,7 @@ export function EditAgentDialog({
   siblingAgents = [],
   navOptions = [],
   availableSkills = [],
+  writingStyles = [],
   onClose,
 }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -143,6 +147,9 @@ export function EditAgentDialog({
   const [provider, setProvider] = useState<Provider>(agent.provider);
   const [model, setModel] = useState(agent.model ?? "");
   const [systemPrompt, setSystemPrompt] = useState(cfg.systemPrompt ?? "");
+  const [writingStyleId, setWritingStyleId] = useState(
+    agent.writing_style_id ?? "",
+  );
   const [endpoint, setEndpoint] = useState(cfg.endpoint ?? "");
   // MCP server allow-list. Each entry maps to one server in our native
   // host registry (packages/ai/src/mcp/host.ts). When non-empty,
@@ -231,6 +238,7 @@ export function EditAgentDialog({
         endpoint: needsEndpoint ? endpoint || null : null,
         telegram_target_id: telegramTargetId || null,
         custom_integration_id: customIntegrationId || null,
+        writing_style_id: writingStyleId || null,
         notification_target_ids: notificationTargetIds,
         next_agent_on_done: nextOnDone || null,
         next_agent_on_fail: nextOnFail || null,
@@ -392,6 +400,24 @@ export function EditAgentDialog({
             style={{ ...inp, resize: "vertical", minHeight: 80 }}
           />
         </Field>
+
+        {writingStyles.length > 0 && (
+          <Field label="Writing style">
+            <select
+              value={writingStyleId}
+              onChange={(event) => setWritingStyleId(event.target.value)}
+              style={inp}
+            >
+              <option value="">Geen style</option>
+              {writingStyles.map((style) => (
+                <option key={style.id} value={style.id}>
+                  {style.name}
+                  {style.description ? ` - ${style.description}` : ""}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
 
         <McpServersField
           value={mcpServers}

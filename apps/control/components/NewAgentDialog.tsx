@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import { createAgent, type AgentInput } from "../app/actions/agents";
 import { translate, type Locale } from "../lib/i18n/dict";
 import { useLocale } from "../lib/i18n/client";
+import type { WritingStyleRow } from "../lib/queries/writing-styles";
 import { AgentTopicsField } from "./AgentTopicsField";
 import { McpServersField } from "./McpServersField";
 import {
@@ -45,6 +46,7 @@ type Props = {
    *  picker hidden. */
   navOptions?: { id: string; name: string; depth: number }[];
   initialTopicIds?: string[];
+  writingStyles?: Pick<WritingStyleRow, "id" | "name" | "description">[];
   /** Active UI locale — translates labels via the shared dict. */
   locale?: Locale;
   onClose: () => void;
@@ -96,6 +98,7 @@ export function NewAgentDialog({
   defaults,
   navOptions = [],
   initialTopicIds = [],
+  writingStyles = [],
   locale: localeProp,
   onClose,
 }: Props) {
@@ -113,6 +116,7 @@ export function NewAgentDialog({
   const [systemPrompt, setSystemPrompt] = useState(
     defaults?.systemPrompt ?? "",
   );
+  const [writingStyleId, setWritingStyleId] = useState("");
   const [endpoint, setEndpoint] = useState("");
   const [routingRulesJson, setRoutingRulesJson] = useState("");
   const [telegramTargetId, setTelegramTargetId] = useState("");
@@ -174,6 +178,7 @@ export function NewAgentDialog({
       telegram_target_id: telegramTargetId || null,
       custom_integration_id: customIntegrationId || null,
       notification_target_ids: notificationTargetIds,
+      writing_style_id: writingStyleId || null,
       key_source: keySource,
       nav_node_id: topicIds[0] ?? null,
       nav_node_ids: topicIds,
@@ -404,6 +409,24 @@ export function NewAgentDialog({
             style={{ ...inputStyle, resize: "vertical", minHeight: 80 }}
           />
         </Field>
+
+        {writingStyles.length > 0 && (
+          <Field label="Writing style">
+            <select
+              value={writingStyleId}
+              onChange={(event) => setWritingStyleId(event.target.value)}
+              style={inputStyle}
+            >
+              <option value="">Geen style</option>
+              {writingStyles.map((style) => (
+                <option key={style.id} value={style.id}>
+                  {style.name}
+                  {style.description ? ` - ${style.description}` : ""}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
 
         <McpServersField
           value={mcpServers}

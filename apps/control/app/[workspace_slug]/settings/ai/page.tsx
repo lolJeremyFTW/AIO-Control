@@ -10,8 +10,10 @@ import { resolveApiKey } from "../../../../lib/api-keys/resolve";
 import { createSupabaseServerClient } from "../../../../lib/supabase/server";
 import { getDict } from "../../../../lib/i18n/server";
 import { listProviderConnectionLogs } from "../../../../lib/provider-connection-logs";
+import { listAgentsForWorkspace } from "../../../../lib/queries/agents";
 import { listBusinesses } from "../../../../lib/queries/businesses";
 import type { NavNode } from "../../../../lib/queries/nav-nodes";
+import { listWritingStylesForWorkspace } from "../../../../lib/queries/writing-styles";
 import { listApiKeys } from "../../../actions/api-keys";
 import type { OllamaModel } from "../../../actions/ollama";
 import { ApiKeysPanel } from "../../../../components/ApiKeysPanel";
@@ -24,6 +26,7 @@ import {
   type TalkSettingsRow,
 } from "../../../../components/TalkSettings";
 import { WorkspaceDefaultsPanel } from "../../../../components/WorkspaceDefaultsPanel";
+import { WritingStylesManager } from "../../../../components/WritingStylesManager";
 
 type Props = { params: Promise<{ workspace_slug: string }> };
 
@@ -56,6 +59,8 @@ export default async function AiSettingsPage({ params }: Props) {
     { data: logRows },
     apiKeys,
     businesses,
+    agents,
+    writingStyles,
     ollamaLogs,
     firecrawlLogs,
     { t },
@@ -91,6 +96,8 @@ export default async function AiSettingsPage({ params }: Props) {
       .limit(12),
     listApiKeys(workspace.id),
     listBusinesses(workspace.id),
+    listAgentsForWorkspace(workspace.id),
+    listWritingStylesForWorkspace(workspace.id),
     listProviderConnectionLogs(workspace.id, "ollama", 12),
     listProviderConnectionLogs(workspace.id, "firecrawl", 12),
     getDict(),
@@ -153,6 +160,22 @@ export default async function AiSettingsPage({ params }: Props) {
             model: (ws?.default_model as string | null) ?? null,
             system_prompt: (ws?.default_system_prompt as string | null) ?? null,
           }}
+        />
+      </SettingsSectionCard>
+
+      <SettingsSectionCard id="writing-styles" title="Writing styles">
+        <WritingStylesManager
+          workspaceSlug={workspace.slug}
+          workspaceId={workspace.id}
+          initialStyles={writingStyles}
+          initialAgents={agents.map((agent) => ({
+            id: agent.id,
+            name: agent.name,
+            kind: agent.kind,
+            provider: agent.provider,
+            business_id: agent.business_id,
+            writing_style_id: agent.writing_style_id,
+          }))}
         />
       </SettingsSectionCard>
 

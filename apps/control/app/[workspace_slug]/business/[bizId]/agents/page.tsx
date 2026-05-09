@@ -20,6 +20,7 @@ import {
   listSlackDiscordNotificationTargets,
 } from "../../../../../lib/queries/notification-targets";
 import { listSkillsForWorkspace } from "../../../../../lib/queries/skills";
+import { listWritingStylesForWorkspace } from "../../../../../lib/queries/writing-styles";
 import { AgentsList } from "../../../../../components/AgentsList";
 import { createSupabaseServerClient } from "../../../../../lib/supabase/server";
 
@@ -40,6 +41,7 @@ export default async function BusinessAgentsPage({ params }: Props) {
     businesses,
     allAgents,
     skills,
+    writingStyles,
     notificationTargets,
     { data: telegramRows },
     { data: customRows },
@@ -48,6 +50,7 @@ export default async function BusinessAgentsPage({ params }: Props) {
     listBusinesses(workspace.id),
     listAgentsForWorkspace(workspace.id),
     listSkillsForWorkspace(workspace.id),
+    listWritingStylesForWorkspace(workspace.id),
     listSlackDiscordNotificationTargets(workspace.id),
     supabase
       .from("telegram_targets")
@@ -124,6 +127,7 @@ export default async function BusinessAgentsPage({ params }: Props) {
           name: s.name,
           description: s.description,
         }))}
+        writingStyles={writingStyles}
       />
     </div>
   );

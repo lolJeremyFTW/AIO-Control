@@ -19,6 +19,7 @@ import {
   listSlackDiscordNotificationTargets,
 } from "../../../lib/queries/notification-targets";
 import { listSkillsForWorkspace } from "../../../lib/queries/skills";
+import { listWritingStylesForWorkspace } from "../../../lib/queries/writing-styles";
 import {
   listRecentRunsForWorkspace,
   listSchedulesForWorkspace,
@@ -45,6 +46,7 @@ export default async function WorkspaceAgentsPage({ params }: Props) {
     schedules,
     runs,
     skills,
+    writingStyles,
     notificationTargets,
     { data: telegramRows },
     { data: customRows },
@@ -56,6 +58,7 @@ export default async function WorkspaceAgentsPage({ params }: Props) {
     listSchedulesForWorkspace(workspace.id),
     listRecentRunsForWorkspace(workspace.id, 200),
     listSkillsForWorkspace(workspace.id),
+    listWritingStylesForWorkspace(workspace.id),
     listSlackDiscordNotificationTargets(workspace.id),
     supabase
       .from("telegram_targets")
@@ -217,6 +220,7 @@ export default async function WorkspaceAgentsPage({ params }: Props) {
           notificationTargetBindings={notificationTargetBindings}
           workspaceDefaults={wsDefaultsTyped}
           availableSkills={availableSkills}
+          writingStyles={writingStyles}
         />
       </section>
 
@@ -246,6 +250,8 @@ export default async function WorkspaceAgentsPage({ params }: Props) {
             notificationTargetBindings={notificationTargetBindings}
             workspaceDefaults={wsDefaultsTyped}
             navOptions={topicsByBusiness.get(g.id) ?? []}
+            availableSkills={availableSkills}
+            writingStyles={writingStyles}
           />
         </section>
       ))}

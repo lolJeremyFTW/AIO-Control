@@ -30,6 +30,7 @@ export type AgentRow = {
   key_source?: "env" | "tiered" | "subscription" | null;
   telegram_target_id?: string | null;
   custom_integration_id?: string | null;
+  writing_style_id?: string | null;
   next_agent_on_done?: string | null;
   next_agent_on_fail?: string | null;
   notify_email?: string | null;
@@ -47,7 +48,7 @@ export async function getAgentById(id: string): Promise<AgentRow | null> {
   const { data, error } = await supabase
     .from("agents")
     .select(
-      "id, workspace_id, business_id, nav_node_id, name, kind, provider, model, config, key_source, telegram_target_id, custom_integration_id, next_agent_on_done, next_agent_on_fail, notify_email, allowed_tools, allowed_skills",
+      "id, workspace_id, business_id, nav_node_id, name, kind, provider, model, config, key_source, telegram_target_id, custom_integration_id, writing_style_id, next_agent_on_done, next_agent_on_fail, notify_email, allowed_tools, allowed_skills",
     )
     .eq("id", id)
     .is("archived_at", null)
@@ -71,7 +72,7 @@ export async function listAgentsForWorkspace(
   let q = supabase
     .from("agents")
     .select(
-      "id, workspace_id, business_id, nav_node_id, name, kind, provider, model, config, key_source, telegram_target_id, custom_integration_id, next_agent_on_done, next_agent_on_fail, notify_email, allowed_tools, allowed_skills",
+      "id, workspace_id, business_id, nav_node_id, name, kind, provider, model, config, key_source, telegram_target_id, custom_integration_id, writing_style_id, next_agent_on_done, next_agent_on_fail, notify_email, allowed_tools, allowed_skills",
     )
     .eq("workspace_id", workspaceId)
     .is("archived_at", null)

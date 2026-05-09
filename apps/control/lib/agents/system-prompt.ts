@@ -164,14 +164,17 @@ export async function buildAgentSystemPrompt(
   const admin = getServiceRoleSupabase();
 
   // Fetch this agent's own config: allowed_skills drives the skills
-  // lookup; config.mcpServers tells us which tools to enumerate below.
+  // lookup, writing_style_id drives the style guide lookup, and
+  // config.mcpServers tells us which tools to enumerate below.
   const { data: agentSelfRow } = await admin
     .from("agents")
-    .select("allowed_skills, config")
+    .select("allowed_skills, writing_style_id, config")
     .eq("id", agent.id)
     .maybeSingle();
   const allowedSkillIds = ((agentSelfRow?.allowed_skills as string[] | null) ??
     []) as string[];
+  const writingStyleId =
+    (agentSelfRow?.writing_style_id as string | null | undefined) ?? null;
   const agentConfig =
     (agentSelfRow?.config as Record<string, unknown> | null) ?? {};
   const configuredMcpServersRaw =
@@ -204,6 +207,7 @@ export async function buildAgentSystemPrompt(
     siblings,
     spend,
     skillsRes,
+    writingStyleRes,
     navNodeRes,
     reviewLessonsRes,
   ] = await Promise.all([
@@ -240,6 +244,15 @@ export async function buildAgentSystemPrompt(
           .in("id", allowedSkillIds)
           .is("archived_at", null)
       : Promise.resolve({ data: [] }),
+    writingStyleId
+      ? admin
+          .from("writing_styles")
+          .select("id, name, description, instructions, sample_text")
+          .eq("id", writingStyleId)
+          .eq("workspace_id", agent.workspace_id)
+          .is("archived_at", null)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
     agent.nav_node_id
       ? admin
           .from("nav_nodes")
@@ -640,6 +653,36 @@ export async function buildAgentSystemPrompt(
       lines.push("");
       lines.push(s.body.trim());
     }
+  }
+
+  type WritingStyleRow = {
+    id: string;
+    name: string;
+    description: string | null;
+    instructions: string;
+    sample_text: string | null;
+  };
+  const writingStyle = (writingStyleRes.data ?? null) as WritingStyleRow | null;
+  if (writingStyle) {
+    lines.push("");
+    lines.push("## Writing style");
+    lines.push(`Gebruik schrijf-/antwoordstijl: **${writingStyle.name}**.`);
+    if (writingStyle.description) {
+      lines.push(writingStyle.description);
+    }
+    lines.push("");
+    lines.push(writingStyle.instructions.trim());
+    if (writingStyle.sample_text) {
+      lines.push("");
+      lines.push("### Voorbeeldtekst / stemreferentie");
+      lines.push(writingStyle.sample_text.trim());
+    }
+    lines.push("");
+    lines.push(
+      "Deze writing style stuurt toon, ritme, woordkeuze, opbouw en mate van detail in je eindantwoord. " +
+        "Hij verandert niet je tool-permissies, feitencontrole, veiligheidsregels of zakelijke instructies hierboven. " +
+        "Als de gebruiker in het moment expliciet om een andere stijl vraagt, volg die concrete stijl voor dat antwoord.",
+    );
   }
 
   // ── Budget context ─────────────────────────────────────────────────
