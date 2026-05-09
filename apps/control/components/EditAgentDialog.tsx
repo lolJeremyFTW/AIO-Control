@@ -16,7 +16,7 @@ import {
   type AioToolSpec,
 } from "@aio/ai/aio-tools";
 
-import { updateAgent } from "../app/actions/agents";
+import { archiveAgent, updateAgent } from "../app/actions/agents";
 import type { AgentRow } from "../lib/queries/agents";
 import { translate } from "../lib/i18n/dict";
 import { useLocale } from "../lib/i18n/client";
@@ -212,6 +212,7 @@ export function EditAgentDialog({
       prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id],
     );
   const [pending, setPending] = useState(false);
+  const [archiving, setArchiving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -257,6 +258,24 @@ export function EditAgentDialog({
       },
     });
     setPending(false);
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    onClose();
+    router.refresh();
+  };
+
+  const archive = async () => {
+    if (!confirm(`Agent "${agent.name}" archiveren?`)) return;
+    setError(null);
+    setArchiving(true);
+    const res = await archiveAgent({
+      workspace_slug: workspaceSlug,
+      business_id: businessId,
+      id: agent.id,
+    });
+    setArchiving(false);
     if (!res.ok) {
       setError(res.error);
       return;
@@ -670,15 +689,30 @@ export function EditAgentDialog({
             display: "flex",
             gap: 8,
             marginTop: 18,
-            justifyContent: "flex-end",
+            justifyContent: "space-between",
+            alignItems: "center",
           }}
         >
-          <button type="button" onClick={onClose} style={btnSecondary}>
-            {t("common.cancel")}
+          <button
+            type="button"
+            onClick={() => void archive()}
+            disabled={pending || archiving}
+            style={btnDanger(pending || archiving)}
+          >
+            {archiving ? t("common.busy") : "Archiveer agent"}
           </button>
-          <button type="submit" disabled={pending} style={btnPrimary(pending)}>
-            {pending ? t("common.busy") : t("agent.cta.save")}
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button type="button" onClick={onClose} style={btnSecondary}>
+              {t("common.cancel")}
+            </button>
+            <button
+              type="submit"
+              disabled={pending || archiving}
+              style={btnPrimary(pending || archiving)}
+            >
+              {pending ? t("common.busy") : t("agent.cta.save")}
+            </button>
+          </div>
         </div>
       </form>
     </dialog>
@@ -712,6 +746,18 @@ const btnPrimary = (pending: boolean): React.CSSProperties => ({
   border: "1.5px solid var(--tt-green)",
   background: "var(--tt-green)",
   color: "#fff",
+  borderRadius: 10,
+  fontWeight: 700,
+  fontSize: 12.5,
+  cursor: pending ? "wait" : "pointer",
+  opacity: pending ? 0.8 : 1,
+});
+
+const btnDanger = (pending: boolean): React.CSSProperties => ({
+  padding: "9px 14px",
+  border: "1.5px solid var(--rose)",
+  background: "rgba(230,82,107,0.10)",
+  color: "var(--rose)",
   borderRadius: 10,
   fontWeight: 700,
   fontSize: 12.5,
