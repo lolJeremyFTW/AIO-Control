@@ -173,6 +173,27 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
     );
   }
 
+  // Prevent duplicate scheduled runs from the same schedule from executing
+  // concurrently. The DB helper self-heals stale/terminal locks; if another
+  // run is genuinely active, close this queued duplicate so orphan sweeps do
+  // not keep retrying it forever.
+  const runScheduleId = (run.schedule_id as string | null) ?? null;
+  const hasScheduledRunLock =
+    runScheduleId &&
+    (run.triggered_by === "cron" || run.triggered_by === "chain")
+      ? await acquireScheduledRunLock(runScheduleId, runId)
+      : false;
+  if (
+    runScheduleId &&
+    (run.triggered_by === "cron" || run.triggered_by === "chain") &&
+    !hasScheduledRunLock
+  ) {
+    return await markSkipped(
+      runId,
+      "Skipped because this schedule already has an active run",
+    );
+  }
+
   // Promote to running so concurrent dispatchers don't double-execute.
   const startedAt = new Date().toISOString();
   const { data: claimed, error: claimErr } = await supabase
@@ -186,6 +207,9 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
     return await markFailed(runId, claimErr.message);
   }
   if (!claimed) {
+    if (hasScheduledRunLock && runScheduleId) {
+      await releaseScheduledRunLock(runScheduleId, runId);
+    }
     return {
       ok: true,
       status: "deferred",
@@ -654,6 +678,10 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
     errorText,
   );
 
+  if (hasScheduledRunLock && runScheduleId) {
+    await releaseScheduledRunLock(runScheduleId, runId);
+  }
+
   return {
     ok: !errorText,
     status: finalStatus,
@@ -663,12 +691,70 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
   };
 }
 
+async function acquireScheduledRunLock(
+  scheduleId: string,
+  runId: string,
+): Promise<boolean> {
+  const supabase = getServiceRoleSupabase();
+  const { data, error } = await supabase.rpc("acquire_schedule_run_lock", {
+    p_schedule_id: scheduleId,
+    p_run_id: runId,
+  });
+  if (error) {
+    console.error("[scheduled-run-lock] acquire failed", error);
+    return false;
+  }
+  return data === true;
+}
+
+async function releaseScheduledRunLock(
+  scheduleId: string,
+  runId: string,
+): Promise<void> {
+  const supabase = getServiceRoleSupabase();
+  const { error } = await supabase.rpc("release_schedule_run_lock", {
+    p_schedule_id: scheduleId,
+    p_run_id: runId,
+  });
+  if (error) {
+    console.warn("[scheduled-run-lock] release failed", error);
+  }
+}
+
+async function markSkipped(
+  runId: string,
+  reason: string,
+): Promise<DispatchResult> {
+  const supabase = getServiceRoleSupabase();
+  const endedAt = new Date().toISOString();
+  await supabase
+    .from("runs")
+    .update({
+      status: "failed",
+      ended_at: endedAt,
+      error_text: reason,
+      next_retry_at: null,
+    })
+    .eq("id", runId)
+    .eq("status", "queued");
+  return { ok: false, status: "failed", error: reason };
+}
+
 async function markFailed(
   runId: string,
   reason: string,
 ): Promise<DispatchResult> {
   const supabase = getServiceRoleSupabase();
   const endedAt = new Date().toISOString();
+  const { data: runRow } = await supabase
+    .from("runs")
+    .select("schedule_id")
+    .eq("id", runId)
+    .maybeSingle();
+  const scheduleId = (runRow?.schedule_id as string | null) ?? null;
+  if (scheduleId) {
+    await releaseScheduledRunLock(scheduleId, runId);
+  }
   await supabase
     .from("runs")
     .update({
