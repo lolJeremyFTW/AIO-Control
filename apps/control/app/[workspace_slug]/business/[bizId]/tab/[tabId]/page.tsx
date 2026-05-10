@@ -9,7 +9,10 @@ import {
   findBusiness,
 } from "../../../../../../lib/queries/businesses";
 import { normalizeDashboardUrl } from "../../../../../../lib/dashboards/urls";
-import { getAgentDashboardForTabUrl } from "../../../../../../lib/dashboards/agent-tabs";
+import {
+  dashboardSlugFromUrl,
+  getAgentDashboardForTabUrl,
+} from "../../../../../../lib/dashboards/agent-tabs";
 import { createSupabaseServerClient } from "../../../../../../lib/supabase/server";
 import { AgentDashboardTab } from "../../../../../../components/AgentDashboardTab";
 
@@ -59,7 +62,7 @@ export default async function CustomTabPage({ params }: Props) {
       .select("id, slug, label, url")
       .eq("business_id", biz.id)
       .is("nav_node_id", null)
-      .ilike("url", "%/d/%")
+      .or("url.like.aio-dashboard:%,url.ilike.%/d/%")
       .order("sort_order", { ascending: true })
       .order("created_at", { ascending: true })
       .limit(1)
@@ -81,6 +84,7 @@ export default async function CustomTabPage({ params }: Props) {
   if (agentDashboard) {
     return <AgentDashboardTab dashboard={agentDashboard} />;
   }
+  if (dashboardSlugFromUrl(tabUrl)) notFound();
 
   return (
     <iframe

@@ -20,7 +20,10 @@ import {
 } from "../../../../../../lib/auth/workspace";
 import { resolveApiKey } from "../../../../../../lib/api-keys/resolve";
 import { getDict } from "../../../../../../lib/i18n/server";
-import { getAgentDashboardForTabUrl } from "../../../../../../lib/dashboards/agent-tabs";
+import {
+  dashboardSlugFromUrl,
+  getAgentDashboardForTabUrl,
+} from "../../../../../../lib/dashboards/agent-tabs";
 import { normalizeDashboardUrl } from "../../../../../../lib/dashboards/urls";
 import { listAgentsForWorkspace } from "../../../../../../lib/queries/agents";
 import {
@@ -596,7 +599,7 @@ export default async function NavNodePage({ params, searchParams }: Props) {
         .from("custom_tabs")
         .select("id, slug, label, url")
         .eq("nav_node_id", current.id)
-        .ilike("url", "%/d/%")
+        .or("url.like.aio-dashboard:%,url.ilike.%/d/%")
         .order("sort_order", { ascending: true })
         .order("created_at", { ascending: true })
         .limit(1)
@@ -630,6 +633,7 @@ export default async function NavNodePage({ params, searchParams }: Props) {
       workspaceId: workspace.id,
       businessId: biz.id,
     });
+    if (!agentDashboard && dashboardSlugFromUrl(tabUrl)) notFound();
 
     return (
       <>

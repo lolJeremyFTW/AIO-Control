@@ -91,6 +91,7 @@ function dashboardOrigin(value: string | undefined): string {
 function normalizeCustomTabUrl(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) return value;
+  if (/^aio-dashboard:[A-Za-z0-9_-]+$/.test(trimmed)) return trimmed;
   if (trimmed.startsWith("/d/")) return `${APP_ORIGIN}${trimmed}`;
   if (trimmed.startsWith("/aio/d/")) return `${APP_ORIGIN}${trimmed.slice(4)}`;
   try {
@@ -2060,7 +2061,7 @@ async function publishDashboard(args: unknown): Promise<string> {
       return JSON.stringify({ error: "db_error", message: error.message });
   }
 
-  const url = normalizeCustomTabUrl(`${APP_ORIGIN}/d/${slug}`);
+  const dashboardRef = `aio-dashboard:${slug}`;
 
   if (navNodeId) {
     const topicResult = await publishTopicDashboard({
@@ -2068,13 +2069,12 @@ async function publishDashboard(args: unknown): Promise<string> {
       nav_node_id: navNodeId,
       label,
       html_content,
-      public_url: url,
+      dashboard_ref: dashboardRef,
     });
     if (topicResult.error) {
       return JSON.stringify({
         error: "topic_publish_failed",
         message: topicResult.error,
-        url,
         slug,
       });
     }
@@ -2082,7 +2082,6 @@ async function publishDashboard(args: unknown): Promise<string> {
       ok: true,
       url: topicResult.tab_url ?? topicResult.topic_url,
       topic_url: topicResult.topic_url,
-      public_url: url,
       tab_id: topicResult.tab_id,
       tab_slug: topicResult.tab_slug,
       slug,
@@ -2091,15 +2090,18 @@ async function publishDashboard(args: unknown): Promise<string> {
   }
 
   // Upsert the custom_tabs row so the dashboard appears as a nav tab.
-  const tabResult = await upsertCustomTabInner(business_id, label, url);
+  const tabResult = await upsertCustomTabInner(business_id, label, dashboardRef);
   if (tabResult.error) {
     return JSON.stringify({
       error: "tab_upsert_failed",
       message: tabResult.error,
-      url,
+      slug,
     });
   }
 
+  const url = tabResult.slug
+    ? await businessTabUrl(business_id, tabResult.slug)
+    : undefined;
   return JSON.stringify({
     ok: true,
     url,
@@ -2137,7 +2139,7 @@ async function publishTopicDashboard(input: {
   nav_node_id: string;
   label: string;
   html_content: string;
-  public_url: string;
+  dashboard_ref: string;
 }): Promise<{
   topic_url?: string;
   tab_url?: string;
@@ -2167,10 +2169,22 @@ async function publishTopicDashboard(input: {
 
   const topicPath = `/${workspace.slug}/business/${biz.slug}/n/${chain.slugs.join("/")}`;
   const topicUrl = `${APP_ORIGIN}${topicPath}`;
+
+  const tabResult = await upsertCustomTabInner(
+    input.business_id,
+    input.label,
+    input.dashboard_ref,
+    undefined,
+    input.nav_node_id,
+    "dashboard",
+  );
+  if (tabResult.error) return { error: tabResult.error };
+  const tabSegment = tabResult.slug ?? tabResult.tab_id;
+  const tabUrl = tabSegment ? `${topicUrl}/tab/${tabSegment}` : topicUrl;
   const content = dashboardContentForTopic(
     input.label,
     input.html_content,
-    input.public_url,
+    tabUrl,
   );
 
   const { error: dashboardError } = await supabaseAio
@@ -2187,22 +2201,33 @@ async function publishTopicDashboard(input: {
     );
   if (dashboardError) return { error: dashboardError.message };
 
-  const tabResult = await upsertCustomTabInner(
-    input.business_id,
-    input.label,
-    input.public_url,
-    undefined,
-    input.nav_node_id,
-    "dashboard",
-  );
-  if (tabResult.error) return { error: tabResult.error };
-  const tabSegment = tabResult.slug ?? tabResult.tab_id;
   return {
     topic_url: topicUrl,
-    tab_url: tabSegment ? `${topicUrl}/tab/${tabSegment}` : topicUrl,
+    tab_url: tabUrl,
     tab_id: tabResult.tab_id,
     tab_slug: tabResult.slug,
   };
+}
+
+async function businessTabUrl(
+  business_id: string,
+  tab_slug: string,
+): Promise<string | undefined> {
+  const [{ data: workspace }, { data: business }] = await Promise.all([
+    supabaseAio
+      .from("workspaces")
+      .select("slug")
+      .eq("id", WORKSPACE_ID)
+      .maybeSingle(),
+    supabaseAio
+      .from("businesses")
+      .select("slug")
+      .eq("id", business_id)
+      .eq("workspace_id", WORKSPACE_ID)
+      .maybeSingle(),
+  ]);
+  if (!workspace?.slug || !business?.slug) return undefined;
+  return `${APP_ORIGIN}/${workspace.slug}/business/${business.slug}/tab/${tab_slug}`;
 }
 
 async function navNodeSlugChain(
@@ -2907,7 +2932,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       name: "publish_dashboard",
       description:
         "Sla een AIO-styled HTML-dashboard op en pin het als tab in de BusinessTabs-nav van de business. " +
-        "Geeft {url, tab_id, tab_slug, slug} terug; voor topics wijst url naar /n/.../tab/<slug>. Zelfde label = update HTML in-place (stabiele URL). " +
+        "Geeft {url, tab_id, tab_slug, slug} terug; url wijst altijd naar de business/topic-tab (/business/.../tab/<slug> of /n/.../tab/<slug>), niet naar /d/<slug>. Zelfde label = update HTML in-place (stabiele URL). " +
         "Gebruik voor rijke visuele samenvattingen, statistieken, KPI-overzichten. " +
         "Voor topic-dashboards MOET nav_node_id mee zodat de tab in de topic-shell verschijnt. " +
         AIO_DASHBOARD_STYLE_GUIDE,
@@ -2947,7 +2972,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: "publish_topic_dashboard",
       description:
-        "Maak of update een AIO-styled HTML-dashboard voor een topic in een business, zonder UUIDs nodig te hebben. Voorbeeld: business='TrompTechDesigns', topic='outreach'. Het dashboard wordt opgeslagen, als tab in de bestaande topic-shell gekoppeld, retourneert /n/.../tab/<slug>, en is daarnaast als publiek /d/<slug> dashboard beschikbaar. " +
+        "Maak of update een AIO-styled HTML-dashboard voor een topic in een business, zonder UUIDs nodig te hebben. Voorbeeld: business='TrompTechDesigns', topic='outreach'. Het dashboard wordt opgeslagen als owner-only tab in de bestaande topic-shell en retourneert /n/.../tab/<slug>; gebruik geen /d/<slug> als resultaat. " +
         AIO_DASHBOARD_STYLE_GUIDE,
       inputSchema: {
         type: "object",

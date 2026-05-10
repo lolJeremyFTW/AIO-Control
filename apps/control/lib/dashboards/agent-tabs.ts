@@ -1,4 +1,4 @@
-import { getServiceRoleSupabase } from "../supabase/service";
+import { createSupabaseServerClient } from "../supabase/server";
 
 export type AgentDashboardTab = {
   id: string;
@@ -10,6 +10,8 @@ export type AgentDashboardTab = {
 export function dashboardSlugFromUrl(value: string): string | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
+  const internalRef = trimmed.match(/^aio-dashboard:([A-Za-z0-9_-]+)$/);
+  if (internalRef?.[1]) return internalRef[1];
 
   try {
     const parsed = new URL(trimmed, "https://aio.local");
@@ -42,7 +44,7 @@ export async function getAgentDashboardForTabUrl(
   const slug = dashboardSlugFromUrl(url);
   if (!slug) return null;
 
-  const supabase = getServiceRoleSupabase();
+  const supabase = await createSupabaseServerClient();
   const { data } = await supabase
     .from("agent_dashboards")
     .select("id, label, slug, html_content")
