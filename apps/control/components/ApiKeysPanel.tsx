@@ -139,6 +139,18 @@ export function ApiKeysPanel({
           provider: effectiveProvider,
           label: label || null,
           has_value: true,
+          key_preview: previewSecret(value),
+          status: "active",
+          last_used_at: null,
+          last_validated_at: null,
+          validation_error: null,
+          monthly_cap_cents: null,
+          daily_cap_cents: null,
+          rpm_limit: null,
+          tpm_limit: null,
+          expires_at: null,
+          rotated_from: null,
+          notes: null,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
           kind,
@@ -605,4 +617,12 @@ function KeyGroup({
       </div>
     </div>
   );
+}
+
+function previewSecret(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.length <= 10) {
+    return "*".repeat(Math.max(trimmed.length - 4, 0)) + trimmed.slice(-4);
+  }
+  return `${trimmed.slice(0, 6)}...${trimmed.slice(-4)}`;
 }

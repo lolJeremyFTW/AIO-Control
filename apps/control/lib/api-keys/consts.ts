@@ -23,6 +23,18 @@ export type ApiKeyMetadata = {
   provider: string;
   label: string | null;
   has_value: boolean;
+  key_preview: string | null;
+  status: "active" | "revoked" | "expired" | "rate_limited";
+  last_used_at: string | null;
+  last_validated_at: string | null;
+  validation_error: string | null;
+  monthly_cap_cents: number | null;
+  daily_cap_cents: number | null;
+  rpm_limit: number | null;
+  tpm_limit: number | null;
+  expires_at: string | null;
+  rotated_from: string | null;
+  notes: string | null;
   created_at: string;
   updated_at: string;
   /** 'provider' = canonical (anthropic/openai/…), 'custom' = user
