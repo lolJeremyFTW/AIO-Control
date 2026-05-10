@@ -20,6 +20,7 @@ import {
 } from "../../../../../../lib/auth/workspace";
 import { resolveApiKey } from "../../../../../../lib/api-keys/resolve";
 import { getDict } from "../../../../../../lib/i18n/server";
+import { getAgentDashboardForTabUrl } from "../../../../../../lib/dashboards/agent-tabs";
 import { normalizeDashboardUrl } from "../../../../../../lib/dashboards/urls";
 import { listAgentsForWorkspace } from "../../../../../../lib/queries/agents";
 import {
@@ -47,6 +48,7 @@ import {
   listScheduleReferencesForSchedules,
 } from "../../../../../../lib/queries/schedules";
 import { AgentsList } from "../../../../../../components/AgentsList";
+import { AgentDashboardTab } from "../../../../../../components/AgentDashboardTab";
 import { GenerateDashboardCard } from "../../../../../../components/GenerateDashboardCard";
 import { NewNavNodeButton } from "../../../../../../components/NewNavNodeButton";
 import { OutreachPipelineModule } from "../../../../../../components/OutreachPipelineModule";
@@ -587,7 +589,20 @@ export default async function NavNodePage({ params, searchParams }: Props) {
     tabQuery = UUID_RE.test(customTabId)
       ? tabQuery.eq("id", customTabId)
       : tabQuery.eq("slug", customTabId);
-    const { data: tab } = await tabQuery.maybeSingle();
+    let { data: tab } = await tabQuery.maybeSingle();
+
+    if (!tab && customTabId === "dashboard") {
+      const { data: dashboardTab } = await supabase
+        .from("custom_tabs")
+        .select("id, slug, label, url")
+        .eq("nav_node_id", current.id)
+        .ilike("url", "%/d/%")
+        .order("sort_order", { ascending: true })
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      tab = dashboardTab;
+    }
 
     if (!tab) {
       const { data: fallbackTab } = await supabase
@@ -607,10 +622,14 @@ export default async function NavNodePage({ params, searchParams }: Props) {
       redirect(topicBaseHref);
     }
     const canonicalSegment = (tab.slug as string | null) || (tab.id as string);
-    if (customTabId !== canonicalSegment) {
+    if (customTabId !== "dashboard" && customTabId !== canonicalSegment) {
       redirect(`${topicBaseHref}/tab/${canonicalSegment}`);
     }
     const tabUrl = normalizeDashboardUrl(tab.url as string);
+    const agentDashboard = await getAgentDashboardForTabUrl(tabUrl, {
+      workspaceId: workspace.id,
+      businessId: biz.id,
+    });
 
     return (
       <>
@@ -622,19 +641,23 @@ export default async function NavNodePage({ params, searchParams }: Props) {
           routinesCount={routinesCount ?? 0}
         />
         <div className="content">
-          <iframe
-            src={tabUrl}
-            title={tab.label}
-            style={{
-              width: "100%",
-              height: "calc(100vh - 174px)",
-              border: "1px solid var(--app-border-2)",
-              borderRadius: 10,
-              background: "var(--app-card)",
-            }}
-            allow="fullscreen"
-            sandbox={iframeSandboxFor(tabUrl)}
-          />
+          {agentDashboard ? (
+            <AgentDashboardTab dashboard={agentDashboard} />
+          ) : (
+            <iframe
+              src={tabUrl}
+              title={tab.label}
+              style={{
+                width: "100%",
+                height: "calc(100vh - 174px)",
+                border: "1px solid var(--app-border-2)",
+                borderRadius: 10,
+                background: "var(--app-card)",
+              }}
+              allow="fullscreen"
+              sandbox={iframeSandboxFor(tabUrl)}
+            />
+          )}
         </div>
       </>
     );

@@ -1964,9 +1964,11 @@ async function uniqueCustomTabSlug(input: {
   nav_node_id?: string;
   label: string;
   existing_id?: string;
+  preferred_base?: string;
 }): Promise<string> {
   const cleanBase =
-    slugPart(input.label).slice(0, 80) || `tab-${randomSlug(6)}`;
+    slugPart(input.preferred_base ?? input.label).slice(0, 80) ||
+    `tab-${randomSlug(6)}`;
   for (let attempt = 0; attempt < 8; attempt++) {
     const slug = attempt === 0 ? cleanBase : `${cleanBase}-${randomSlug(4)}`;
     let query = supabaseAio
@@ -2191,6 +2193,7 @@ async function publishTopicDashboard(input: {
     input.public_url,
     undefined,
     input.nav_node_id,
+    "dashboard",
   );
   if (tabResult.error) return { error: tabResult.error };
   const tabSegment = tabResult.slug ?? tabResult.tab_id;
@@ -2268,6 +2271,7 @@ async function upsertCustomTabInner(
   url: string,
   sort_order?: number,
   nav_node_id?: string,
+  preferred_slug?: string,
 ): Promise<{ tab_id?: string; slug?: string; error?: string }> {
   const normalizedUrl = normalizeCustomTabUrl(url);
   let existingQuery = supabaseAio
@@ -2282,14 +2286,24 @@ async function upsertCustomTabInner(
   const { data: existing } = await existingQuery.maybeSingle();
 
   if (existing) {
+    const currentSlug = existing.slug as string | null;
+    const preferredSlugBase = preferred_slug?.trim();
     const slug =
-      (existing.slug as string | null) ||
-      (await uniqueCustomTabSlug({
-        business_id,
-        nav_node_id,
-        label,
-        existing_id: existing.id as string,
-      }));
+      preferredSlugBase && currentSlug !== preferredSlugBase
+        ? await uniqueCustomTabSlug({
+            business_id,
+            nav_node_id,
+            label,
+            existing_id: existing.id as string,
+            preferred_base: preferredSlugBase,
+          })
+        : currentSlug ||
+          (await uniqueCustomTabSlug({
+            business_id,
+            nav_node_id,
+            label,
+            existing_id: existing.id as string,
+          }));
     const patch: {
       business_id: string;
       url: string;
@@ -2312,7 +2326,12 @@ async function upsertCustomTabInner(
     return { tab_id: existing.id as string, slug };
   }
 
-  const slug = await uniqueCustomTabSlug({ business_id, nav_node_id, label });
+  const slug = await uniqueCustomTabSlug({
+    business_id,
+    nav_node_id,
+    label,
+    preferred_base: preferred_slug,
+  });
   const insertSortOrder =
     typeof sort_order === "number"
       ? sort_order
