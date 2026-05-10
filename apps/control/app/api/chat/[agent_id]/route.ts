@@ -31,6 +31,7 @@ import { checkSpendLimit } from "../../../../lib/dispatch/spend-limit";
 import { dispatchRunEvent } from "../../../../lib/notify/dispatch";
 import { getAgentById } from "../../../../lib/queries/agents";
 import { createSupabaseServerClient } from "../../../../lib/supabase/server";
+import { recordProviderUsage } from "../../../../lib/usage/provider-usage";
 import { ensureThreadForChat, persistChatTurn } from "../../../actions/chat";
 
 export const dynamic = "force-dynamic";
@@ -727,6 +728,24 @@ export async function POST(
           .then(({ error }) => {
             if (error) console.error("update run failed", error);
           });
+
+        await recordProviderUsage({
+          workspaceId: agent.workspace_id,
+          businessId: agent.business_id,
+          navNodeId: agent.nav_node_id,
+          agentId: agent.id,
+          scheduleId: null,
+          runId: run.id,
+          provider: agent.provider,
+          model: config.model ?? agent.model ?? null,
+          triggeredBy: "chat",
+          status: finalStatus,
+          inputTokens: usage?.input ?? 0,
+          outputTokens: usage?.output ?? 0,
+          costCents: usage?.cost ?? 0,
+          latencyMs: durationMs,
+          errorText: runErrorText,
+        });
 
         // Fan out to Telegram + custom integrations on run completion.
         // Best-effort, no await for the user-facing response.

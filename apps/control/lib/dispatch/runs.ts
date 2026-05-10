@@ -21,6 +21,7 @@ import { checkSpendLimit } from "./spend-limit";
 import { getServiceRoleSupabase } from "../supabase/service";
 import { resolveApiKey } from "../api-keys/resolve";
 import { resolveCodexCredential } from "../openai-codex/oauth";
+import { recordProviderUsage } from "../usage/provider-usage";
 import type { RunStep } from "../runs/message-history";
 import {
   readScheduleMemoryBlock,
@@ -625,6 +626,24 @@ export async function dispatchRun(runId: string): Promise<DispatchResult> {
       message_history: history,
     })
     .eq("id", runId);
+
+  await recordProviderUsage({
+    workspaceId: run.workspace_id,
+    businessId: run.business_id,
+    navNodeId: run.nav_node_id,
+    agentId: agent.id,
+    scheduleId: (run.schedule_id as string | null) ?? null,
+    runId,
+    provider: agent.provider,
+    model: config.model ?? agent.model ?? null,
+    triggeredBy: run.triggered_by,
+    status: finalStatus,
+    inputTokens,
+    outputTokens,
+    costCents: cost,
+    latencyMs: durationMs,
+    errorText,
+  });
 
   if (scheduleMemorySource) {
     await recordScheduleRunMemory({
