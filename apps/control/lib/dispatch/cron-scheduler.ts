@@ -74,6 +74,13 @@ const QUEUE_MAX_AGE_MS = Number(
 const RETRY_SAME_AGENT_DELAY_MS = Number(
   process.env.RETRY_SAME_AGENT_DELAY_MS ?? String(5 * 60_000),
 );
+// Retry-with-backoff when queue is full
+const QUEUE_FULL_MAX_RETRIES = Number(
+  process.env.CRON_QUEUE_FULL_MAX_RETRIES ?? "3",
+);
+const QUEUE_FULL_BASE_DELAY_MS = Number(
+  process.env.CRON_QUEUE_FULL_BASE_DELAY_MS ?? "5000",
+);
 const STARTUP_ORPHAN_GRACE_MS = Number(
   process.env.STARTUP_ORPHAN_GRACE_MS ?? "90000",
 );
@@ -111,7 +118,10 @@ async function hasActiveAgentRun(
   return Boolean(count && count > 0);
 }
 
-function enqueueDispatch(workspaceId: string, runId: string): void {
+async function enqueueDispatch(
+  workspaceId: string,
+  runId: string,
+): Promise<void> {
   let q = workspaceQueues.get(workspaceId);
   if (!q) {
     q = { pending: [], runningCount: 0 };
@@ -134,13 +144,37 @@ function enqueueDispatch(workspaceId: string, runId: string): void {
     );
   }
 
-  if (q.pending.length >= MAX_QUEUE_PER_WORKSPACE) {
+  // Count both pending entries AND active drain workers. dispatchRun is async
+  // (fire-and-forget), so a run may be in-flight even after drain() has
+  // returned. Without counting runningCount we accept new entries while a
+  // dispatchRun is still executing, which inflates effective concurrency
+  // beyond WORKSPACE_CONCURRENCY and causes queue pile-up.
+  const totalLoad = q.pending.length + q.runningCount;
+  if (totalLoad >= MAX_QUEUE_PER_WORKSPACE) {
+    // Retry-with-backoff before rejecting: the queue may drain quickly
+    for (let attempt = 0; attempt < QUEUE_FULL_MAX_RETRIES; attempt++) {
+      await new Promise((r) => setTimeout(r, QUEUE_FULL_BASE_DELAY_MS * Math.pow(2, attempt)));
+      const currentQ = workspaceQueues.get(workspaceId);
+      const currentLoad = currentQ
+        ? currentQ.pending.length + currentQ.runningCount
+        : 0;
+      if (currentLoad < MAX_QUEUE_PER_WORKSPACE) {
+        q.pending.push({ runId, enqueuedAt: Date.now() });
+        if (q.runningCount < WORKSPACE_CONCURRENCY) {
+          q.runningCount++;
+          void drainWorkspaceQueue(workspaceId).catch((err) =>
+            console.error(`[cron-queue] drain failed for workspace ${workspaceId}`, err),
+          );
+        }
+        return;
+      }
+    }
     void markQueueRejected(
       runId,
-      `Queue full for workspace (>${MAX_QUEUE_PER_WORKSPACE} pending) — try again next cycle`,
+      `Queue full for workspace after ${QUEUE_FULL_MAX_RETRIES} retries (>${MAX_QUEUE_PER_WORKSPACE} pending+running) — try again next cycle`,
     );
     console.warn(
-      `[cron-queue] workspace ${workspaceId} queue full — rejecting ${runId}`,
+      `[cron-queue] workspace ${workspaceId} queue full after ${QUEUE_FULL_MAX_RETRIES} retries — rejecting ${runId}`,
     );
     return;
   }
@@ -399,7 +433,7 @@ async function runRetrySweep(): Promise<void> {
     // Route retries through the same workspace queue so they don't burst
     // either. With RETRIES_PER_TICK=2 + queue serialization, a retry
     // pile-up turns into a steady drip instead of a stampede.
-    enqueueDispatch(r.workspace_id as string, newRun.id as string);
+    await enqueueDispatch(r.workspace_id as string, newRun.id as string);
     console.log(
       `[cron-scheduler] retried ${r.id} → ${newRun.id} (attempt ${(r.attempt as number) + 1}/${r.max_attempts})`,
     );
@@ -477,7 +511,7 @@ async function dispatchQueuedOrphans(): Promise<void> {
   if (!data || data.length === 0) return;
   for (const run of data) {
     // Enqueue sequentially per workspace — never burst all at once.
-    enqueueDispatch(run.workspace_id as string, run.id as string);
+    await enqueueDispatch(run.workspace_id as string, run.id as string);
   }
   console.log(
     `[cron-scheduler] re-queued ${data.length} orphaned queued run(s) via workspace queue`,
@@ -625,7 +659,7 @@ async function tick(): Promise<void> {
       // turn so we never burst MiniMax/etc. with N concurrent calls per
       // key. The queue runs on a separate microtask so the tick returns
       // quickly even if the queue is long.
-      enqueueDispatch(sched.workspace_id, run.id as string);
+      await enqueueDispatch(sched.workspace_id, run.id as string);
     } catch (err) {
       console.error("[cron-scheduler] schedule fire failed", err);
     }

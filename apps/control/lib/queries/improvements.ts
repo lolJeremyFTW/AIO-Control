@@ -42,6 +42,84 @@ export async function listImprovements(
   return (data ?? []) as ImprovementRow[];
 }
 
+export type SimilarImprovement = {
+  id: string;
+  title: string;
+  status: string;
+  similarity: number;
+};
+
+/**
+ * Tokenize text into lowercase words, stripping punctuation.
+ */
+function tokenize(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 2);
+}
+
+/**
+ * Compute Overlap Coefficient between two token sets.
+ * Score = |A ∩ B| / min(|A|, |B|)
+ * Returns 0..1.
+ */
+function overlapCoefficient(tokensA: string[], tokensB: string[]): number {
+  if (tokensA.length === 0 || tokensB.length === 0) return 0;
+  const setA = new Set(tokensA);
+  const setB = new Set(tokensB);
+  let intersection = 0;
+  for (const word of setA) {
+    if (setB.has(word)) intersection++;
+  }
+  const minLen = Math.min(setA.size, setB.size);
+  return minLen > 0 ? intersection / minLen : 0;
+}
+
+/**
+ * Check for similar existing improvements in proposed/approved status.
+ * Returns improvements with similarity score >= threshold (default 0.5).
+ */
+export async function findSimilarImprovements(
+  workspaceId: string,
+  title: string,
+  description: string,
+  threshold = 0.5,
+): Promise<SimilarImprovement[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("improvements")
+    .select("id, title, status, description")
+    .eq("workspace_id", workspaceId)
+    .in("status", ["proposed", "approved"]);
+
+  if (error || !data) return [];
+
+  const titleTokens = tokenize(title);
+  const descTokens = tokenize(description);
+
+  const similar: SimilarImprovement[] = [];
+  for (const row of data as { id: string; title: string; status: string; description?: string }[]) {
+    const rowTitleTokens = tokenize(row.title);
+    const rowDescTokens = tokenize(row.description ?? "");
+    const titleSim = overlapCoefficient(titleTokens, rowTitleTokens);
+    const descSim = overlapCoefficient(descTokens, rowDescTokens);
+    const overallSim = titleSim * 0.6 + descSim * 0.4;
+    if (overallSim >= threshold) {
+      similar.push({
+        id: row.id,
+        title: row.title,
+        status: row.status,
+        similarity: Math.round(overallSim * 100) / 100,
+      });
+    }
+  }
+
+  similar.sort((a, b) => b.similarity - a.similarity);
+  return similar;
+}
+
 export async function createImprovement(input: {
   workspace_id: string;
   title: string;
